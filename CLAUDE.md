@@ -48,7 +48,7 @@ Props ส่งผ่านทุก screen ด้วย `screenProps` spread pa
 ```js
 const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox,
   setItemsByBox, history, setHistory, clearBoxes, clearFirestore, packer, setTab, showToast,
-  createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds };
+  createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap };
 ```
 
 ### PACKERS (hardcoded)
@@ -76,6 +76,7 @@ src/
 ├── components/
 │   ├── ImportCatalog.jsx        # Upload รายการเบิก (.csv/.xlsx)
 │   ├── ImportBarcodeMap.jsx     # Upload barcode map (.csv/.xlsx)
+│   ├── ImportCostMap.jsx        # Upload ราคาทุน (.csv/.xlsx) — ColA=SKU, ColD=unit, ColJ=cost
 │   ├── Toast.jsx                # Fixed-bottom toast overlay
 │   ├── TweaksPanel.jsx          # Dev panel (density/accent) — variant selector ไม่มีผลแล้ว
 │   ├── Annotation.jsx           # Sticky note annotations (UI flavor)
@@ -125,6 +126,7 @@ Project: `warehousetobranch` (asia-southeast1)
 | `progress/{boxId}` | in-progress scan | `{ items: [{sku, got}] }` |
 | `config/catalog` | catalog ทั้งหมด | `{ items: Item[] }` |
 | `config/barcodeMap` | barcode map | `{ entries: [{key, barcodes}] }` ← array format (ไม่ใช่ object) |
+| `config/costMap` | ราคาทุน | `{ entries: [{key, cost}] }` ← array format (key = `sku__unit`) |
 | `config/catalogByPacker` | การแบ่งรายการ | `{ assignments: {[code]: Item[]} }` |
 | `config/receive` | ลังที่รับแล้ว | `{ ids: string[] }` |
 
@@ -169,17 +171,23 @@ Logic 3 ระดับ:
 - writeBatch ลบ: `boxes/*`, `boxItems/*`, `progress/*`
 - reset refs และ local state (_setBoxes, _setItemsByBox)
 
-### `clearFirestore()` ← ใหม่
+### `handleCostMapImport(map)`
+- รับ `map = {[sku__unit]: cost}` จาก ImportCostMap
+- `setCostMap(map)` → local state
+- แปลงเป็น `entries = [{key, cost}]` → `setDoc(config/costMap, { entries })`
+- แสดง toast จำนวนรายการที่ import
+
+### `clearFirestore()`
 - confirm dialog ก่อนลบ
-- writeBatch ลบ: `boxes/*`, `boxItems/*`, `progress/*`, `config/catalog`, `config/barcodeMap`, `config/catalogByPacker`, `config/receive`
-- reset local state ทั้งหมด (boxes, itemsByBox, receiveBoxIds, catalog, catalogByPacker, barcodeMap)
+- writeBatch ลบ: `boxes/*`, `boxItems/*`, `progress/*`, `config/catalog`, `config/barcodeMap`, `config/catalogByPacker`, `config/costMap`, `config/receive`
+- reset local state ทั้งหมด (boxes, itemsByBox, receiveBoxIds, catalog, catalogByPacker, barcodeMap, costMap)
 
 ### `distributeCatalog(items)`
 สุ่มแบ่ง round-robin → เรียงตาม original file row order → sync `config/catalogByPacker`
 
 ---
 
-## Two-File Import System
+## Three-File Import System
 
 ### ไฟล์ 1: รายการเบิกสินค้า (ImportCatalog)
 | Col | ข้อมูล |
@@ -198,8 +206,15 @@ Logic 3 ระดับ:
 | E (4) | SKU |
 | G (6) | หน่วย |
 
-**Import order:** catalog ก่อน → barcode map ทีหลัง (barcode map อัพเดท catalog ใน Firestore อีกครั้ง)
-**Re-import:** ต้อง import ทั้งสองไฟล์ใหม่ถ้าแก้ไข applyBarcodeMap logic
+### ไฟล์ 3: Cost Map (ImportCostMap)
+| Col | ข้อมูล |
+|---|---|
+| A (0) | SKU |
+| D (3) | หน่วย |
+| J (9) | ราคาทุน |
+
+**Import order:** catalog ก่อน → barcode map → cost map (แต่ละไฟล์ import แยกอิสระ)
+**Re-import:** ต้อง import ทั้งสองไฟล์แรกใหม่ถ้าแก้ไข applyBarcodeMap logic
 
 ---
 
