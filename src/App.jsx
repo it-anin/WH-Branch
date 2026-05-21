@@ -12,6 +12,7 @@ import TweaksPanel from './components/TweaksPanel.jsx';
 import Toast from './components/Toast.jsx';
 import ImportCatalog from './components/ImportCatalog.jsx';
 import ImportBarcodeMap from './components/ImportBarcodeMap.jsx';
+import ImportCostMap from './components/ImportCostMap.jsx';
 
 const TABS = [
   { k: 'flow',   label: 'Dashboard' },
@@ -121,7 +122,13 @@ export default function App() {
       snap.docs.forEach(d => { data[d.id] = d.data().items || []; });
       setScanProgress(data);
     }, onErr('progress'));
-    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); };
+    const unsubCostMap = onSnapshot(doc(db, 'config', 'costMap'), snap => {
+      if (snap.exists()) {
+        const entries = snap.data().entries || [];
+        setCostMap(Object.fromEntries(entries.map(e => [e.key, e.cost])));
+      }
+    }, onErr('costMap'));
+    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); };
   }, []);
 
   function setBoxes(updater) {
@@ -209,12 +216,48 @@ export default function App() {
     const batch = writeBatch(db);
     boxesRef.current.forEach(b => batch.delete(doc(db, 'boxes', b.id)));
     Object.keys(itemsByBoxRef.current).forEach(id => batch.delete(doc(db, 'boxItems', id)));
+    Object.keys(scanProgress).forEach(id => batch.delete(doc(db, 'progress', id)));
     batch.commit();
     boxesRef.current = [];
     itemsByBoxRef.current = {};
     _setBoxes([]);
     _setItemsByBox({});
     showToast('ล้างข้อมูลแล้ว · เก็บประวัติไว้ 1 เดือน');
+  }
+
+  async function clearFirestore() {
+    if (!window.confirm(
+      'ล้างข้อมูล Firestore ทั้งหมด?\n\n' +
+      '— boxes, boxItems, progress\n' +
+      '— catalog, barcodeMap, receive\n\n' +
+      '⚠ ไม่สามารถกู้คืนได้'
+    )) return;
+    try {
+      const batch = writeBatch(db);
+      boxesRef.current.forEach(b => batch.delete(doc(db, 'boxes', b.id)));
+      Object.keys(itemsByBoxRef.current).forEach(id => batch.delete(doc(db, 'boxItems', id)));
+      Object.keys(scanProgress).forEach(id => batch.delete(doc(db, 'progress', id)));
+      batch.delete(doc(db, 'config', 'catalog'));
+      batch.delete(doc(db, 'config', 'barcodeMap'));
+      batch.delete(doc(db, 'config', 'catalogByPacker'));
+      batch.delete(doc(db, 'config', 'receive'));
+      batch.delete(doc(db, 'config', 'costMap'));
+      await batch.commit();
+      boxesRef.current = [];
+      itemsByBoxRef.current = {};
+      receiveBoxIdsRef.current = [];
+      _setBoxes([]);
+      _setItemsByBox({});
+      _setReceiveBoxIds([]);
+      setCatalog([]);
+      setCatalogByPacker({});
+      setBarcodeMap({});
+      setCostMap({});
+      showToast('ล้าง Firestore ทั้งหมดแล้ว ✓');
+    } catch (err) {
+      console.error('clearFirestore failed:', err);
+      showToast('⚠ ลบข้อมูลล้มเหลว: ' + err.code);
+    }
   }
 
   function generateCSV(targetBoxes) {
@@ -248,6 +291,7 @@ export default function App() {
 
   const [catalogByPacker, setCatalogByPacker] = useState({});
   const [barcodeMap, setBarcodeMap] = useState({});
+  const [costMap, setCostMap] = useState({});
 
   function applyBarcodeMap(items, map) {
     const skusInMap = new Set(Object.keys(map).map(k => k.split('__')[0]));
@@ -280,6 +324,14 @@ export default function App() {
     showToast(`Barcode map: ${matched} รายการ matched ✓`);
   }
 
+  function handleCostMapImport(map) {
+    setCostMap(map);
+    const entries = Object.entries(map).map(([key, cost]) => ({ key, cost }));
+    setDoc(doc(db, 'config', 'costMap'), { entries })
+      .catch(err => console.error('costMap write failed:', err.code));
+    showToast(`Cost map: ${entries.length} รายการ ✓`);
+  }
+
   function distributeCatalog(items) {
     const shuffled = [...items].sort(() => Math.random() - 0.5);
     const result = Object.fromEntries(PACKERS.map(p => [p.code, []]));
@@ -293,7 +345,7 @@ export default function App() {
     setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
   }
 
-  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, clearBoxes, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds };
+  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap };
 
   return (
     <>
@@ -346,6 +398,10 @@ export default function App() {
               <ImportBarcodeMap
                 matchCount={Object.keys(barcodeMap).length}
                 onImport={handleBarcodeMapImport}
+              />
+              <ImportCostMap
+                matchCount={Object.keys(costMap).length}
+                onImport={handleCostMapImport}
               />
             </div>
             <BoxList {...screenProps} />
@@ -408,7 +464,23 @@ export default function App() {
               </button>
             </div>
 
-            <PackScanC key={`${packer?.code}-${Object.keys(catalogByPacker).length}`} {...screenProps} catalog={packer && catalogByPacker[packer.code] ? catalogByPacker[packer.code] : catalog} onScanProgress={handleScanProgress} />
+            {packer ? (
+              <PackScanC key={`${packer.code}-${Object.keys(catalogByPacker).length}`} {...screenProps} catalog={catalogByPacker[packer.code] || catalog} onScanProgress={handleScanProgress} />
+            ) : (
+              <div style={{
+                border: '2px dashed var(--line)', borderRadius: 14,
+                padding: '60px 20px', textAlign: 'center',
+                background: 'var(--paper-dark)',
+              }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>👆</div>
+                <div style={{ fontFamily: 'Caveat', fontSize: 28, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>
+                  เลือกชื่อพนักงานก่อน
+                </div>
+                <div style={{ fontFamily: 'Patrick Hand', fontSize: 16, color: 'var(--mute)' }}>
+                  กดปุ่มชื่อพนักงานด้านบนเพื่อดูรายการสินค้าที่ต้องแพ็ค
+                </div>
+              </div>
+            )}
           </>
         )}
 

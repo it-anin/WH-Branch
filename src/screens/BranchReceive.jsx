@@ -9,72 +9,64 @@ const statusLabel = {
   received: 'รับสินค้าแล้ว',
 };
 
-function BoxCard({ box, isActive }) {
+function BoxCard({ box, isActive, isViewing, onClick }) {
   const isReceived = box.status === 'received';
-  if (isReceived) {
-    return (
-      <div style={{
-        padding: '14px 16px',
-        border: '2.5px solid var(--green)', borderRadius: 14,
-        background: '#edf5e0', boxShadow: '3px 3px 0 #c6dea6',
-      }}>
-        <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: '#6a9a3a', marginBottom: 2 }}>
-          {isActive ? 'ลังที่กำลังตรวจ' : 'รับแล้ว ✓'}
-        </div>
-        <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
-        <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 3 }}>POS: {box.pos}</div>
-        {box.packer && (
-          <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: '#6a9a3a', marginTop: 2 }}>
-            แพ็คโดย: {box.packer.name}
-          </div>
-        )}
-        <div className="row" style={{ marginTop: 10, gap: 6 }}>
-          <span className="chip ok">{box.skuCount ?? 0} SKU</span>
-          <span className="chip ok">{box.totalQty ?? 0} ชิ้น</span>
-        </div>
-      </div>
-    );
-  }
+  const borderColor = isViewing ? 'var(--accent)' : isReceived ? 'var(--green)' : isActive ? 'var(--accent)' : 'var(--line)';
+  const bg = isViewing ? 'var(--accent-soft)' : isReceived ? '#edf5e0' : isActive ? 'var(--paper-dark)' : 'white';
+
   return (
-    <div style={{
-      padding: '14px 16px',
-      border: `2px solid ${isActive ? 'var(--accent)' : 'var(--line)'}`,
-      borderRadius: 14,
-      background: isActive ? 'var(--paper-dark)' : 'white',
-      opacity: isActive ? 1 : 0.7,
-    }}>
-      <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: 'var(--mute)', marginBottom: 2 }}>
-        {isActive ? 'ลังที่กำลังตรวจ' : statusLabel[box.status] || box.status}
+    <div
+      onClick={onClick}
+      style={{
+        padding: '14px 16px',
+        border: `2px solid ${borderColor}`,
+        borderRadius: 14,
+        background: bg,
+        opacity: (!isActive && !isViewing && !isReceived) ? 0.7 : 1,
+        cursor: 'pointer',
+        boxShadow: isViewing ? '2px 2px 0 var(--accent-soft)' : isReceived ? '3px 3px 0 #c6dea6' : 'none',
+        transition: 'all 0.1s',
+      }}
+    >
+      <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginBottom: 2 }}>
+        {isViewing ? '👁 กำลังดู' : isActive ? 'ลังที่กำลังตรวจ' : isReceived ? 'รับแล้ว ✓' : statusLabel[box.status] || box.status}
       </div>
       <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
       <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 3 }}>POS: {box.pos}</div>
+      <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
+        Barcode: <span className="mono" style={{ fontSize: 11 }}>{box.id}</span>
+      </div>
       {box.packer && (
-        <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
+        <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
           แพ็คโดย: {box.packer.name}
         </div>
       )}
       <div className="row" style={{ marginTop: 10, gap: 6 }}>
-        <span className="chip">{box.skuCount ?? 0} SKU</span>
-        <span className="chip">{box.totalQty ?? 0} ชิ้น</span>
+        <span className={isReceived ? 'chip ok' : 'chip'}>{box.skuCount ?? 0} SKU</span>
+        <span className={isReceived ? 'chip ok' : 'chip'}>{box.totalQty ?? 0} ชิ้น</span>
       </div>
     </div>
   );
 }
 
 export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds }) {
-  const [phase, setPhase]             = useState(() => receiveBoxIds.length > 0 ? 'verify' : 'scan');
+  const [phase, setPhase]             = useState('scan');
   const [query, setQuery]             = useState('');
   const [notFound, setNotFound]       = useState(false);
-  const [checkedSkus, setCheckedSkus] = useState(new Set());
+  const [scanCounts, setScanCounts]   = useState({});
   const [itemScan, setItemScan]       = useState('');
   const [lastScannedSku, setLastScannedSku] = useState(null);
   const [scanError, setScanError]     = useState('');
+  const [viewingId, setViewingId]     = useState(null);
   const inputRef    = useRef(null);
   const itemScanRef = useRef(null);
 
-  const activeBoxId = receiveBoxIds.length > 0 ? receiveBoxIds[receiveBoxIds.length - 1] : null;
-  const foundBox    = activeBoxId ? boxes.find(b => b.id === activeBoxId) || null : null;
-  const isReceived  = foundBox?.status === 'received';
+  const activeBoxId    = receiveBoxIds.length > 0 ? receiveBoxIds[receiveBoxIds.length - 1] : null;
+  const foundBox       = activeBoxId ? boxes.find(b => b.id === activeBoxId) || null : null;
+  const isReceived     = foundBox?.status === 'received';
+  const isViewingOther = viewingId !== null && (phase === 'scan' || viewingId !== activeBoxId);
+  const viewingBox     = isViewingOther ? boxes.find(b => b.id === viewingId) : null;
+  const viewingItems   = isViewingOther ? (itemsByBox[viewingId] || []) : [];
 
   const scannedBoxes = receiveBoxIds
     .map(id => boxes.find(b => b.id === id))
@@ -97,9 +89,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     );
 
     if (box) {
-      setReceiveBoxIds(prev => prev.includes(box.id) ? prev : [...prev, box.id]);
+      setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id]);
       setNotFound(false);
-      setCheckedSkus(new Set());
+      setScanCounts({});
       setItemScan('');
       setLastScannedSku(null);
       setScanError('');
@@ -112,7 +104,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
   function handleSkip() {
     showToast('ข้ามลังแล้ว · สแกนลังใหม่');
-    setCheckedSkus(new Set());
+    setScanCounts({});
     setQuery('');
     setNotFound(false);
     setPhase('scan');
@@ -125,13 +117,21 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         ? { ...b, status: 'received', updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) }
         : b
     ));
-    showToast('ยืนยันรับสินค้าแล้ว ✓');
+    setScanCounts({});
+    setItemScan('');
+    setLastScannedSku(null);
+    setScanError('');
+    setQuery('');
+    setViewingId(null);
+    setPhase('scan');
+    showToast(`ยืนยันรับ ${foundBox.id} แล้ว ✓ · พร้อมสแกนลังถัดไป`);
   }
 
   function handleScanNext() {
-    setCheckedSkus(new Set());
+    setScanCounts({});
     setQuery('');
     setNotFound(false);
+    setViewingId(null);
     setPhase('scan');
   }
 
@@ -147,21 +147,31 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       setLastScannedSku(null);
       return;
     }
+
+    const needed = match.qty ?? match.got ?? 0;
+    const current = scanCounts[match.sku] || 0;
+    if (current >= needed) {
+      setScanError(`${match.name} — ครบ ${needed} ชิ้นแล้ว`);
+      setLastScannedSku(match.sku);
+      return;
+    }
+
     setScanError('');
     setLastScannedSku(match.sku);
-    setCheckedSkus(prev => new Set([...prev, match.sku]));
+    setScanCounts(prev => ({ ...prev, [match.sku]: current + 1 }));
   }
 
   function toggleCheck(sku) {
-    setCheckedSkus(prev => {
-      const next = new Set(prev);
-      if (next.has(sku)) next.delete(sku); else next.add(sku);
-      return next;
-    });
+    const item = boxItems.find(l => l.sku === sku);
+    const needed = item?.qty ?? item?.got ?? 0;
+    const current = scanCounts[sku] || 0;
+    setScanCounts(prev => ({ ...prev, [sku]: current >= needed ? 0 : needed }));
   }
 
-  const boxItems   = foundBox ? (itemsByBox[foundBox.id] || []) : [];
-  const allChecked = boxItems.length > 0 && checkedSkus.size === boxItems.length;
+  const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
+  const fullyChecked     = (item) => (scanCounts[item.sku] || 0) >= (item.qty ?? item.got ?? 0);
+  const allChecked       = boxItems.length > 0 && boxItems.every(fullyChecked);
+  const doneCount        = boxItems.filter(fullyChecked).length;
 
   return (
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: 560 }}>
@@ -183,7 +193,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
               ↩ ข้ามลัง · สแกนลังใหม่
             </button>
           )}
-          {(isReceived || phase === 'verify') && (
+          {phase === 'verify' && (
             <button className="btn primary" style={{ marginLeft: 8 }} onClick={handleScanNext}>+ สแกนลังถัดไป</button>
           )}
         </div>
@@ -215,7 +225,13 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
             </div>
           ) : (
             scannedBoxes.map((box, i) => (
-              <BoxCard key={box.id} box={box} isActive={i === 0} />
+              <BoxCard
+                key={box.id}
+                box={box}
+                isActive={i === 0 && !isViewingOther}
+                isViewing={box.id === viewingId}
+                onClick={() => setViewingId(prev => prev === box.id ? null : box.id)}
+              />
             ))
           )}
 
@@ -225,12 +241,12 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
               <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginBottom: 8 }}>ความคืบหน้า</div>
               <div style={{ height: 10, background: 'var(--paper-dark)', borderRadius: 5, overflow: 'hidden', border: '1.5px solid var(--line)' }}>
                 <div style={{
-                  width: `${(checkedSkus.size / boxItems.length) * 100}%`,
+                  width: `${(doneCount / boxItems.length) * 100}%`,
                   height: '100%', background: 'var(--green)', transition: 'width 0.2s',
                 }} />
               </div>
               <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', marginTop: 6 }}>
-                {checkedSkus.size} / {boxItems.length} รายการ
+                {doneCount} / {boxItems.length} SKU ครบ
               </div>
             </div>
           )}
@@ -248,7 +264,54 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
         {/* RIGHT: scan zone OR checklist */}
         <div>
-          {phase === 'scan' ? (
+          {isViewingOther ? (
+            <div>
+              <div className="row" style={{ marginBottom: 12, gap: 10 }}>
+                <b style={{ fontFamily: 'Caveat', fontSize: 22 }}>👁 {viewingBox?.id || viewingId}</b>
+                {viewingBox?.packer && (
+                  <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
+                    แพ็คโดย: {viewingBox.packer.name}
+                  </span>
+                )}
+                {viewingBox?.status === 'received' && <span className="chip ok">รับแล้ว ✓</span>}
+                <div className="spacer" />
+                <button className="btn sm ghost" onClick={() => setViewingId(null)}>× ปิด</button>
+              </div>
+              {viewingItems.length === 0 ? (
+                <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)', textAlign: 'center', padding: 30 }}>
+                  ไม่มีข้อมูลรายการสินค้าในลังนี้
+                </div>
+              ) : (
+                <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 400, overflowY: 'auto' }}>
+                  <table className="tbl" style={{ fontSize: 14 }}>
+                    <thead style={{ position: 'sticky', top: 0 }}>
+                      <tr>
+                        <th style={{ width: 32 }}>#</th>
+                        <th>SKU / ชื่อ</th>
+                        <th style={{ width: 70 }}>หน่วย</th>
+                        <th style={{ width: 60, textAlign: 'center' }}>จำนวน</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewingItems.map((l, i) => (
+                        <tr key={l.sku}>
+                          <td style={{ fontFamily: 'Caveat', fontSize: 18, color: 'var(--mute)' }}>{i + 1}</td>
+                          <td>
+                            <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
+                            <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                          </td>
+                          <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
+                          <td style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
+                            ×{l.qty ?? l.got ?? 0}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : phase === 'scan' ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, paddingTop: 20 }}>
               <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700 }}>สแกนบาร์โค้ดลัง</div>
               <div style={{
@@ -310,11 +373,16 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                       <button
                         className="btn sm ghost"
                         onClick={() => {
-                          if (allChecked) setCheckedSkus(new Set());
-                          else setCheckedSkus(new Set(boxItems.map(l => l.sku)));
+                          if (allChecked) {
+                            setScanCounts({});
+                          } else {
+                            const full = {};
+                            boxItems.forEach(l => { full[l.sku] = l.qty ?? l.got ?? 0; });
+                            setScanCounts(full);
+                          }
                         }}
                       >
-                        {allChecked ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+                        {allChecked ? 'ยกเลิกทั้งหมด' : 'ติ๊กครบทั้งหมด'}
                       </button>
                     )}
                   </div>
@@ -356,14 +424,17 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                       </thead>
                       <tbody>
                         {boxItems.map((l) => {
-                          const checked = checkedSkus.has(l.sku);
+                          const needed      = l.qty ?? l.got ?? 0;
+                          const count       = scanCounts[l.sku] || 0;
+                          const done        = count >= needed;
+                          const partial     = count > 0 && count < needed;
                           const justScanned = l.sku === lastScannedSku;
                           return (
                             <tr
                               key={l.sku}
                               style={{
                                 cursor: isReceived ? 'default' : 'pointer',
-                                background: justScanned ? 'var(--accent-soft)' : checked ? '#e8f0d8' : 'white',
+                                background: justScanned ? 'var(--accent-soft)' : done ? '#e8f0d8' : 'white',
                                 transition: 'background 0.12s',
                               }}
                               onClick={() => !isReceived && toggleCheck(l.sku)}
@@ -371,13 +442,13 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                               <td style={{ textAlign: 'center' }}>
                                 <div style={{
                                   width: 22, height: 22, borderRadius: '50%', margin: '0 auto',
-                                  border: `2px solid ${checked ? 'var(--green)' : 'var(--line)'}`,
-                                  background: checked ? 'var(--green)' : 'white',
+                                  border: `2px solid ${done ? 'var(--green)' : partial ? 'var(--accent)' : 'var(--line)'}`,
+                                  background: done ? 'var(--green)' : 'white',
                                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   color: 'white', fontSize: 13, fontWeight: 700,
                                   transition: 'background 0.12s',
                                 }}>
-                                  {checked ? '✓' : ''}
+                                  {done ? '✓' : ''}
                                 </div>
                               </td>
                               <td>
@@ -385,8 +456,12 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                                 <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
                               </td>
                               <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
-                              <td style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
-                                ×{l.qty ?? l.got ?? 0}
+                              <td style={{ textAlign: 'center' }}>
+                                <span style={{
+                                  fontFamily: 'Caveat', fontSize: 20, fontWeight: 700,
+                                  color: done ? 'var(--green)' : partial ? 'var(--accent)' : 'var(--mute)',
+                                }}>{count}</span>
+                                <span style={{ fontFamily: 'Caveat', fontSize: 16, color: 'var(--mute)' }}> / {needed}</span>
                               </td>
                             </tr>
                           );
@@ -407,10 +482,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                   ) : (
                     <div className="row" style={{ marginTop: 14, gap: 10, flexWrap: 'wrap' }}>
                       <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', flex: 1 }}>
-                        {checkedSkus.size === 0
-                          ? 'คลิกแต่ละแถวเพื่อติ๊กยืนยันสินค้า'
-                          : checkedSkus.size < boxItems.length
-                            ? `ยังไม่ได้ตรวจ ${boxItems.length - checkedSkus.size} รายการ`
+                        {doneCount === 0
+                          ? 'ยิงบาร์โค้ดทีละชิ้น หรือคลิกแถวเพื่อติ๊กเต็ม'
+                          : doneCount < boxItems.length
+                            ? `ครบแล้ว ${doneCount}/${boxItems.length} SKU · ยังขาดอีก ${boxItems.length - doneCount} รายการ`
                             : 'ตรวจครบทุกรายการแล้ว 🎉'}
                       </div>
                       <button className="btn" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={handleSkip}>↩ ข้ามลัง</button>

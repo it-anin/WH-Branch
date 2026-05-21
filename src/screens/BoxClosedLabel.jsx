@@ -2,7 +2,7 @@ import { useState } from 'react';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
 import Annotation from '../components/Annotation.jsx';
 
-export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, triggerDownload }) {
+export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, triggerDownload, costMap = {} }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
@@ -31,9 +31,13 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
   function handleExportBarcode() {
     if (!activeBox) return;
-    const lines = boxItems.map(l => `${l.barcode || ''}\t${l.qty ?? l.got ?? 0}\t0`);
+    if (boxItems.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังนี้'); return; }
+    const lines = boxItems.map(l => {
+      const cost = costMap[`${l.sku}__${l.unit}`] ?? 0;
+      return `${l.barcode || ''}\t${l.qty ?? l.got ?? 0}\t${cost}`;
+    });
     triggerDownload(lines.join('\n'), `${activeBox.id}.txt`, 'text/plain');
-    showToast('ส่งออกไฟล์ Barcode แล้ว ✓');
+    showToast(`ส่งออก ${lines.length} รายการ ✓`);
   }
 
   function handleSendPOS() {
@@ -193,7 +197,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 <div style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700 }}>{activeBox.id}</div>
               </div>
               <div style={{ textAlign: 'center', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <SketchyBarcode value={activeBox.id.replace(/\D/g, '').padEnd(8, '0')} width={280} height={56} />
+                <SketchyBarcode value={activeBox.id} width={280} height={56} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, fontSize: 11, borderTop: '1px dashed var(--line)', paddingTop: 8 }}>
                 <div>SKU: <b>{activeBox.skuCount ?? 0}</b></div>
@@ -203,9 +207,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
             </div>
 
             <div className="row" style={{ marginTop: 14, gap: 10 }}>
-              <button className="btn primary" onClick={() => window.print()}>🖨 พิมพ์สติกเกอร์</button>
-              <button className="btn" onClick={() => window.print()}>⇩ PDF</button>
-              <button className="btn" onClick={handleExportBarcode}>⇩ ส่งออก Barcode</button>
+              <button className="btn primary" onClick={() => window.print()}>🖨 พิมพ์ใบปิดลัง</button>
+              <button className="btn" onClick={handleExportBarcode}>⇩ ส่งออกไฟล์ Text</button>
             </div>
 
             <div style={{ marginTop: 18 }}>

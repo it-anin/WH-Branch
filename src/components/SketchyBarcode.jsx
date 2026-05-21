@@ -1,33 +1,29 @@
-import { useMemo } from 'react';
+import { useEffect, useRef } from 'react';
+import JsBarcode from 'jsbarcode';
 
-export default function SketchyBarcode({ value = '8813260400127', width = 220, height = 56 }) {
-  const bars = useMemo(() => {
-    const seed = value.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    const rng = (i) => {
-      const x = Math.sin(seed + i * 13) * 10000;
-      return x - Math.floor(x);
-    };
-    const arr = [];
-    let x = 4;
-    let i = 0;
-    while (x < width - 4) {
-      const w = 1 + Math.floor(rng(i) * 4);
-      const skip = 1 + Math.floor(rng(i + 100) * 3);
-      arr.push({ x, w });
-      x += w + skip;
-      i++;
+export default function SketchyBarcode({ value = '', width = 280, height = 56 }) {
+  const svgRef = useRef(null);
+
+  useEffect(() => {
+    if (!svgRef.current || !value) return;
+    try {
+      JsBarcode(svgRef.current, value, {
+        format: 'CODE128',
+        width: 2,
+        height: height - 20,
+        displayValue: true,
+        fontSize: 11,
+        fontOptions: '',
+        font: 'JetBrains Mono, monospace',
+        textMargin: 4,
+        margin: 4,
+        background: 'transparent',
+        lineColor: '#1a1a1a',
+      });
+    } catch {
+      // value ที่ส่งมาอาจมีอักขระที่ Code128 ไม่รองรับ
     }
-    return arr;
-  }, [value, width]);
+  }, [value, height]);
 
-  return (
-    <div style={{ display: 'inline-block', textAlign: 'center' }}>
-      <svg width={width} height={height} style={{ display: 'block' }}>
-        {bars.map((b, i) => (
-          <rect key={i} x={b.x} y={4} width={b.w} height={height - 20} fill="#1a1a1a" />
-        ))}
-      </svg>
-      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, letterSpacing: 2, marginTop: -6 }}>{value}</div>
-    </div>
-  );
+  return <svg ref={svgRef} style={{ maxWidth: width }} />;
 }

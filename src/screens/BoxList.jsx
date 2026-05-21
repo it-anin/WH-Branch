@@ -49,7 +49,7 @@ function BoxTable({ boxes, onOpen, onPrint }) {
   );
 }
 
-function HistoryEntry({ entry, generateCSV, triggerDownload }) {
+function HistoryEntry({ entry, generateCSV, triggerDownload, onDelete }) {
   const [open, setOpen] = useState(false);
   const total = entry.boxes.length;
   const exported = entry.boxes.filter(b => b.status === 'exported' || b.status === 'received').length;
@@ -82,6 +82,12 @@ function HistoryEntry({ entry, generateCSV, triggerDownload }) {
           className="btn sm ghost"
           onClick={(e) => { e.stopPropagation(); handleExport(); }}
         >⇩ CSV</button>
+        <button
+          className="btn sm ghost"
+          style={{ color: 'var(--red, #c0392b)' }}
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          title="ลบออกจากประวัติ"
+        >🗑 ลบ</button>
       </div>
       {open && (
         <div style={{ padding: '0 0 8px' }}>
@@ -92,10 +98,15 @@ function HistoryEntry({ entry, generateCSV, triggerDownload }) {
   );
 }
 
-export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, clearBoxes }) {
+export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, setHistory, clearBoxes, clearFirestore }) {
   function handleExport() {
     const csv = generateCSV(boxes);
     triggerDownload(csv, `export-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
+  }
+
+  function handleDeleteHistory(index) {
+    if (!window.confirm('ลบประวัติวันนี้ออกจากรายการ?')) return;
+    setHistory(prev => prev.filter((_, i) => i !== index));
   }
 
   return (
@@ -140,12 +151,22 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
         {/* history section */}
         {history.length > 0 && (
           <div style={{ marginTop: 32 }}>
-            <div style={{
-              fontFamily: 'Caveat', fontSize: 20, fontWeight: 700,
+            <div className="row" style={{
               borderBottom: '2px dashed var(--line)', paddingBottom: 8, marginBottom: 14,
-              color: 'var(--mute)',
+              gap: 10,
             }}>
-              ประวัติย้อนหลัง ({history.length} วัน · เก็บไว้ 1 เดือน)
+              <span style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, color: 'var(--mute)' }}>
+                ประวัติย้อนหลัง ({history.length} วัน · เก็บไว้ 1 เดือน)
+              </span>
+              <div className="spacer" />
+              <button
+                className="btn sm ghost"
+                style={{ color: 'var(--red, #c0392b)', borderColor: 'var(--red, #c0392b)' }}
+                onClick={clearFirestore}
+                title="ล้างข้อมูล Firestore ทั้งหมด (boxes, catalog, receive)"
+              >
+                🔥 ล้าง Firestore ทั้งหมด
+              </button>
             </div>
             {history.map((entry, i) => (
               <HistoryEntry
@@ -153,6 +174,7 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
                 entry={entry}
                 generateCSV={generateCSV}
                 triggerDownload={triggerDownload}
+                onDelete={() => handleDeleteHistory(i)}
               />
             ))}
           </div>
