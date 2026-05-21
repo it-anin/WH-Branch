@@ -419,7 +419,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                           <th style={{ width: 36 }}>✓</th>
                           <th>SKU / ชื่อ</th>
                           <th style={{ width: 70 }}>หน่วย</th>
-                          <th style={{ width: 60 }}>จำนวน</th>
+                          <th style={{ width: 90, textAlign: 'center' }}>สแกนแล้ว</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -458,10 +458,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                               <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
                               <td style={{ textAlign: 'center' }}>
                                 <span style={{
-                                  fontFamily: 'Caveat', fontSize: 20, fontWeight: 700,
+                                  fontFamily: 'Caveat', fontSize: 22, fontWeight: 700,
                                   color: done ? 'var(--green)' : partial ? 'var(--accent)' : 'var(--mute)',
                                 }}>{count}</span>
-                                <span style={{ fontFamily: 'Caveat', fontSize: 16, color: 'var(--mute)' }}> / {needed}</span>
                               </td>
                             </tr>
                           );

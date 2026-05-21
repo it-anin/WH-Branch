@@ -268,6 +268,9 @@ open → packing → closed → exported → received
 - `fullyChecked(item)` = `scanCounts[sku] >= item.qty`
 - `allChecked` = ทุก item ผ่าน fullyChecked
 - reset `scanCounts` เมื่อสแกนลังใหม่ / ข้ามลัง / สแกนลังถัดไป / ยืนยันรับ
+- **ตารางตรวจสอบสินค้า (phase verify):** แสดงคอลัมน์ ✓ / SKU / ชื่อ / หน่วย / สแกนแล้ว
+  - **พนักงานสาขาไม่เห็นจำนวนที่ควรมีในลัง (`needed`)** — เห็นแค่จำนวนที่สแกนไปแล้ว (`count`)
+  - ระบบรู้ภายในว่าครบหรือยัง (เพื่อ toggle ✓ และเปิดปุ่มยืนยัน) แต่ไม่แสดงตัวเลขเป้าหมายให้เห็น
 - **`viewingId`** = local state สำหรับดูสินค้าในลังใดก็ได้จากแผงซ้าย (แยกจาก activeBoxId)
   - คลิกการ์ดลัง → toggle `viewingId` (ถ้าคลิกซ้ำ → null = ปิด)
   - `isViewingOther = viewingId !== null && (phase === 'scan' || viewingId !== activeBoxId)`
