@@ -51,13 +51,23 @@ const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, ite
   createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap };
 ```
 
-### PACKERS (hardcoded)
+### PACKERS (hardcoded ใน App.jsx)
 ```js
 [
   { code: 'EMP-01', name: 'มุก' },
   { code: 'EMP-02', name: 'เก้า' },
   { code: 'EMP-03', name: 'เต้' },
   { code: 'EMP-04', name: 'ตั๋ง' },
+]
+```
+
+### BRANCH_STAFF (hardcoded ใน BranchReceive.jsx)
+```js
+[
+  { code: 'BR-01', name: 'ก้า' },
+  { code: 'BR-02', name: 'กิ๊ฟ' },
+  { code: 'BR-03', name: 'นิคกี้' },
+  { code: 'BR-04', name: 'สุ่ย' },
 ]
 ```
 
@@ -168,8 +178,8 @@ Logic 3 ระดับ:
 
 ### `clearBoxes()`
 - บันทึก snapshot ลัง → localStorage history (เก็บ 30 วัน)
-- writeBatch ลบ: `boxes/*`, `boxItems/*`, `progress/*`
-- reset refs และ local state (_setBoxes, _setItemsByBox)
+- writeBatch ลบ: `boxes/*`, `boxItems/*`, `progress/*`, `config/receive`
+- reset refs และ local state (_setBoxes, _setItemsByBox, _setReceiveBoxIds)
 
 ### `handleCostMapImport(map)`
 - รับ `map = {[sku__unit]: cost}` จาก ImportCostMap
@@ -255,32 +265,62 @@ open → packing → closed → exported → received
 - ปุ่ม "⇩ ส่งออกไฟล์ Text" → export `.txt` แบบ TSV ไม่มี header: `barcode\tจำนวนสินค้า\tทุนสินค้า`
   - ทุนสินค้า = ดึงจาก `costMap[sku__unit]` (0 ถ้ายังไม่ได้ import cost map)
   - guard: ถ้า boxItems ว่าง → แสดง toast แทน (กรณีลังเก่าก่อน Firestore sync)
+- **อนุมัติเอกสาร:** ต้องกรอก **เลขที่เอกสาร** ก่อนถึงจะกด "อนุมัติเอกสาร" ได้
+  - ปุ่มแสดง visual-disabled (opacity 0.45) ถ้าไม่มีเลข — คลิกแล้วขึ้น toast error
+  - เมื่ออนุมัติ → บันทึก docNumber ลงใน `box.pos` + status → `exported`
+  - เปลี่ยนลัง → reset docNumber อัตโนมัติ
 - ปุ่ม 🗑 ลบ ต่อ history entry → ลบออกจาก localStorage เท่านั้น (Firestore ถูกลบไปแล้วตอน clearBoxes)
 - ปุ่ม 🔥 ล้าง Firestore ทั้งหมด → เรียก `clearFirestore()` จาก App.jsx
 
 ## BranchReceive — Logic สำคัญ
-- Phase: `scan` (สแกนบาร์โค้ดลัง) → `verify` (ตรวจสินค้าในลัง)
+- **ต้องเลือกพนักงานก่อน** ถึงจะใช้หน้านี้ได้ — ถ้า `branchStaff === null` แสดง placeholder
+- **`BRANCH_STAFF`** (hardcoded ใน BranchReceive.jsx):
+  ```js
+  [{ code: 'BR-01', name: 'ก้า' }, { code: 'BR-02', name: 'กิ๊ฟ' },
+   { code: 'BR-03', name: 'นิคกี้' }, { code: 'BR-04', name: 'สุ่ย' }]
+  ```
+- Phase: `scan` → `verify` → `result` (3 phases)
 - **`scanCounts`** = `{[sku]: number}` นับจำนวนชิ้นที่สแกนจริงต่อ SKU (ไม่ใช่ binary Set)
   - สแกน 1 ครั้ง = +1 ชิ้น, ต้องครบ `item.qty` ถึงจะผ่าน
   - สแกนเกิน qty → แสดง error "ครบ X ชิ้นแล้ว"
-  - คลิกแถว → toggle ระหว่าง 0 และเต็ม qty (กรณีตรวจมือ)
-  - ปุ่ม "ติ๊กครบทั้งหมด" → ตั้งทุก SKU เป็น qty เต็ม
+  - **Blind receiving:** ไม่มีคลิกแถวเพื่อติ๊ก, ไม่มีปุ่ม "ติ๊กครบทั้งหมด" — ติ๊กได้วิธีเดียวคือยิงบาร์โค้ดเท่านั้น
 - `fullyChecked(item)` = `scanCounts[sku] >= item.qty`
 - `allChecked` = ทุก item ผ่าน fullyChecked
-- reset `scanCounts` เมื่อสแกนลังใหม่ / ข้ามลัง / สแกนลังถัดไป / ยืนยันรับ
-- **ตารางตรวจสอบสินค้า (phase verify):** แสดงคอลัมน์ ✓ / SKU / ชื่อ / หน่วย / สแกนแล้ว
+- reset `scanCounts` เมื่อสแกนลังใหม่ / ข้ามลัง / สแกนลังถัดไป / handleApprove / handleRecheck
+- **ตารางตรวจสอบสินค้า (phase verify):** แสดงคอลัมน์ SKU / ชื่อ / Barcode / หน่วย / สแกนแล้ว
+  - ไม่มีคอลัมน์ ✓ และไม่มีตัวเลขเปลี่ยนสีเมื่อครบ — ตัวเลขสีดำเสมอ (Blind)
   - **พนักงานสาขาไม่เห็นจำนวนที่ควรมีในลัง (`needed`)** — เห็นแค่จำนวนที่สแกนไปแล้ว (`count`)
-  - ระบบรู้ภายในว่าครบหรือยัง (เพื่อ toggle ✓ และเปิดปุ่มยืนยัน) แต่ไม่แสดงตัวเลขเป้าหมายให้เห็น
-- **`viewingId`** = local state สำหรับดูสินค้าในลังใดก็ได้จากแผงซ้าย (แยกจาก activeBoxId)
-  - คลิกการ์ดลัง → toggle `viewingId` (ถ้าคลิกซ้ำ → null = ปิด)
-  - `isViewingOther = viewingId !== null && (phase === 'scan' || viewingId !== activeBoxId)`
-    - **ใน phase `scan`:** คลิกการ์ดใด ๆ → `isViewingOther = true` → แสดง read-only view
-    - **ใน phase `verify`:** คลิกการ์ด active → `isViewingOther = false` → แสดง checklist ปกติ; คลิกการ์ดอื่น → `isViewingOther = true` → แสดง read-only view
+- **Phase `result`** (หลังกด ✓ ยืนยันรับสินค้า):
+  - `verifyResult` = `'ok'` (allChecked) หรือ `'fail'` (ไม่ครบ)
+  - **OK:** badge "สินค้าถูกต้อง" (เขียว) + ปุ่ม **✓ อนุมัติ** → `handleApprove()` → status `received`
+  - **Fail:** badge "สินค้าไม่ถูกต้อง" (แดง) + input รหัสหัวหน้างาน + ปุ่ม **🔄 รีเช็คสินค้า** → `handleRecheck()` → reset + phase `verify`
+  - `isViewingOther` = `false` เสมอใน phase `result` (ไม่ override ด้วย viewingId)
+  - การ์ด active ใน phase `result` แสดง watermark **"รออนุมัติ"** กระพริบ 45deg มุมขวาบน
+- **badge จำนวนลัง** แสดง `scannedBoxes.length` (ไม่ใช่ `receiveBoxIds.length`) เพื่อป้องกันตัวเลขเกินจริงกรณี stale IDs
+- **`viewingId`** = local state สำหรับดูสินค้าในลังใดก็ได้จากแผงซ้าย (ใช้ได้เฉพาะ phase `scan` และ `verify`)
+  - `isViewingOther = viewingId !== null && phase !== 'result' && (phase === 'scan' || viewingId !== activeBoxId)`
   - ปุ่ม "× ปิด" ใน read-only view → `setViewingId(null)` → กลับ panel ปกติ
-- **Re-scan fix:** `setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id])` — ย้ายลังที่สแกนซ้ำไปท้าย array เสมอ (ทำให้เป็น activeBoxId ใหม่)
-- **One-at-a-time:** `handleConfirm` auto-reset ทุก state กลับ phase `scan` ทันที พร้อม toast "พร้อมสแกนลังถัดไป"
-- **`handleScanNext`** (ปุ่ม "+ สแกนลังถัดไป"): reset `scanCounts`, `query`, `viewingId` → `phase = 'scan'`
-- ปุ่ม "+ สแกนลังถัดไป" แสดงเฉพาะ `phase === 'verify'` (ไม่ขึ้นกับ `isReceived`)
+- **Re-scan fix:** `setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id])` — ย้ายลังที่สแกนซ้ำไปท้าย array เสมอ
+- **`handleScanNext`** (ปุ่ม "+ สแกนลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'`
+- ปุ่ม "+ สแกนลังถัดไป" แสดงเฉพาะ `phase === 'verify'` หรือ `phase === 'result'`
+- **BoxCard `isPendingApproval`**: `i === 0 && phase === 'result'` → watermark CSS `@keyframes blink` ใน styles.css
+
+---
+
+## Toast Types
+`showToast(message, type?)` รองรับ 3 type — นิยามสีใน `Toast.jsx`:
+
+| type | สี | ใช้เมื่อ |
+|---|---|---|
+| `'default'` (ค่า default) | พื้นดำ / ตัวขาว | แจ้งทั่วไป |
+| `'error'` | พื้นแดง | validation fail, ข้อผิดพลาด |
+| `'success'` | พื้นเขียว | บันทึกสำเร็จ, อนุมัติแล้ว |
+
+```js
+showToast('บันทึกแล้ว ✓')                        // default
+showToast('⚠ กรุณากรอกเลขที่เอกสาร', 'error')   // แดง
+showToast('อนุมัติแล้ว ✓', 'success')            // เขียว
+```
 
 ---
 

@@ -171,9 +171,9 @@ export default function App() {
     setDoc(doc(db, 'config', 'receive'), { ids: next });
   }
 
-  const showToast = useCallback((message) => {
+  const showToast = useCallback((message, type = 'default') => {
     const id = Date.now();
-    setToasts(prev => [...prev, { id, message }]);
+    setToasts(prev => [...prev, { id, message, type }]);
     const timer = setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 2000);
@@ -217,11 +217,14 @@ export default function App() {
     boxesRef.current.forEach(b => batch.delete(doc(db, 'boxes', b.id)));
     Object.keys(itemsByBoxRef.current).forEach(id => batch.delete(doc(db, 'boxItems', id)));
     Object.keys(scanProgress).forEach(id => batch.delete(doc(db, 'progress', id)));
+    batch.delete(doc(db, 'config', 'receive'));
     batch.commit();
     boxesRef.current = [];
     itemsByBoxRef.current = {};
+    receiveBoxIdsRef.current = [];
     _setBoxes([]);
     _setItemsByBox({});
+    _setReceiveBoxIds([]);
     showToast('ล้างข้อมูลแล้ว · เก็บประวัติไว้ 1 เดือน');
   }
 

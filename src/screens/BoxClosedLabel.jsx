@@ -11,6 +11,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     return null;
   });
   const [globalSearch, setGlobalSearch] = useState('');
+  const [docNumber, setDocNumber] = useState('');
 
   const activeBox = boxes.find(b => b.id === selectedId) || null;
   const boxItems = selectedId ? (itemsByBox?.[selectedId] || []) : [];
@@ -42,18 +43,19 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
   function handleSendPOS() {
     if (!activeBox) return;
+    if (!docNumber.trim()) {
+      showToast('⚠ กรุณากรอกเลขที่เอกสาร', 'error');
+      return;
+    }
     setBoxes(prev => prev.map(b =>
-      b.id === activeBox.id ? { ...b, status: 'exported' } : b
+      b.id === activeBox.id ? { ...b, status: 'exported', pos: docNumber.trim() } : b
     ));
-    showToast('ส่ง POS แล้ว ✓');
-  }
-
-  function handleNextBox() {
-    createNewBox();
-    setTab('scan');
+    setDocNumber('');
+    showToast('อนุมัติแล้ว ✓', 'success');
   }
 
   function jumpToBox(boxId) {
+    setDocNumber('');
     setSelectedId(boxId);
     setActiveBoxId(boxId);
     setGlobalSearch('');
@@ -125,8 +127,12 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                     {b.packer.name}
                   </div>
                 )}
-                {b.status === 'exported' && (
-                  <span className="chip ok" style={{ fontSize: 10 }}>ส่ง POS แล้ว</span>
+                {b.status === 'exported' && b.pos && b.pos !== '—'
+                  ? <span className="chip ok" style={{ fontSize: 10 }}>อนุมัติแล้ว</span>
+                  : <span className="chip" style={{ fontSize: 10 }}>รออนุมัติ</span>
+                }
+                {b.status === 'exported' && b.pos && b.pos !== '—' && (
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', marginTop: 2 }}>{b.pos}</div>
                 )}
               </button>
             );
@@ -183,7 +189,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
         ) : activeBox ? (
           <div style={{ padding: 20 }}>
             <div className="hand" style={{ fontSize: 20, marginBottom: 8 }}>ตัวอย่างสติกเกอร์ติดลัง (90×65 mm)</div>
-            <div style={{
+            <div className="print-label" style={{
               background: 'white', border: '2px solid var(--line)', borderRadius: 8,
               padding: '14px 16px', fontFamily: 'JetBrains Mono',
               width: 340, height: 245, boxSizing: 'border-box',
@@ -194,7 +200,12 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700 }}>คลังกลาง · WH-01</div>
                   <div style={{ fontSize: 10, color: 'var(--mute)' }}>packed {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
                 </div>
-                <div style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700 }}>{activeBox.id}</div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700 }}>{activeBox.id}</div>
+                  {activeBox.status === 'exported' && activeBox.pos && activeBox.pos !== '—' && (
+                    <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700 }}>เลขที่: {activeBox.pos}</div>
+                  )}
+                </div>
               </div>
               <div style={{ textAlign: 'center', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <SketchyBarcode value={activeBox.id} width={280} height={56} />
@@ -243,12 +254,24 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               </div>
             </div>
 
-            <div className="row" style={{ marginTop: 14, gap: 8 }}>
-              <button className="btn" onClick={handleNextBox}>+ เปิดลังต่อไป</button>
-              {activeBox.status !== 'exported' && (
-                <button className="btn primary" onClick={handleSendPOS}>ส่งเข้า POS ตอนนี้</button>
-              )}
-            </div>
+            {activeBox.status !== 'exported' && (
+              <div className="row" style={{ marginTop: 14, gap: 8, flexWrap: 'wrap' }}>
+                <input
+                  className="input"
+                  placeholder="เลขที่เอกสาร…"
+                  style={{ flex: 1, minWidth: 160 }}
+                  value={docNumber}
+                  onChange={e => setDocNumber(e.target.value)}
+                />
+                <button
+                  className="btn primary"
+                  onClick={handleSendPOS}
+                  style={{ opacity: docNumber.trim() ? 1 : 0.45, cursor: docNumber.trim() ? 'pointer' : 'not-allowed' }}
+                >
+                  อนุมัติเอกสาร
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--mute)', fontFamily: 'Patrick Hand', fontSize: 16 }}>

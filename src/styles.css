@@ -223,3 +223,24 @@ body {
   background: radial-gradient(circle, rgba(139,90,43,0.12) 0%, rgba(139,90,43,0.05) 60%, transparent 80%);
   pointer-events: none;
 }
+
+
+@media print {
+  * { visibility: hidden !important; }
+  .print-label, .print-label * { visibility: visible !important; }
+  .print-label {
+    position: fixed !important;
+    top: 0; left: 0;
+    width: 90mm; height: 65mm;
+    padding: 8mm !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    box-sizing: border-box !important;
+  }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
