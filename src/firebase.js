@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
-// กรอก config จาก Firebase Console → Project Settings → Your apps → Web app
 const firebaseConfig = {
   apiKey:            "AIzaSyDCr_uwjiwfYtFEnLONAwts5m8jAFlqtZI",
   authDomain:        "warehousetobranch.firebaseapp.com",
@@ -13,3 +13,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const auth = getAuth(app);
+
+// Sign in anonymously on app load — required for Firestore rules (request.auth != null)
+signInAnonymously(auth).catch(() => {});
+
+export const onAuthReady = (cb) => onAuthStateChanged(auth, (user) => { if (user) cb(user); });

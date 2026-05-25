@@ -32,6 +32,10 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
   function handleExportBarcode() {
     if (!activeBox) return;
+    if (activeBox.status !== 'exported') {
+      showToast('⚠ กรุณากรอกเลขที่เอกสารและอนุมัติเอกสารก่อน', 'error');
+      return;
+    }
     if (boxItems.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังนี้'); return; }
     const lines = boxItems.map(l => {
       const cost = costMap[`${l.sku}__${l.unit}`] ?? 0;
@@ -39,6 +43,15 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     });
     triggerDownload(lines.join('\n'), `${activeBox.id}.txt`, 'text/plain');
     showToast(`ส่งออก ${lines.length} รายการ ✓`);
+  }
+
+  function handlePrint() {
+    if (!activeBox) return;
+    if (activeBox.status !== 'exported') {
+      showToast('⚠ กรุณากรอกเลขที่เอกสารและอนุมัติเอกสารก่อน', 'error');
+      return;
+    }
+    window.print();
   }
 
   function handleSendPOS() {
@@ -218,8 +231,16 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
             </div>
 
             <div className="row" style={{ marginTop: 14, gap: 10 }}>
-              <button className="btn primary" onClick={() => window.print()}>🖨 พิมพ์ใบปิดลัง</button>
-              <button className="btn" onClick={handleExportBarcode}>⇩ ส่งออกไฟล์ Text</button>
+              <button
+                className="btn primary"
+                onClick={handlePrint}
+                style={{ opacity: activeBox.status === 'exported' ? 1 : 0.45, cursor: activeBox.status === 'exported' ? 'pointer' : 'not-allowed' }}
+              >🖨 พิมพ์ใบปิดลัง</button>
+              <button
+                className="btn"
+                onClick={handleExportBarcode}
+                style={{ opacity: activeBox.status === 'exported' ? 1 : 0.45, cursor: activeBox.status === 'exported' ? 'pointer' : 'not-allowed' }}
+              >⇩ ส่งออกไฟล์ Text</button>
             </div>
 
             <div style={{ marginTop: 18 }}>
