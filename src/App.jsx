@@ -75,6 +75,35 @@ export default function App() {
     return () => toastTimers.current.forEach(clearTimeout);
   }, []);
 
+  // Android hardware scanner bridge — รับ wh-scan event จาก WebView → inject เข้า input ที่ focused
+  useEffect(() => {
+    function onAndroidScan(e) {
+      const barcode = e.detail;
+      if (!barcode) return;
+
+      // หา input ที่ focused อยู่ก่อน ถ้าไม่มีให้หา input แรกที่มองเห็นได้
+      let input = document.activeElement;
+      if (!input || input.tagName !== 'INPUT' || input.type === 'file' || input.disabled) {
+        const all = Array.from(document.querySelectorAll('input[type="text"],input:not([type])'));
+        input = all.find(el => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && !el.disabled && !el.readOnly;
+        });
+      }
+      if (!input) return;
+
+      // React synthetic event trick: ตั้งค่าผ่าน native setter แล้ว dispatch input event
+      const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      nativeSetter.call(input, barcode);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true,
+      }));
+    }
+    window.addEventListener('wh-scan', onAndroidScan);
+    return () => window.removeEventListener('wh-scan', onAndroidScan);
+  }, []);
+
   // Firestore connectivity test
   useEffect(() => {
     setDoc(doc(db, 'config', 'test'), { ts: Date.now() })

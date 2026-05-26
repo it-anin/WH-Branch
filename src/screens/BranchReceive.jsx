@@ -110,7 +110,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
   function handleScan(e) {
     if (e.key !== 'Enter') return;
-    const q = query.trim().toLowerCase();
+    const q = e.target.value.trim().toLowerCase();
     if (!q) return;
 
     const box = boxes.find(b =>
@@ -197,7 +197,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
   function handleItemScan(e) {
     if (e.key !== 'Enter') return;
-    const val = itemScan.trim();
+    const val = e.target.value.trim();
     if (!val) return;
     setItemScan('');
 
