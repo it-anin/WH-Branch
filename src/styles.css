@@ -119,6 +119,7 @@ body {
 .chip.ok { background: #d8e8c4; }
 .chip.warn { background: #fae5b0; }
 .chip.err { background: #f5c2bb; }
+.chip.info { background: #c4d8f5; }
 
 .note {
   font-family: 'Caveat', cursive; font-size: 18px;

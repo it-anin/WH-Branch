@@ -2,11 +2,11 @@ import { useState } from 'react';
 import Annotation from '../components/Annotation.jsx';
 
 const statusLabel = {
-  open:     { label: 'เปิด',           cls: 'chip' },
-  packing:  { label: 'กำลังแพ็ค',       cls: 'chip warn' },
-  closed:   { label: 'ปิดลังแล้ว',      cls: 'chip ok' },
-  exported: { label: 'ส่ง POS แล้ว',   cls: 'chip' },
-  received: { label: 'รับที่สาขาแล้ว', cls: 'chip ok' },
+  open:     { label: 'กำลังแพ็ค',       bg: '#ffd080', border: '#c88a10' },
+  packing:  { label: 'กำลังแพ็ค',       bg: '#ffd080', border: '#c88a10' },
+  closed:   { label: 'ปิดลังแล้ว',      bg: '#b8d4f0', border: '#4a80c0' },
+  exported: { label: 'อนุมัติแล้ว',     bg: '#96e096', border: '#3a9a3a' },
+  received: { label: 'รับที่สาขาแล้ว', bg: '#d4b8f5', border: '#7840c0' },
 };
 
 function BoxTable({ boxes, onOpen, onPrint }) {
@@ -20,28 +20,19 @@ function BoxTable({ boxes, onOpen, onPrint }) {
       <thead>
         <tr>
           <th>Box ID</th><th>สถานะ</th><th>พนักงาน</th><th>SKU</th><th>ชิ้น</th>
-          <th>POS Number</th><th>อัปเดต</th>
-          {onOpen && <th></th>}
+          <th>เลขที่เอกสาร</th><th>อัปเดต</th>
         </tr>
       </thead>
       <tbody>
         {boxes.map((b) => (
           <tr key={b.id}>
             <td className="num-col">{b.id}</td>
-            <td><span className={statusLabel[b.status]?.cls || 'chip'}>● {statusLabel[b.status]?.label || b.status}</span></td>
+            <td><span className="chip" style={{ background: statusLabel[b.status]?.bg, borderColor: statusLabel[b.status]?.border }}>● {statusLabel[b.status]?.label || b.status}</span></td>
             <td style={{ fontFamily: 'Patrick Hand', fontSize: 14 }}>{b.packer?.name || '—'}</td>
             <td>{b.skuCount}</td>
             <td>{b.totalQty}</td>
             <td className="num-col">{b.pos}</td>
             <td style={{ color: 'var(--mute)' }}>{b.updated}</td>
-            {onOpen && (
-              <td style={{ textAlign: 'right' }}>
-                <button className="btn sm" onClick={() => onOpen(b.id)}>เปิด</button>
-                {b.status === 'closed' && (
-                  <button className="btn sm" style={{ marginLeft: 4 }} onClick={() => onPrint(b.id)}>🖨</button>
-                )}
-              </td>
-            )}
           </tr>
         ))}
       </tbody>
@@ -115,7 +106,6 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
       <div className="frame-header">
         <div className="row">
           <span className="title">📦 รายการลังวันนี้</span>
-          <span className="mono" style={{ color: 'var(--mute)', marginLeft: 12 }}>WH-01 · ผู้ใช้: ต้น</span>
         </div>
         <div className="row">
           <input className="input" placeholder="ค้นหา BX / POS / SKU…" style={{ width: 220 }} />
@@ -126,9 +116,9 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
         {/* summary + actions */}
         <div className="row" style={{ marginBottom: 12, gap: 8 }}>
           <span className="chip">ทั้งหมด · {boxes.length}</span>
-          <span className="chip warn">กำลังแพ็ค · {boxes.filter(b => b.status === 'packing').length}</span>
-          <span className="chip ok">ปิดลัง · {boxes.filter(b => b.status === 'closed').length}</span>
-          <span className="chip">ส่ง POS · {boxes.filter(b => b.status === 'exported').length}</span>
+          <span className="chip" style={{ background: '#ffd080', borderColor: '#c88a10' }}>กำลังแพ็ค · {boxes.filter(b => b.status === 'open' || b.status === 'packing').length}</span>
+          <span className="chip" style={{ background: '#b8d4f0', borderColor: '#4a80c0' }}>ปิดลังแล้ว · {boxes.filter(b => b.status === 'closed').length}</span>
+          <span className="chip" style={{ background: '#96e096', borderColor: '#3a9a3a' }}>อนุมัติแล้ว · {boxes.filter(b => b.status === 'exported').length}</span>
           <div className="spacer" />
           <button className="btn sm ghost" onClick={() => showToast('รีเฟรชแล้ว')}>⟲ รีเฟรช</button>
           <button className="btn sm" onClick={handleExport}>⇩ Export ทั้งวัน</button>

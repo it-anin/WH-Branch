@@ -86,15 +86,17 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [viewingId, setViewingId]     = useState(null);
   const [verifyResult, setVerifyResult] = useState(null); // 'ok' | 'fail'
   const [supervisorCode, setSupervisorCode] = useState('');
+  const [reportOpen, setReportOpen]   = useState(false);
+  const [reportImage, setReportImage] = useState(null);
   const inputRef    = useRef(null);
   const itemScanRef = useRef(null);
 
   const activeBoxId    = receiveBoxIds.length > 0 ? receiveBoxIds[receiveBoxIds.length - 1] : null;
   const foundBox       = activeBoxId ? boxes.find(b => b.id === activeBoxId) || null : null;
   const isReceived     = foundBox?.status === 'received';
-  const isViewingOther = viewingId !== null && phase !== 'result' && (phase === 'scan' || viewingId !== activeBoxId);
-  const viewingBox     = isViewingOther ? boxes.find(b => b.id === viewingId) : null;
-  const viewingItems   = isViewingOther ? (itemsByBox[viewingId] || []) : [];
+  const isViewingOther = viewingId !== null && phase !== 'result';
+  const viewingBox     = viewingId ? boxes.find(b => b.id === viewingId) : null;
+  const viewingItems   = viewingId ? (itemsByBox[viewingId] || []) : [];
 
   const scannedBoxes = receiveBoxIds
     .map(id => boxes.find(b => b.id === id))
@@ -130,12 +132,20 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     }
   }
 
+  function handleImageChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setReportImage({ url: URL.createObjectURL(file), name: file.name });
+  }
+
   function handleSkip() {
-    showToast('ข้ามลังแล้ว · สแกนลังใหม่');
+    showToast('แจ้งปัญหาแล้ว · สแกนลังใหม่', 'error');
     setScanCounts({});
     setQuery('');
     setNotFound(false);
     setPhase('scan');
+    setReportOpen(false);
+    setReportImage(null);
   }
 
   function handleConfirm() {
@@ -215,33 +225,26 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
   const fullyChecked     = (item) => (scanCounts[item.sku] || 0) >= (item.qty ?? item.got ?? 0);
   const allChecked       = boxItems.length > 0 && boxItems.every(fullyChecked);
   const doneCount        = boxItems.filter(fullyChecked).length;
+  const scannedSkuCount  = boxItems.filter(l => (scanCounts[l.sku] || 0) >= 1).length;
 
   return (
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: 560 }}>
       {/* ── header ── */}
       <div className="frame-header">
         <div className="row">
-          <span className="title">📥 รับสินค้าเข้าสาขา</span>
+          <span className="title" style={{ whiteSpace: 'nowrap' }}>📥 รับสินค้าเข้าสาขา</span>
           {scannedBoxes.length > 0 && (
-            <span className="chip" style={{ marginLeft: 10 }}>{scannedBoxes.length} ลัง</span>
+            <span className="btn sm" style={{ marginLeft: 8, cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap' }}>{scannedBoxes.length} ลัง</span>
           )}
-          <span className="mono" style={{ color: 'var(--mute)', marginLeft: 12 }}>
-            {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })} · สาขา
-          </span>
           <div className="spacer" />
           {phase === 'verify' && !isReceived && (
-            <button className="btn ghost" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={handleSkip}>
+            <button className="btn primary" onClick={handleSkip}>
               ↩ ข้ามลัง · สแกนลังใหม่
             </button>
           )}
           {(phase === 'verify' || phase === 'result') && (
             <button className="btn primary" style={{ marginLeft: 8 }} onClick={handleScanNext}>+ สแกนลังถัดไป</button>
           )}
-        </div>
-        <div className="row">
-          <span className="scan-indicator">
-            {phase === 'scan' ? 'รอสแกนบาร์โค้ดลัง' : phase === 'result' ? (verifyResult === 'ok' ? '✓ ผลตรวจสอบ' : '⚠ ผลตรวจสอบ') : isReceived ? 'รับสินค้าแล้ว' : 'ตรวจสอบสินค้าในลัง'}
-          </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
           <span style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>พนักงานสาขา:</span>
@@ -274,6 +277,10 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               · กำลังรับโดย <b>{branchStaff.name}</b>
             </span>
           )}
+          <div className="spacer" />
+          <span className="mono" style={{ color: 'var(--ink)', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 700 }}>
+            {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </span>
         </div>
       </div>
 
@@ -320,21 +327,6 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
             ))
           )}
 
-          {/* progress bar for active box */}
-          {phase === 'verify' && !isReceived && boxItems.length > 0 && (
-            <div style={{ padding: 14, border: '1.5px solid var(--line)', borderRadius: 10, background: 'white' }}>
-              <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginBottom: 8 }}>ความคืบหน้า</div>
-              <div style={{ height: 10, background: 'var(--paper-dark)', borderRadius: 5, overflow: 'hidden', border: '1.5px solid var(--line)' }}>
-                <div style={{
-                  width: `${(doneCount / boxItems.length) * 100}%`,
-                  height: '100%', background: 'var(--green)', transition: 'width 0.2s',
-                }} />
-              </div>
-              <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', marginTop: 6 }}>
-                {doneCount} / {boxItems.length} SKU ครบ
-              </div>
-            </div>
-          )}
 
           {phase === 'verify' && !isReceived && (
             <div style={{
@@ -551,17 +543,13 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                         <input
                           ref={itemScanRef}
                           className="input big"
-                          placeholder="ยิงบาร์โค้ดสินค้า → ติ๊กอัตโนมัติ"
+                          placeholder="ยิงบาร์โค้ดสินค้า"
                           value={itemScan}
                           onChange={(e) => { setItemScan(e.target.value); setScanError(''); }}
                           onKeyDown={handleItemScan}
                           style={{ flex: 1 }}
                         />
-                        <span className="scan-indicator" style={{ whiteSpace: 'nowrap' }}>พร้อมรับการยิง</span>
                       </div>
-                      {scanError && (
-                        <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--red)', marginTop: 4 }}>⚠ {scanError}</div>
-                      )}
                       {lastScannedSku && !scanError && (
                         <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--green)', marginTop: 4 }}>
                           ✓ {boxItems.find(l => l.sku === lastScannedSku)?.name} — ติ๊กแล้ว
@@ -570,6 +558,18 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                     </div>
                   )}
 
+                  {boxItems.length > 0 && (
+                    <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px solid var(--line)', borderRadius: 10, background: 'white' }}>
+                      <div className="row" style={{ marginBottom: 6 }}>
+                        <span style={{ fontFamily: 'Patrick Hand', fontSize: 14 }}>ความคืบหน้า</span>
+                        <div className="spacer" />
+                        <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>{scannedSkuCount} / {boxItems.length} SKU</span>
+                      </div>
+                      <div style={{ height: 10, background: 'var(--paper-dark)', borderRadius: 5, overflow: 'hidden', border: '1.5px solid var(--line)' }}>
+                        <div style={{ width: `${(scannedSkuCount / boxItems.length) * 100}%`, height: '100%', background: 'var(--green)', transition: 'width 0.2s' }} />
+                      </div>
+                    </div>
+                  )}
                   <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 300, overflowY: 'auto' }}>
                     <table className="tbl" style={{ fontSize: 14 }}>
                       <thead style={{ position: 'sticky', top: 0 }}>
@@ -581,17 +581,16 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                         </tr>
                       </thead>
                       <tbody>
-                        {boxItems.map((l) => {
-                          const needed      = l.qty ?? l.got ?? 0;
+                        {[...boxItems]
+                          .sort((a, b) => (a.sku === lastScannedSku ? -1 : b.sku === lastScannedSku ? 1 : 0))
+                          .map((l) => {
                           const count       = scanCounts[l.sku] || 0;
-                          const done        = count >= needed;
-                          const partial     = count > 0 && count < needed;
-                          const justScanned = l.sku === lastScannedSku;
+                          const scanned     = count >= 1;
                           return (
                             <tr
                               key={l.sku}
                               style={{
-                                background: justScanned ? 'var(--accent-soft)' : done ? '#e8f0d8' : 'white',
+                                background: scanned ? '#e8f0d8' : 'white',
                                 transition: 'background 0.12s',
                               }}
                             >
@@ -624,10 +623,55 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                       ✓ รับสินค้าเรียบร้อยแล้ว — {foundBox?.id}
                     </div>
                   ) : (
-                    <div className="row" style={{ marginTop: 14, gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      <button className="btn" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={handleSkip}>↩ ข้ามลัง</button>
-                      <button className="btn primary lg" onClick={handleConfirm}>✓ ยืนยันรับสินค้า</button>
-                    </div>
+                    <>
+                      {reportOpen && (
+                        <div style={{
+                          marginTop: 14,
+                          border: '1.5px solid var(--red)', borderRadius: 12,
+                          padding: '14px 16px', background: '#fde8e8',
+                        }}>
+                          <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--red)', marginBottom: 10 }}>
+                            ⚠ แนบรูปหลักฐาน (ถ้ามี)
+                          </div>
+                          <label style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 8,
+                            padding: '8px 14px', cursor: 'pointer',
+                            border: '1.5px dashed var(--red)', borderRadius: 10,
+                            fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--red)',
+                            background: 'white',
+                          }}>
+                            📷 {reportImage ? 'เปลี่ยนรูป' : 'เลือกรูปภาพ'}
+                            <input
+                              type="file" accept="image/*" capture="environment"
+                              style={{ display: 'none' }}
+                              onChange={handleImageChange}
+                            />
+                          </label>
+                          {reportImage && (
+                            <div style={{ marginTop: 10 }}>
+                              <img
+                                src={reportImage.url}
+                                alt="รูปหลักฐาน"
+                                style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, border: '1.5px solid var(--line)', objectFit: 'contain', display: 'block' }}
+                              />
+                              <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 4 }}>
+                                {reportImage.name}
+                              </div>
+                            </div>
+                          )}
+                          <div className="row" style={{ marginTop: 12, gap: 8, justifyContent: 'flex-end' }}>
+                            <button className="btn sm ghost" onClick={() => { setReportOpen(false); setReportImage(null); }}>ยกเลิก</button>
+                            <button className="btn lg" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={handleSkip}>
+                              ยืนยันแจ้งปัญหา
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <div className="row" style={{ marginTop: 14, gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <button className="btn lg" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => setReportOpen(p => !p)}>⚠ แจ้งปัญหา</button>
+                        <button className="btn primary lg" onClick={handleConfirm}>✓ ยืนยันรับสินค้า</button>
+                      </div>
+                    </>
                   )}
                 </>
               )}

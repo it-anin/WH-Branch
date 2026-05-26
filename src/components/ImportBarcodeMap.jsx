@@ -19,12 +19,20 @@ function splitCSVLine(line) {
   return result;
 }
 
+function toStr(val) {
+  if (val === undefined || val === null || val === '') return '';
+  if (typeof val === 'number') return String(Math.round(val));
+  const s = String(val).trim();
+  if (/^[\d.]+[eE][+-]?\d+$/.test(s)) return String(Math.round(Number(s)));
+  return s;
+}
+
 // ColA(0)=barcode  ColE(4)=sku  ColG(6)=unit
 function rowsToMap(rows) {
   const map = {};
   rows.slice(1).forEach(vals => {
-    const barcode = String(vals[0] ?? '').trim();
-    const sku     = String(vals[4] ?? '').trim();
+    const barcode = toStr(vals[0]);
+    const sku     = toStr(vals[4]);
     const unit    = String(vals[6] ?? '').trim();
     if (barcode && sku) {
       const key = `${sku}__${unit}`;

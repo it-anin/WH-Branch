@@ -9,6 +9,8 @@
 Warehouse Management System สำหรับ Anin (anin.co.th)
 ใช้ระบบสแกนบาร์โค้ด → แพ็คสินค้าลงลัง → ปิดลัง → ส่งเข้า POS (manual)
 
+**App title:** `Warehouse - Inbound & Outbound`
+
 **Stack:** React 18 + Vite, JavaScript (no TypeScript), SheetJS (xlsx), Firebase Firestore, no CSS framework
 
 ---
@@ -96,7 +98,7 @@ src/
     ├── PackerDashboard.jsx      # Tab: Dashboard — real-time X/Y ชิ้น + doughnut per packer
     ├── BoxList.jsx              # Tab: รายการเบิกสินค้า — ตารางลังทั้งหมด
     ├── PackScanC.jsx            # Tab: แพ็คกิ้ง — Checklist (variant เดียวที่ใช้)
-    ├── BoxClosedLabel.jsx       # Tab: Box & Label — สติกเกอร์ + ค้นหาสินค้าข้ามลัง
+    ├── BoxClosedLabel.jsx       # Tab: Outbound — สติกเกอร์ + ค้นหาสินค้าข้ามลัง + Export Excel
     ├── BranchReceive.jsx        # Tab: รับสินค้า (สาขา) — ยืนยันรับลัง
     ├── PackScanA.jsx            # (unused — ลบออกจาก routing แล้ว)
     ├── PackScanB.jsx            # (unused — ลบออกจาก routing แล้ว)
@@ -114,7 +116,7 @@ src/
 | `flow` | Dashboard | PackerDashboard |
 | `list` | รายการเบิกสินค้า | BoxList + ImportCatalog + ImportBarcodeMap |
 | `scan` | แพ็คกิ้ง | PackScanC เท่านั้น |
-| `closed` | Box & Label | BoxClosedLabel |
+| `closed` | Outbound | BoxClosedLabel |
 | `receive` | 📥 รับสินค้า (สาขา) | BranchReceive |
 
 Default tab: `flow` — `showAll = false`
@@ -147,6 +149,7 @@ export const onAuthReady = (cb) => onAuthStateChanged(auth, (user) => { if (user
 | `config/costMap` | ราคาทุน | `{ entries: [{key, cost}] }` ← array format (key = `sku__unit`) |
 | `config/catalogByPacker` | การแบ่งรายการ | `{ assignments: {[code]: Item[]} }` |
 | `config/receive` | ลังที่รับแล้ว | `{ ids: string[] }` |
+| `config/boxCounter` | serial counter ต่อวัน | `{ [ddmm]: number }` ← atomic counter สำหรับ createNewBox |
 
 **barcodeMap ใช้ array format** เพื่อหลีก Firestore "too many index entries" limit
 
@@ -160,20 +163,28 @@ export const onAuthReady = (cb) => onAuthStateChanged(auth, (user) => { if (user
 
 ## Key Functions (App.jsx)
 
-### `createNewBox()`
+### `createNewBox()` — async
 ```js
-const newId = generateBoxId(boxesRef.current);  // ใช้ ref ไม่ใช่ state
-const newBox = { id: newId, ..., createdAt: Date.now() };
-setBoxes(prev => [newBox, ...prev]);  // wrapper → sync Firestore
+// ใช้ Firestore Transaction กับ config/boxCounter เพื่อป้องกัน Box ID ซ้ำข้ามพนักงาน
+await runTransaction(db, async (tx) => {
+  const snap = await tx.get(counterRef);
+  const next = (data[todayKey] || 0) + 1;
+  tx.set(counterRef, { ...data, [todayKey]: next });
+  newId = `BX-${todayKey}-${String(next).padStart(4, '0')}`;
+});
+setBoxes(prev => [newBox, ...prev]);
 setActiveBoxId(newId);
-return newId;  // PackScanC ใช้ return value นี้ใน handleBarcode
+return newId;
 ```
+**สำคัญ:** เป็น async — ทุก caller ต้อง `await createNewBox()` เสมอ
 
 ### `applyBarcodeMap(items, map)`
-Logic 3 ระดับ:
-1. SKU + unit ตรงกับ map → ใช้ barcode จาก map ✓
+Logic 3 ระดับ (key = `sku__unit`):
+1. `sku__unit` ตรงกับ map → ใช้ barcode จาก map ✓
 2. SKU อยู่ใน map แต่ unit ไม่ตรง → `barcode: ''` (ป้องกัน wrong unit match) ✓
 3. SKU ไม่มีใน map เลย → ใช้ barcode เดิมจาก ColC (fallback) ✓
+
+**สำคัญ:** unit ใน barcode map (ColG) **ต้องตรงกับ unit ในรายการเบิก (ColE)** ทุกตัวอักษร เช่น `กล่อง`, `ชิ้น`, `10ชิ้น` — ถ้า ColG ว่างเปล่า key จะเป็น `sku__` ซึ่งไม่ match กับ catalog → barcode ว่าง
 
 ### `handleBarcodeMapImport(map)`
 - อัพเดท `catalog`, `catalogByPacker`, `barcodeMap` พร้อมกัน
@@ -241,6 +252,16 @@ Logic 3 ระดับ:
 open → packing → closed → exported → received
 ```
 
+### Status Badge Colors (BoxList.jsx)
+| status | label | สี |
+|---|---|---|
+| open / packing | กำลังแพ็ค | 🟡 เหลือง `#ffd080` |
+| closed | ปิดลังแล้ว | 🔵 ฟ้า `#b8d4f0` |
+| exported | อนุมัติแล้ว | 🟢 เขียว `#96e096` |
+| received | รับที่สาขาแล้ว | 🟣 ม่วง `#d4b8f5` |
+
+สีกำหนดด้วย inline style ตรงที่ `<span className="chip" style={{ background, borderColor }}>` — ไม่ใช้ CSS class เพื่อให้ชัดเจนต่างกัน
+
 ---
 
 ## LocalStorage Keys
@@ -255,10 +276,19 @@ open → packing → closed → exported → received
 ## PackScanC — Logic สำคัญ
 - `items` state เก็บ: `{ sku, barcode, name, unit, need, got, location }`
 - Barcode lookup ใช้ `catalog` prop (ไม่ใช่ local `items`) เพื่อให้ unit validation ทำงานถูกต้อง
-- `handleBarcode`: capture `boxId = createNewBox()` return value ถ้า activeBoxId ยังเป็น null
+- `handleBarcode`: async — `boxId = await createNewBox()` ถ้า activeBoxId ยังเป็น null
+- `isClosing` state — block การสแกนระหว่าง doClose กำลัง await createNewBox
 - ทุกครั้งที่สแกนสำเร็จ → เรียก `onScanProgress(boxId, newItems)` → Firestore `progress/{boxId}`
-- เมื่อปิดลัง: บันทึกเฉพาะ item ที่ `got > 0`, ลบ item ที่ `got >= need` ออกจาก checklist, เรียก `onScanProgress(activeBoxId, [])` เพื่อ clear progress, เปิดลังใหม่อัตโนมัติ
+- **`doClose()`** — component-level async function (ไม่ nested ใน handleCloseBox):
+  1. `setIsClosing(true)` + capture `closingBoxId = activeBoxId`
+  2. บันทึก boxes + itemsByBox + clear progress
+  3. **reset `items` / `page` / `search` ทันที ก่อน await** — ป้องกันสแกนซ้ำลงลังเก่า
+  4. `await createNewBox()` — เปิดลังใหม่
+  5. `setIsClosing(false)`
+- **`confirmClose`** state — แทน `window.confirm`: inline popover เหนือปุ่มปิดลัง แสดงเมื่อสินค้ายังไม่ครบ
+- เมื่อปิดลัง: บันทึกเฉพาะ item ที่ `got > 0`, ลบ item ที่ `got >= need` ออกจาก checklist, เปิดลังใหม่อัตโนมัติ
 - **ต้องเลือกพนักงานก่อน** ถึงจะเห็นรายการสินค้า — ถ้า `packer === null` แสดง placeholder แทน PackScanC
+- Toast: `'error'` สำหรับ scan ล้มเหลว, `'success'` สำหรับปิดลัง/เปิดลังใหม่สำเร็จ
 
 ## PackerDashboard — Logic สำคัญ
 - แสดง real-time counter ใหญ่: `totalGot / totalNeed ชิ้น`
@@ -266,21 +296,25 @@ open → packing → closed → exported → received
 - `scanProgress` ข้าม-reference กับ `boxes` เพื่อหา packer ของแต่ละ in-progress box
 - Props: `catalogByPacker, boxes, itemsByBox, PACKERS, scanProgress`
 
-## Box & Label — Logic สำคัญ
+## Outbound (BoxClosedLabel) — Logic สำคัญ
+- Tab label: **Outbound** (เดิม: Box & Label)
 - Global search ข้ามทุก closed box โดยไม่ต้องเลือกลังก่อน
-- สติกเกอร์ขนาด 90×65mm — barcode ใช้ Box ID
+- สติกเกอร์ขนาด 90×65mm — barcode ใช้ Box ID — ชื่อคลัง: "คลังสินค้า · WH-01"
 - รายชื่อสินค้ามีตาราง: SKU / ชื่อสินค้า / หน่วย / จำนวน / Location
 - ปุ่ม "⇩ ส่งออกไฟล์ Text" → export `.txt` แบบ TSV ไม่มี header: `barcode\tจำนวนสินค้า\tทุนสินค้า`
   - ทุนสินค้า = ดึงจาก `costMap[sku__unit]` (0 ถ้ายังไม่ได้ import cost map)
-  - guard: ถ้า boxItems ว่าง → แสดง toast แทน (กรณีลังเก่าก่อน Firestore sync)
-  - **ล็อก:** ปุ่มใช้งานได้เฉพาะเมื่อ `box.status === 'exported'` เท่านั้น — ถ้ายังไม่อนุมัติ → visual-disabled + toast error
-- ปุ่ม "🖨 พิมพ์ใบปิดลัง" → **ล็อกเช่นกัน** จนกว่า `box.status === 'exported'` — ถ้าคลิกก่อนอนุมัติ → toast error
-- **อนุมัติเอกสาร:** ต้องกรอก **เลขที่เอกสาร** ก่อนถึงจะกด "อนุมัติเอกสาร" ได้
-  - ปุ่มแสดง visual-disabled (opacity 0.45) ถ้าไม่มีเลข — คลิกแล้วขึ้น toast error
-  - เมื่ออนุมัติ → บันทึก docNumber ลงใน `box.pos` + status → `exported` → ปลดล็อกปุ่มพิมพ์และส่งออก
-  - เปลี่ยนลัง → reset docNumber อัตโนมัติ
-- ปุ่ม 🗑 ลบ ต่อ history entry → ลบออกจาก localStorage เท่านั้น (Firestore ถูกลบไปแล้วตอน clearBoxes)
+  - **ล็อก:** ใช้งานได้เฉพาะเมื่อ `box.status === 'exported'` เท่านั้น
+- ปุ่ม "🖨 พิมพ์ใบปิดลัง" → **ล็อกเช่นกัน** จนกว่า `box.status === 'exported'`
+- **ปุ่ม "⇩ Export Excel"** (frame-header ขวา) — export **ทุกลังที่ปิดแล้ว** เป็นไฟล์ `.xls` HTML table:
+  - คอลัมน์: เลขที่ลังสินค้า / เลขที่เอกสาร / SKU / ชื่อสินค้า / Barcode / หน่วย / จำนวน / พนักงานแพ็คสินค้า / วันที่ส่งสินค้า (DD/MM/YYYY)
+  - Font: Anuphan, column width กำหนดด้วย `<col width>` + inline style บน cell
+  - active เมื่อมี closedBoxes อย่างน้อย 1 ลัง (ไม่ต้องเลือกลัง)
+- **อนุมัติเอกสาร:** ต้องกรอก **เลขที่เอกสาร** ก่อน → บันทึก `box.pos` + status → `exported`
 - ปุ่ม 🔥 ล้าง Firestore ทั้งหมด → เรียก `clearFirestore()` จาก App.jsx
+
+## BoxList — Logic สำคัญ
+- คอลัมน์ตาราง: Box ID / สถานะ / พนักงาน / SKU / ชิ้น / **เลขที่เอกสาร** / อัปเดต (ไม่มีปุ่ม action)
+- Badge header นับ: กำลังแพ็ค = `open + packing`, ปิดลังแล้ว = `closed`, อนุมัติแล้ว = `exported`
 
 ## BranchReceive — Logic สำคัญ
 - **ต้องเลือกพนักงานก่อน** ถึงจะใช้หน้านี้ได้ — ถ้า `branchStaff === null` แสดง placeholder
@@ -323,14 +357,25 @@ open → packing → closed → exported → received
 | type | สี | ใช้เมื่อ |
 |---|---|---|
 | `'default'` (ค่า default) | พื้นดำ / ตัวขาว | แจ้งทั่วไป |
-| `'error'` | พื้นแดง | validation fail, ข้อผิดพลาด |
-| `'success'` | พื้นเขียว | บันทึกสำเร็จ, อนุมัติแล้ว |
+| `'error'` | พื้นแดง | validation fail, ข้อผิดพลาด, scan ไม่พบ |
+| `'success'` | พื้นเขียว | บันทึกสำเร็จ, อนุมัติแล้ว, ปิดลังสำเร็จ |
 
 ```js
 showToast('บันทึกแล้ว ✓')                        // default
 showToast('⚠ กรุณากรอกเลขที่เอกสาร', 'error')   // แดง
 showToast('อนุมัติแล้ว ✓', 'success')            // เขียว
 ```
+
+## CSS Chip Classes (styles.css)
+| class | สี | ใช้เมื่อ |
+|---|---|---|
+| `chip` | cream/paper | neutral, default |
+| `chip ok` | เขียว `#d8e8c4` | สำเร็จ |
+| `chip warn` | เหลือง `#fae5b0` | เตือน, in-progress |
+| `chip err` | แดง `#f5c2bb` | error |
+| `chip info` | ฟ้า `#c4d8f5` | ข้อมูล |
+
+**หมายเหตุ:** BoxList ใช้ inline style บน chip โดยตรง (ไม่ใช้ class) เพื่อสีที่ชัดเจนและไม่ซ้ำกัน
 
 ---
 

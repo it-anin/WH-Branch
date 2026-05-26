@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, runTransaction } from 'firebase/firestore';
 import { db } from './firebase.js';
 
 import BoxList from './screens/BoxList.jsx';
@@ -18,7 +18,7 @@ const TABS = [
   { k: 'flow',   label: 'Dashboard' },
   { k: 'list',   label: 'รายการเบิกสินค้า' },
   { k: 'scan',   label: 'แพ็คกิ้ง' },
-  { k: 'closed', label: 'Box & Label' },
+  { k: 'closed', label: 'Outbound' },
   { k: 'receive', label: '📥 รับสินค้า (สาขา)' },
 ];
 
@@ -193,10 +193,22 @@ export default function App() {
     return `${todayPrefix}${String(next).padStart(4, '0')}`;
   }
 
-  function createNewBox() {
+  async function createNewBox() {
     const now = new Date();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const todayKey = `${mm}${dd}`;
+    const todayPrefix = `BX-${todayKey}-`;
     const time = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-    const newId = generateBoxId(boxesRef.current);
+    const counterRef = doc(db, 'config', 'boxCounter');
+    let newId;
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(counterRef);
+      const data = snap.exists() ? snap.data() : {};
+      const next = (data[todayKey] || 0) + 1;
+      tx.set(counterRef, { ...data, [todayKey]: next });
+      newId = `${todayPrefix}${String(next).padStart(4, '0')}`;
+    });
     const newBox = { id: newId, pos: '—', status: 'open', packer: packer || null, skuCount: 0, totalQty: 0, updated: time, createdAt: Date.now() };
     setBoxes(prev => [newBox, ...prev]);
     setActiveBoxId(newId);
@@ -287,7 +299,7 @@ export default function App() {
 
   const PACKERS = [
     { code: 'EMP-01', name: 'มุก' },
-    { code: 'EMP-02', name: 'เก้า' },
+    { code: 'EMP-02', name: 'แล็ค' },
     { code: 'EMP-03', name: 'เต้' },
     { code: 'EMP-04', name: 'ตั๋ง' },
   ];
@@ -295,6 +307,39 @@ export default function App() {
   const [catalogByPacker, setCatalogByPacker] = useState({});
   const [barcodeMap, setBarcodeMap] = useState({});
   const [costMap, setCostMap] = useState({});
+
+  // debug helper — พิมพ์ใน console: __wh.sku('708422') | __wh.info()
+  useEffect(() => {
+    window.__wh = {
+      sku: (s) => {
+        const inCatalog = catalog.filter(c => c.sku === s).map(c => ({ sku: c.sku, unit: c.unit, barcode: c.barcode }));
+        const inMap     = Object.keys(barcodeMap).filter(k => k.startsWith(s + '__')).map(k => ({ key: k, barcodes: barcodeMap[k] }));
+        console.table(inCatalog.length ? inCatalog : [{ note: 'ไม่พบใน catalog' }]);
+        console.table(inMap.length     ? inMap     : [{ note: 'ไม่พบใน barcodeMap' }]);
+      },
+      info: () => {
+        console.log(`catalog: ${catalog.length} items | barcodeMap keys: ${Object.keys(barcodeMap).length}`);
+        if (catalog.length > 0) console.table(catalog.slice(0, 5).map(c => ({ sku: c.sku, unit: c.unit, barcode: c.barcode })));
+      },
+      mapKeys: (s) => {
+        const keys = Object.keys(barcodeMap).filter(k => k.startsWith(s));
+        console.log(keys.map(k => JSON.stringify(k))); // แสดง invisible chars ด้วย
+      },
+      noBarcodes: () => {
+        const r = catalog.filter(c => !c.barcode).map(c => ({ sku: c.sku, name: c.name, unit: c.unit }));
+        console.log(`items ไม่มี barcode: ${r.length} / ${catalog.length}`);
+        console.table(r.length ? r : [{ note: 'ทุก item มี barcode' }]);
+      },
+      find: (s) => {
+        const r = catalog.filter(c => c.sku.toLowerCase().includes(s.toLowerCase())).map(c => ({ sku: c.sku, unit: c.unit, barcode: c.barcode, src: 'catalog' }));
+        const allPacker = Object.entries(catalogByPacker).flatMap(([code, items]) =>
+          items.filter(c => c.sku.toLowerCase().includes(s.toLowerCase())).map(c => ({ sku: c.sku, unit: c.unit, barcode: c.barcode, src: `packer:${code}` }))
+        );
+        const combined = [...r, ...allPacker];
+        console.table(combined.length ? combined : [{ note: `ไม่พบ SKU ที่มี "${s}" ในทั้ง catalog และ catalogByPacker` }]);
+      },
+    };
+  }, [catalog, barcodeMap, catalogByPacker]);
 
   function applyBarcodeMap(items, map) {
     const skusInMap = new Set(Object.keys(map).map(k => k.split('__')[0]));
@@ -353,8 +398,7 @@ export default function App() {
   return (
     <>
       <div className="topbar">
-        <h1>📦 Warehouse Scan &amp; Pack</h1>
-        <span className="subtitle">anin-stock · v0.1</span>
+        <h1>Warehouse - Inbound &amp; Outbound</h1>
         <div className="tabs">
           {TABS.map((t) => (
             <button key={t.k} className={`tab ${tab === t.k ? 'active' : ''}`} onClick={() => setTab(t.k)}>
@@ -387,7 +431,7 @@ export default function App() {
           <>
             <div className="screen-label">
               <span className="num">01</span> Box List
-              <span className="desc">— หน้าแรก: เห็นภาพรวมลังทั้งหมดของวัน</span>
+              <span className="desc">— ภาพรวมลังทั้งหมดวันนี้</span>
             </div>
             <div className="row" style={{ marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
               <ImportCatalog catalog={catalog} onImport={(items) => {
@@ -415,7 +459,7 @@ export default function App() {
           <>
             <div className="screen-label" style={{ marginTop: 40 }}>
               <span className="num">02</span>พนักงานแพ็คกิ้ง
-              <span className="desc">— หน้าหลักที่คนคลังใช้เยอะที่สุด</span>
+              <span className="desc">— จัดสินค้าลงลัง</span>
             </div>
 
             {/* packer selector — above all variants */}
@@ -518,13 +562,15 @@ export default function App() {
         )}
 
         <div style={{ marginTop: 50, padding: 20, borderTop: '2px dashed var(--line)', fontFamily: 'Patrick Hand', color: 'var(--mute)' }}>
-          <b style={{ fontFamily: 'Caveat', fontSize: 20 }}>Next steps · ของที่ต้องตัดสินใจ</b>
+          <b style={{ fontFamily: 'Caveat', fontSize: 20 }}>NOTED</b>
           <ul style={{ marginTop: 8 }}>
-            <li>รูปแบบ POS number จริง (จำนวนหลัก / มีตัวอักษรไหม)</li>
-            <li>Integration กับ POS ปลายทาง: CSV upload / API / SFTP?</li>
-            <li>นโยบายแก้ไขลังหลังปิด (ใครมีสิทธิ์ · audit trail?)</li>
-            <li>รองรับน้ำหนักลัง / ราคาต่อชิ้น / lot-expiry หรือไม่</li>
-            <li>มือถือ / handheld scanner — ต้องออกแบบหน้า mobile แยกไหม</li>
+            <li>แสดงสถานะการดำเนินงานของพนักงานแพ็คกิ้งแต่ละคน</li>
+            <li>รายการเบิกสินค้าดึงข้อมูลจากไฟล์ PickList_xxx โดยตรง</li>
+            <li>รายการเบิกสินค้าจัดสรรให้พนักงานแพ็คกิ้งได้รับเท่าๆกัน</li>
+            <li>ภายในหนึ่งลังจะแบ่งสินค้าแต่ละ SKU ตาม Dimension ไม่ให้เกินขนาดลัง</li>
+            <li>Outbound ใส่เลขที่เอกสารก่อนถึงจะพิมพ์ใบปิดลัง + ส่งออกไฟล์ Text ได้</li>
+            <li>ลังไหนสินค้าขาด/เสียหาย/ไม่ครบ ถ่ายรูปและอัปโหลดแจ้งคลังสินค้า</li>
+            <li>สาขาสแกนสินค้าเข้าแบบ Blind Receiving</li>
           </ul>
         </div>
       </div>

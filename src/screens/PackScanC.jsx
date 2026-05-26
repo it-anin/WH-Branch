@@ -196,6 +196,8 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
 
   const boxLabel = activeBoxId || 'BX-????';
   const filtered = search.trim()
@@ -207,54 +209,59 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const pageItems = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  function handleBarcode(e) {
+  async function handleBarcode(e) {
     if (e.key !== 'Enter') return;
+    if (isClosing) { e.target.value = ''; return; }
     const val = e.target.value.trim();
     if (!val) return;
     e.target.value = '';
 
     let boxId = activeBoxId;
-    if (!activeBoxId) { boxId = createNewBox(); showToast('เปิดลังใหม่อัตโนมัติ'); }
+    if (!activeBoxId) { boxId = await createNewBox(); showToast('เปิดลังใหม่อัตโนมัติ', 'success'); }
 
     const catMatch = catalog.find(it => matchBarcode(it, val));
-    if (!catMatch) { showToast('ไม่พบในรายการเบิก'); return; }
+    if (!catMatch) { showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
 
-    const match = items.find(it => it.sku === catMatch.sku);
-    if (!match || match.got >= match.need) { showToast('ครบแล้ว'); return; }
+    const match = items.find(it => it.sku === catMatch.sku && it.unit === catMatch.unit);
+    if (!match || match.got >= match.need) { showToast('⚠ ครบแล้ว', 'error'); return; }
 
     const newItems = items.map(it => it.sku === match.sku ? { ...it, got: it.got + 1 } : it);
     setItems(newItems);
     if (onScanProgress && boxId) onScanProgress(boxId, newItems);
   }
 
+  async function doClose() {
+    setIsClosing(true);
+    setConfirmClose(false);
+    const closingBoxId = activeBoxId;
+    const pos = generatePOS(closingBoxId || 'BX-0000-0000');
+    const time = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    const packedItems = items.filter(it => it.got > 0).map(it => ({ ...it, qty: it.got }));
+    setBoxes(prev => prev.map(b =>
+      b.id === closingBoxId
+        ? { ...b, status: 'closed', packer: packer || b.packer || null, skuCount: packedItems.length, totalQty: packedItems.reduce((s, it) => s + it.qty, 0), pos, updated: time }
+        : b
+    ));
+    setItemsByBox(prev => ({ ...prev, [closingBoxId]: packedItems }));
+    if (onScanProgress) onScanProgress(closingBoxId, []);
+    setItems(prev =>
+      prev
+        .filter(it => it.got < it.need)
+        .map(it => ({ ...it, need: it.need - it.got, got: 0 }))
+    );
+    setPage(0);
+    setSearch('');
+    await createNewBox();
+    showToast(`ปิดลัง ${closingBoxId} แล้ว · เปิดลังใหม่อัตโนมัติ ✓`, 'success');
+    setIsClosing(false);
+  }
+
   function handleCloseBox() {
     const allDone = items.every(it => it.got >= it.need);
-    const doClose = () => {
-      const pos = generatePOS(activeBoxId || 'BX-0000-0000');
-      const time = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-      const packedItems = items.filter(it => it.got > 0).map(it => ({ ...it, qty: it.got }));
-      setBoxes(prev => prev.map(b =>
-        b.id === activeBoxId
-          ? { ...b, status: 'closed', packer: packer || b.packer || null, skuCount: packedItems.length, totalQty: packedItems.reduce((s, it) => s + it.qty, 0), pos, updated: time }
-          : b
-      ));
-      setItemsByBox(prev => ({ ...prev, [activeBoxId]: packedItems }));
-      if (onScanProgress) onScanProgress(activeBoxId, []);
-      createNewBox();
-      setItems(prev =>
-        prev
-          .filter(it => it.got < it.need)
-          .map(it => ({ ...it, need: it.need - it.got, got: 0 }))
-      );
-      setPage(0);
-      setSearch('');
-      showToast(`ปิดลัง ${activeBoxId} แล้ว · เปิดลังใหม่อัตโนมัติ ✓`);
-    };
-
     if (allDone) {
       doClose();
     } else {
-      if (window.confirm('ยังขาดสินค้า ปิดเลยไหม?')) doClose();
+      setConfirmClose(true);
     }
   }
 
@@ -274,7 +281,6 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
         <div className="row">
           <button className="btn sm ghost" onClick={() => setTab('list')}>←</button>
           <span className="title">Packing List · {boxLabel}</span>
-          <span className="chip warn" style={{ marginLeft: 10 }}>แผน: order #ORD-7729</span>
           {packer && (
             <span className="mono" style={{ fontSize: 12, color: 'var(--mute)', marginLeft: 8 }}>
               {packer.code} · {packer.name}
@@ -282,7 +288,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
           )}
           <div className="spacer" />
           <button className="btn primary" onClick={() => setShowHistory(true)}>📦 ลังที่ปิดแล้ว</button>
-          <button className="btn primary" onClick={() => { createNewBox(); showToast('เปิดลังใหม่แล้ว'); }}>+ เปิดลังใหม่</button>
+          <button className="btn primary" onClick={async () => { await createNewBox(); showToast('เปิดลังใหม่แล้ว ✓', 'success'); }}>+ เปิดลังใหม่</button>
         </div>
         <div className="row">
           <span className="mono" style={{ fontSize: 13 }}>เช็ค {doneCount} / {items.length} รายการ</span>
@@ -305,7 +311,23 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
           />
-          <button className="btn primary lg" onClick={handleCloseBox}>ปิดลัง</button>
+          <div style={{ position: 'relative' }}>
+            {confirmClose && (
+              <div style={{
+                position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+                background: 'white', border: '1.5px solid var(--line)', borderRadius: 10,
+                padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                whiteSpace: 'nowrap', zIndex: 10,
+              }}>
+                <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginBottom: 10 }}>⚠ ยังขาดสินค้า ปิดลังเลยไหม?</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn primary sm" onClick={doClose}>ปิดลัง</button>
+                  <button className="btn sm ghost" onClick={() => setConfirmClose(false)}>ยกเลิก</button>
+                </div>
+              </div>
+            )}
+            <button className="btn primary lg" onClick={handleCloseBox}>ปิดลัง</button>
+          </div>
         </div>
 
         {/* pagination controls */}

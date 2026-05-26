@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
 import Annotation from '../components/Annotation.jsx';
 
@@ -67,6 +68,36 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     showToast('อนุมัติแล้ว ✓', 'success');
   }
 
+  function handleExportItems() {
+    if (closedBoxes.length === 0) { showToast('⚠ ไม่มีลังที่ปิดแล้ว', 'error'); return; }
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    const dateStr = `${dd}/${mm}/${yyyy}`;
+    const headers = ['เลขที่ลังสินค้า', 'เลขที่เอกสาร', 'SKU', 'ชื่อสินค้า', 'Barcode', 'หน่วย', 'จำนวน', 'พนักงานแพ็คสินค้า', 'วันที่ส่งสินค้า'];
+    const dataRows = closedBoxes.flatMap(b =>
+      (itemsByBox?.[b.id] || []).map(l => [
+        b.id,
+        b.pos && b.pos !== '—' ? b.pos : '',
+        l.sku,
+        l.name,
+        l.barcode || '',
+        l.unit,
+        l.qty ?? l.got ?? 0,
+        b.packer?.name || '',
+        dateStr,
+      ])
+    );
+    if (dataRows.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังทั้งหมด', 'error'); return; }
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+    ws['!cols'] = [14, 13, 11, 36, 16, 8, 8, 16, 13].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'รายการสินค้า');
+    XLSX.writeFile(wb, `all_boxes_${dateStr.replace(/\//g, '-')}.xlsx`);
+    showToast(`ส่งออก ${dataRows.length} รายการ ✓`, 'success');
+  }
+
   function jumpToBox(boxId) {
     setDocNumber('');
     setSelectedId(boxId);
@@ -91,7 +122,11 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           {isSearching && (
             <button className="btn sm ghost" style={{ marginLeft: 6 }} onClick={() => setGlobalSearch('')}>× ล้าง</button>
           )}
-          <button className="btn sm ghost" style={{ marginLeft: 8 }} onClick={() => setTab('list')}>× ปิดหน้าต่าง</button>
+          <button
+            className="btn sm"
+            style={{ marginLeft: 8, opacity: closedBoxes.length > 0 ? 1 : 0.45, cursor: closedBoxes.length > 0 ? 'pointer' : 'not-allowed', background: 'var(--accent)', color: 'white', border: '1.5px solid black' }}
+            onClick={handleExportItems}
+          >⇩ Export Excel</button>
         </div>
       </div>
 
@@ -210,7 +245,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px dashed var(--line)', paddingBottom: 8 }}>
                 <div>
-                  <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700 }}>คลังกลาง · WH-01</div>
+                  <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700 }}>คลังสินค้า · WH-01</div>
                   <div style={{ fontSize: 10, color: 'var(--mute)' }}>packed {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>

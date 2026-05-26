@@ -9,12 +9,20 @@ const TEMPLATE_CSV = [
   ',SKU-4410-C,8859900112233,ข้าวหอมมะลิ มาบุญครอง 1kg,ถุง,1,A-02-05',
 ].join('\n');
 
+function toStr(val) {
+  if (val === undefined || val === null || val === '') return '';
+  if (typeof val === 'number') return String(Math.round(val));
+  const s = String(val).trim();
+  if (/^[\d.]+[eE][+-]?\d+$/.test(s)) return String(Math.round(Number(s)));
+  return s;
+}
+
 function rowsToItems(rows) {
   return rows
     .slice(1)
     .map(vals => ({
-      sku:      String(vals[1] ?? '').trim(),
-      barcode:  String(vals[2] ?? '').trim(),
+      sku:      toStr(vals[1]),
+      barcode:  toStr(vals[2]),
       name:     String(vals[3] ?? '').trim(),
       unit:     String(vals[4] ?? '').trim(),
       qty:      Math.max(1, parseInt(vals[5], 10) || 1),
