@@ -37,7 +37,8 @@ class MainActivity : AppCompatActivity() {
     // รับ barcode จาก scanner ทุกยี่ห้อ — ลองอ่าน extra key ตามลำดับ
     private val scanReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            val barcode = intent.getStringExtra("scanResult")       // KTE
+            val barcode = intent.getStringExtra("code")                // KTE (extra key จริง)
+                ?: intent.getStringExtra("scanResult")              // KTE (บางรุ่น)
                 ?: intent.getStringExtra("SCAN_BARCODE_1")          // Zebra
                 ?: intent.getStringExtra("data")                    // Honeywell
                 ?: intent.getStringExtra("com.symbol.datawedge.data_string") // DataWedge
