@@ -457,6 +457,19 @@ React (App.jsx) รับด้วย `window.addEventListener('wh-scan', ...)` 
 
 **GitHub Actions:** push ไฟล์ใน `android/**` → build debug APK อัตโนมัติ → download จาก Actions Artifacts
 
+### ต้องลง APK ใหม่หรือไม่?
+
+| ไฟล์ที่แก้ไข | ต้องลง APK ใหม่? |
+|---|---|
+| ไฟล์ใน `src/` (React, CSS, JS) | ❌ ไม่ต้อง — Vercel auto-deploy, WebView โหลดใหม่อัตโนมัติ |
+| `android/app/src/main/java/**.kt` | ✅ ต้องลงใหม่ — native Kotlin code |
+| `android/app/src/main/AndroidManifest.xml` | ✅ ต้องลงใหม่ — permissions / config |
+| `android/app/build.gradle` | ✅ ต้องลงใหม่ — dependencies / SDK version |
+| `android/app/src/main/res/**` | ✅ ต้องลงใหม่ — icons / layout XML |
+| `CLAUDE.md`, `README`, `.github/**` | ❌ ไม่ต้อง — ไม่กระทบ runtime |
+
+**กฎง่ายๆ:** แก้ไฟล์ใน `android/` → ต้องลงใหม่ / แก้ไฟล์ใน `src/` → ไม่ต้อง
+
 ---
 
 ## Android Mode (`?android=1`)
