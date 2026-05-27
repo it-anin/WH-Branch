@@ -433,10 +433,15 @@ android/
 ### Scanner Broadcast Integration
 | ยี่ห้อ | Action | Extra key |
 |---|---|---|
-| KTE | `com.kte.scan.result` | `scanResult` |
+| **KTE (เครื่องที่ใช้จริง)** | `com.kte.scan.result` | **`code`** |
+| KTE (บางรุ่น) | `com.kte.scan.result` | `scanResult` |
 | Zebra | `com.kte.scan.result` | `SCAN_BARCODE_1` |
 | Honeywell | — | `data` |
 | DataWedge | — | `com.symbol.datawedge.data_string` |
+
+**⚠ สำคัญ:** Extra key ของ KTE เครื่องที่ใช้งานจริงคือ `"code"` — ถ้าเปลี่ยนรุ่น scanner ให้ตรวจ key ก่อน แก้ใน MainActivity.kt → ต้องลง APK ใหม่
+
+**Android 13+ (API 33+):** ต้องใช้ `RECEIVER_EXPORTED` ใน `registerReceiver` — มิฉะนั้น broadcast จาก scanner app ภายนอกจะถูกบล็อก
 
 Android inject barcode → WebView ด้วย:
 ```kotlin
@@ -444,7 +449,11 @@ webView.evaluateJavascript(
     "window.dispatchEvent(new CustomEvent('wh-scan',{detail:'$safe'}))", null
 )
 ```
-React (App.jsx) รับด้วย `window.addEventListener('wh-scan', ...)` → inject เข้า focused input
+
+**React รับ `wh-scan` event 2 ระดับ:**
+- **PackScanC** — `useEffect` รับ `wh-scan` โดยตรง → `processBarcode()` (ไม่ผ่าน input injection)
+- **App.jsx** — fallback สำหรับ BranchReceive และหน้าอื่น → inject เข้า focused input via native setter
+- ถ้า `[data-android-barcode]` อยู่ใน DOM (PackScanC mount) → App.jsx handler skip ไม่ inject ซ้ำ
 
 ### Play Store In-App Updates
 ใช้ `com.google.android.play:app-update-ktx:2.1.0` — Flexible update (ดาวน์โหลดใน background)
@@ -494,10 +503,15 @@ React (App.jsx) รับด้วย `window.addEventListener('wh-scan', ...)` 
 - `setTab={() => {}}` — ปิด navigation ที่ไม่เกี่ยว
 
 **PackScanC Android layout:**
-- Scan area: 2 rows แทน 1 row (barcode+ปิดลัง / search)
+- Scan area: row เดียว — barcode input + 🔍 toggle + ปิดลัง
+- **Search toggle:** search input ซ่อนอยู่โดย default — กด 🔍 ถึงจะเปิด ป้องกัน focus โดยบังเอิญขณะสแกน
 - ปุ่มปิดลัง: `.btn.primary` ขนาดปกติ (ไม่ใช้ `.btn.lg`)
 - `barcodeRef` + `useEffect` (ไม่มี dependency) คืน focus หลังทุก render
+- Barcode input: `inputMode="none"` กัน Android soft keyboard ปรากฏ (ใน HID mode จะไม่ดัก Enter)
+- `data-android-barcode="true"` attribute บน barcode input — ใช้ระบุตำแหน่งจาก App.jsx
+- **`processBarcode(val)`** — logic กลางสำหรับทั้ง Broadcast (wh-scan) และ HID (onKeyDown Enter)
 - Card: padding 8px, font 13px, barcode แสดงเสมอ (10px สีแดง)
+- Pagination Android: แสดงแค่ `← หน้า X/Y →` (ไม่มีปุ่มตัวเลข กัน overflow)
 
 ---
 
