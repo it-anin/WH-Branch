@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Annotation from '../components/Annotation.jsx';
 import { generatePOS, matchBarcode } from '../data.js';
 
@@ -199,6 +199,12 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const [showHistory, setShowHistory] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const barcodeRef = useRef(null);
+
+  // Android: คืน focus กลับ barcode input หลัง render ทุกครั้ง (ป้องกัน scanner ยิงผิด field)
+  useEffect(() => {
+    if (isAndroid && barcodeRef.current) barcodeRef.current.focus();
+  });
 
   const boxLabel = activeBoxId || 'BX-????';
   const filtered = search.trim()
@@ -314,10 +320,10 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
           <>
             <div className="row" style={{ marginBottom: 6, gap: 8 }}>
               <input
+                ref={barcodeRef}
                 className="input"
                 placeholder="ยิงบาร์โค้ด"
                 style={{ flex: 1, fontSize: 16, padding: '10px 12px' }}
-                autoFocus
                 onKeyDown={handleBarcode}
               />
               <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -425,10 +431,15 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                   {done ? '✓' : ''}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="mono" style={{ fontSize: 10, color: 'var(--mute)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sku}</div>
+                  <div className="row" style={{ gap: 4 }}>
+                    <div className="mono" style={{ fontSize: 10, color: 'var(--mute)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sku}</div>
+                    {c.location && (
+                      <div className="mono" style={{ fontSize: 10, color: 'var(--ink)', background: 'var(--paper-dark)', borderRadius: 3, padding: '0 4px', flexShrink: 0 }}>{c.location}</div>
+                    )}
+                  </div>
                   <div style={{ fontFamily: 'Patrick Hand', fontSize: isAndroid ? 13 : 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-                  {c.location && (
-                    <div className="mono" style={{ fontSize: 10, color: 'var(--ink)', background: 'var(--paper-dark)', borderRadius: 3, padding: '0 4px', display: 'inline-block' }}>{c.location}</div>
+                  {c.barcode && (
+                    <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.barcode}</div>
                   )}
                 </div>
                 <div style={{ textAlign: 'right', fontFamily: 'Caveat', fontWeight: 700, fontSize: isAndroid ? 18 : 22, flexShrink: 0 }}>
