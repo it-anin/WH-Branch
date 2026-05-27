@@ -216,31 +216,44 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const pageItems = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  async function handleBarcode(e) {
-    if (e.key !== 'Enter') return;
-    if (isClosing) { e.target.value = ''; return; }
-    const val = e.target.value.trim();
-    if (!val) return;
-    e.target.value = '';
-
-    // validate ก่อน (sync ทั้งหมด ไม่รอ network)
-    const catMatch = catalog.find(it => matchBarcode(it, val));
+  // Logic กลาง — ใช้ทั้ง HID keyboard (handleBarcode) และ Broadcast wh-scan (useEffect)
+  async function processBarcode(val) {
+    if (!val?.trim() || isClosing) return;
+    const barcode = val.trim();
+    const catMatch = catalog.find(it => matchBarcode(it, barcode));
     if (!catMatch) { showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
-
     const match = items.find(it => it.sku === catMatch.sku && it.unit === catMatch.unit);
     if (!match || match.got >= match.need) { showToast('⚠ ครบแล้ว', 'error'); return; }
-
-    // optimistic: อัพ UI ทันที ก่อน Firestore
     const newItems = items.map(it => it.sku === match.sku ? { ...it, got: it.got + 1 } : it);
     setItems(newItems);
-
-    // สร้างลัง + sync Firestore ใน background (ไม่บล็อก UI)
     let boxId = activeBoxId;
     if (!activeBoxId) {
       boxId = await createNewBox();
       showToast('เปิดลังใหม่อัตโนมัติ', 'success');
     }
     if (onScanProgress && boxId) onScanProgress(boxId, newItems);
+  }
+
+  // ref pattern — ให้ wh-scan listener เสมอเห็น processBarcode ล่าสุด (ไม่ stale)
+  const processBarcodeRef = useRef(processBarcode);
+  processBarcodeRef.current = processBarcode;
+
+  // Android Broadcast mode: รับ wh-scan event ตรงๆ ไม่ผ่าน input injection
+  useEffect(() => {
+    if (!isAndroid) return;
+    function onWhScan(e) { processBarcodeRef.current?.(e.detail); }
+    window.addEventListener('wh-scan', onWhScan);
+    return () => window.removeEventListener('wh-scan', onWhScan);
+  }, []);
+
+  // HID keyboard mode: รับ Enter keydown จาก barcode input
+  function handleBarcode(e) {
+    if (e.key !== 'Enter') return;
+    if (isClosing) { e.target.value = ''; return; }
+    const val = e.target.value.trim();
+    if (!val) return;
+    e.target.value = '';
+    processBarcode(val);
   }
 
   async function doClose() {
@@ -329,6 +342,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
               <input
                 ref={barcodeRef}
                 data-android-barcode="true"
+                inputMode="none"
                 className="input"
                 placeholder="ยิงบาร์โค้ด"
                 style={{ flex: 1, fontSize: 16, padding: '10px 12px' }}

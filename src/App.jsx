@@ -84,27 +84,21 @@ export default function App() {
       const barcode = e.detail;
       if (!barcode) return;
 
-      // ลำดับความสำคัญ:
-      // 1. barcode input ที่ mark ไว้ (PackScanC) — ถ้าอยู่บนหน้า pack ให้ยิงตรงนี้เสมอ
-      // 2. activeElement ถ้าเป็น input ปกติ
-      // 3. input แรกที่มองเห็นได้ (fallback สำหรับ BranchReceive)
-      let input = document.querySelector('[data-android-barcode="true"]');
-      if (!input) {
-        input = document.activeElement;
-        if (!input || input.tagName !== 'INPUT' || input.type === 'file' || input.disabled) {
-          const all = Array.from(document.querySelectorAll('input[type="text"],input:not([type])'));
-          input = all.find(el => {
-            const r = el.getBoundingClientRect();
-            return r.width > 0 && r.height > 0 && !el.disabled && !el.readOnly;
-          });
-        }
+      // PackScanC รับ wh-scan ตรงๆ ผ่าน useEffect ของตัวเอง — ไม่ต้อง inject
+      if (document.querySelector('[data-android-barcode="true"]')) return;
+
+      // BranchReceive และหน้าอื่น: inject เข้า input ที่ focused หรือ input แรกที่มองเห็น
+      let input = document.activeElement;
+      if (!input || input.tagName !== 'INPUT' || input.type === 'file' || input.disabled) {
+        const all = Array.from(document.querySelectorAll('input[type="text"],input:not([type])'));
+        input = all.find(el => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && !el.disabled && !el.readOnly;
+        });
       }
       if (!input) return;
 
-      // focus ก่อน inject เสมอ
       input.focus();
-
-      // React synthetic event trick: ตั้งค่าผ่าน native setter แล้ว dispatch input + keydown
       const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       nativeSetter.call(input, barcode);
       input.dispatchEvent(new Event('input', { bubbles: true }));
