@@ -398,24 +398,32 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
 
         {/* pagination controls */}
         {totalPages > 1 && (
-          <div className="row" style={{ marginBottom: 12, gap: 8 }}>
-            <button className="btn sm ghost" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>← ก่อนหน้า</button>
-            {Array.from({ length: totalPages }, (_, i) => (
-              <button
-                key={i}
-                className={`btn sm ${page === i ? 'primary' : 'ghost'}`}
-                onClick={() => setPage(i)}
-              >
-                {i + 1}
-              </button>
-            ))}
-            <button className="btn sm ghost" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}>ถัดไป →</button>
-            {!isAndroid && (
+          isAndroid ? (
+            <div className="row" style={{ marginBottom: 8, gap: 6, justifyContent: 'center' }}>
+              <button className="btn sm ghost" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>←</button>
+              <span style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', minWidth: 60, textAlign: 'center' }}>
+                หน้า {page + 1}/{totalPages}
+              </span>
+              <button className="btn sm ghost" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}>→</button>
+            </div>
+          ) : (
+            <div className="row" style={{ marginBottom: 12, gap: 8 }}>
+              <button className="btn sm ghost" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>← ก่อนหน้า</button>
+              {Array.from({ length: totalPages }, (_, i) => (
+                <button
+                  key={i}
+                  className={`btn sm ${page === i ? 'primary' : 'ghost'}`}
+                  onClick={() => setPage(i)}
+                >
+                  {i + 1}
+                </button>
+              ))}
+              <button className="btn sm ghost" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}>ถัดไป →</button>
               <span className="mono" style={{ fontSize: 12, color: 'var(--mute)', marginLeft: 4 }}>
                 {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, items.length)} / {items.length} รายการ
               </span>
-            )}
-          </div>
+            </div>
+          )
         )}
 
         <div style={{ display: 'grid', gridTemplateColumns: isAndroid ? '1fr' : '1fr 1fr', gap: isAndroid ? 6 : 12 }}>
@@ -429,6 +437,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                 borderRadius: 10,
                 background: done ? '#e8f0d8' : partial ? '#fae5b0' : 'white',
                 alignItems: 'center',
+                minWidth: 0, overflow: 'hidden',
               }}>
                 <div style={{
                   width: isAndroid ? 24 : 32, height: isAndroid ? 24 : 32, borderRadius: '50%',
