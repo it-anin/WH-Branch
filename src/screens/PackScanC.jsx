@@ -3,6 +3,7 @@ import Annotation from '../components/Annotation.jsx';
 import { generatePOS, matchBarcode } from '../data.js';
 
 const PAGE_SIZE = 30;
+const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
 
 function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
   const [selectedId, setSelectedId] = useState(null);
@@ -274,7 +275,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const doneCount = items.filter(it => it.got >= it.need).length;
 
   return (
-    <div className="frame" style={{ padding: 0, position: 'relative', minHeight: 580 }}>
+    <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 580 }}>
       {showHistory && (
         <BoxHistoryModal
           boxes={boxes}
@@ -285,56 +286,102 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
       )}
       <div className="frame-header">
         <div className="row">
-          <button className="btn sm ghost" onClick={() => setTab('list')}>←</button>
-          <span className="title">Packing List · {boxLabel}</span>
-          {packer && (
+          {!isAndroid && <button className="btn sm ghost" onClick={() => setTab('list')}>←</button>}
+          <span className="title" style={isAndroid ? { fontSize: 16 } : {}}>
+            {isAndroid ? boxLabel : `Packing List · ${boxLabel}`}
+          </span>
+          {packer && !isAndroid && (
             <span className="mono" style={{ fontSize: 12, color: 'var(--mute)', marginLeft: 8 }}>
               {packer.code} · {packer.name}
             </span>
           )}
           <div className="spacer" />
-          <button className="btn primary" onClick={() => setShowHistory(true)}>📦 ลังที่ปิดแล้ว</button>
-          <button className="btn primary" onClick={async () => { await createNewBox(); showToast('เปิดลังใหม่แล้ว ✓', 'success'); }}>+ เปิดลังใหม่</button>
+          <button className={`btn primary ${isAndroid ? 'sm' : ''}`} onClick={() => setShowHistory(true)}>
+            {isAndroid ? '📦 ลัง' : '📦 ลังที่ปิดแล้ว'}
+          </button>
+          <button className={`btn primary ${isAndroid ? 'sm' : ''}`} onClick={async () => { await createNewBox(); showToast('เปิดลังใหม่แล้ว ✓', 'success'); }}>
+            + {isAndroid ? 'ใหม่' : 'เปิดลังใหม่'}
+          </button>
         </div>
         <div className="row">
-          <span className="mono" style={{ fontSize: 13 }}>เช็ค {doneCount} / {items.length} รายการ</span>
+          <span className="mono" style={{ fontSize: isAndroid ? 12 : 13 }}>เช็ค {doneCount} / {items.length} รายการ</span>
         </div>
       </div>
 
-      <div style={{ padding: 18 }}>
-        <div className="row" style={{ marginBottom: 12, gap: 12 }}>
-          <input
-            className="input big"
-            placeholder="ยิงบาร์โค้ด → ติ๊กอัตโนมัติ"
-            style={{ flex: 2 }}
-            autoFocus
-            onKeyDown={handleBarcode}
-          />
-          <input
-            className="input"
-            placeholder="🔍 ค้นหาสินค้า / SKU"
-            style={{ flex: 1 }}
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(0); }}
-          />
-          <div style={{ position: 'relative' }}>
-            {confirmClose && (
-              <div style={{
-                position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
-                background: 'white', border: '1.5px solid var(--line)', borderRadius: 10,
-                padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-                whiteSpace: 'nowrap', zIndex: 10,
-              }}>
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginBottom: 10 }}>⚠ ยังขาดสินค้า ปิดลังเลยไหม?</div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn primary sm" onClick={doClose}>ปิดลัง</button>
-                  <button className="btn sm ghost" onClick={() => setConfirmClose(false)}>ยกเลิก</button>
-                </div>
+      <div style={{ padding: isAndroid ? 10 : 18 }}>
+        {/* ── Android: 2 rows — barcode+ปิดลัง / search ── */}
+        {isAndroid ? (
+          <>
+            <div className="row" style={{ marginBottom: 6, gap: 8 }}>
+              <input
+                className="input"
+                placeholder="ยิงบาร์โค้ด"
+                style={{ flex: 1, fontSize: 16, padding: '10px 12px' }}
+                autoFocus
+                onKeyDown={handleBarcode}
+              />
+              <div style={{ position: 'relative', flexShrink: 0 }}>
+                {confirmClose && (
+                  <div style={{
+                    position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+                    background: 'white', border: '1.5px solid var(--line)', borderRadius: 10,
+                    padding: '10px 12px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                    whiteSpace: 'nowrap', zIndex: 10,
+                  }}>
+                    <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, marginBottom: 8 }}>⚠ ยังขาดสินค้า ปิดลังเลยไหม?</div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn primary sm" onClick={doClose}>ปิดลัง</button>
+                      <button className="btn sm ghost" onClick={() => setConfirmClose(false)}>ยกเลิก</button>
+                    </div>
+                  </div>
+                )}
+                <button className="btn primary" style={{ fontSize: 15, padding: '10px 16px', whiteSpace: 'nowrap' }} onClick={handleCloseBox}>ปิดลัง</button>
               </div>
-            )}
-            <button className="btn primary lg" onClick={handleCloseBox}>ปิดลัง</button>
+            </div>
+            <input
+              className="input"
+              placeholder="🔍 ค้นหาสินค้า / SKU"
+              style={{ width: '100%', marginBottom: 10, fontSize: 14, padding: '7px 12px' }}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(0); }}
+            />
+          </>
+        ) : (
+          /* ── Desktop: 1 row ── */
+          <div className="row" style={{ marginBottom: 12, gap: 12 }}>
+            <input
+              className="input big"
+              placeholder="ยิงบาร์โค้ด → ติ๊กอัตโนมัติ"
+              style={{ flex: 2 }}
+              autoFocus
+              onKeyDown={handleBarcode}
+            />
+            <input
+              className="input"
+              placeholder="🔍 ค้นหาสินค้า / SKU"
+              style={{ flex: 1 }}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(0); }}
+            />
+            <div style={{ position: 'relative' }}>
+              {confirmClose && (
+                <div style={{
+                  position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+                  background: 'white', border: '1.5px solid var(--line)', borderRadius: 10,
+                  padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                  whiteSpace: 'nowrap', zIndex: 10,
+                }}>
+                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginBottom: 10 }}>⚠ ยังขาดสินค้า ปิดลังเลยไหม?</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn primary sm" onClick={doClose}>ปิดลัง</button>
+                    <button className="btn sm ghost" onClick={() => setConfirmClose(false)}>ยกเลิก</button>
+                  </div>
+                </div>
+              )}
+              <button className="btn primary lg" onClick={handleCloseBox}>ปิดลัง</button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* pagination controls */}
         {totalPages > 1 && (
@@ -356,43 +403,38 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isAndroid ? 6 : 12 }}>
           {pageItems.map((c) => {
             const done = c.got >= c.need;
             const partial = c.got > 0 && c.got < c.need;
             return (
               <div key={c.sku} style={{
-                display: 'flex', gap: 12, padding: 12,
+                display: 'flex', gap: isAndroid ? 8 : 12, padding: isAndroid ? 8 : 12,
                 border: `2px solid ${done ? 'var(--green)' : partial ? 'var(--accent)' : 'var(--line)'}`,
                 borderRadius: 10,
                 background: done ? '#e8f0d8' : partial ? '#fae5b0' : 'white',
                 alignItems: 'center',
               }}>
                 <div style={{
-                  width: 32, height: 32, borderRadius: '50%',
-                  border: '2px solid var(--line)',
+                  width: isAndroid ? 24 : 32, height: isAndroid ? 24 : 32, borderRadius: '50%',
+                  border: '2px solid var(--line)', flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: done ? 'var(--green)' : 'white',
-                  color: 'white', fontSize: 20, fontWeight: 700,
+                  color: 'white', fontSize: isAndroid ? 14 : 20, fontWeight: 700,
                 }}>
                   {done ? '✓' : ''}
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div className="row" style={{ gap: 6 }}>
-                    <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{c.sku}</div>
-                    {c.location && (
-                      <div className="mono" style={{ fontSize: 11, color: 'var(--ink)', background: 'var(--paper-dark)', borderRadius: 4, padding: '0 5px', border: '1px solid var(--line)' }}>{c.location}</div>
-                    )}
-                  </div>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 16 }}>{c.name}</div>
-                  {c.barcode && (
-                    <div className="mono" style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 700, marginTop: 2 }}>{c.barcode}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--mute)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sku}</div>
+                  <div style={{ fontFamily: 'Patrick Hand', fontSize: isAndroid ? 13 : 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                  {c.location && (
+                    <div className="mono" style={{ fontSize: 10, color: 'var(--ink)', background: 'var(--paper-dark)', borderRadius: 3, padding: '0 4px', display: 'inline-block' }}>{c.location}</div>
                   )}
                 </div>
-                <div style={{ textAlign: 'right', fontFamily: 'Caveat', fontWeight: 700, fontSize: 22 }}>
+                <div style={{ textAlign: 'right', fontFamily: 'Caveat', fontWeight: 700, fontSize: isAndroid ? 18 : 22, flexShrink: 0 }}>
                   <span style={{ color: done ? 'var(--green)' : partial ? 'var(--accent)' : 'var(--mute)' }}>{c.got}</span>
-                  <span style={{ fontSize: 16, color: 'var(--mute)' }}> / {c.need}</span>
-                  <div style={{ fontSize: 12, fontFamily: 'Patrick Hand', color: 'var(--mute)' }}>{c.unit}</div>
+                  <span style={{ fontSize: isAndroid ? 13 : 16, color: 'var(--mute)' }}> / {c.need}</span>
+                  <div style={{ fontSize: 11, fontFamily: 'Patrick Hand', color: 'var(--mute)' }}>{c.unit}</div>
                 </div>
               </div>
             );
