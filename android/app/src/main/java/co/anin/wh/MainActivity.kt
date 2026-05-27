@@ -105,7 +105,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(scanReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            // RECEIVER_EXPORTED อนุญาตให้รับ broadcast จาก scanner app ภายนอก (KTE, Zebra ฯลฯ)
+            registerReceiver(scanReceiver, filter, Context.RECEIVER_EXPORTED)
         } else {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(scanReceiver, filter)

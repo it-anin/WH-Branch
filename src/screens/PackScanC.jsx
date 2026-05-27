@@ -328,6 +328,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
             <div className="row" style={{ marginBottom: 6, gap: 8 }}>
               <input
                 ref={barcodeRef}
+                data-android-barcode="true"
                 className="input"
                 placeholder="ยิงบาร์โค้ด"
                 style={{ flex: 1, fontSize: 16, padding: '10px 12px' }}
