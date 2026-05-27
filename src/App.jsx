@@ -8,6 +8,7 @@ import BoxClosedLabel from './screens/BoxClosedLabel.jsx';
 import LookupByBoxBarcode from './screens/LookupByBoxBarcode.jsx';
 import BranchReceive from './screens/BranchReceive.jsx';
 import PackerDashboard from './screens/PackerDashboard.jsx';
+import AndroidApp from './screens/AndroidApp.jsx';
 import TweaksPanel from './components/TweaksPanel.jsx';
 import Toast from './components/Toast.jsx';
 import ImportCatalog from './components/ImportCatalog.jsx';
@@ -32,6 +33,8 @@ const DEFAULT_TWEAKS = {
 
 const ACCENTS = { orange: '#e8692b', blue: '#2b6ce8', green: '#5c8a3a', pink: '#d94a8a' };
 const ACCENT_SOFT = { orange: '#f5c9a8', blue: '#b8cef5', green: '#c4d8a8', pink: '#f5c2db' };
+
+const isAndroidMode = new URLSearchParams(window.location.search).get('android') === '1';
 
 export default function App() {
   const [tab, setTab] = useState(() => localStorage.getItem('wh_tab') || 'flow');
@@ -423,6 +426,22 @@ export default function App() {
   }
 
   const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap };
+
+  if (isAndroidMode) {
+    return (
+      <>
+        <AndroidApp
+          screenProps={screenProps}
+          packer={packer}
+          setPacker={setPacker}
+          PACKERS={PACKERS}
+          catalogByPacker={catalogByPacker}
+          onScanProgress={handleScanProgress}
+        />
+        <Toast toasts={toasts} />
+      </>
+    );
+  }
 
   return (
     <>
