@@ -71,7 +71,7 @@ export default function App() {
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', ACCENTS[merged.accent]);
     document.documentElement.style.setProperty('--accent-soft', ACCENT_SOFT[merged.accent]);
-    document.documentElement.style.setProperty('--note-display', merged.annotations === 'on' ? 'block' : 'none');
+    document.documentElement.style.setProperty('--note-display', isAndroidMode || merged.annotations !== 'on' ? 'none' : 'block');
   }, [merged.accent, merged.annotations]);
 
   useEffect(() => {
