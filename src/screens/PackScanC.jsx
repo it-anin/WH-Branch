@@ -438,6 +438,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                     )}
                   </div>
                   <div style={{ fontFamily: 'Patrick Hand', fontSize: isAndroid ? 13 : 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                  {/* ⚠ barcode ต้องแสดงเสมอทั้ง desktop และ Android — ห้ามลบ พนักงานใช้ยืนยันก่อนสแกน */}
                   {c.barcode && (
                     <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.barcode}</div>
                   )}
