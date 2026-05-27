@@ -461,6 +461,10 @@ React (App.jsx) รับด้วย `window.addEventListener('wh-scan', ...)` 
 
 ## Android Mode (`?android=1`)
 
+**Target device:** 800×480px physical resolution, portrait lock → CSS viewport ≈ **480px wide × 800px tall** (ขึ้นกับ pixel density ของเครื่อง)
+`@media (max-width: 640px)` ใน styles.css ครอบคลุม 480px เสมอ
+
+
 **Detection:** `const isAndroidMode = new URLSearchParams(window.location.search).get('android') === '1';`
 - ใช้ใน `App.jsx` (module scope) และ `PackScanC.jsx` (module scope)
 - `isAndroid` ใน PackScanC, `isAndroidMode` ใน App.jsx
