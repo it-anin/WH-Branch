@@ -61,7 +61,7 @@ export default function AndroidApp({
 
             {/* pack content */}
             {packer ? (
-              <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+              <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
                 <PackScanC
                   key={`${packer.code}-${Object.keys(catalogByPacker).length}`}
                   {...screenProps}

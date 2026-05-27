@@ -281,7 +281,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const doneCount = items.filter(it => it.got >= it.need).length;
 
   return (
-    <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 580 }}>
+    <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 580, ...(isAndroid ? { boxShadow: 'none', border: 'none', borderRadius: 0 } : {}) }}>
       {showHistory && (
         <BoxHistoryModal
           boxes={boxes}
