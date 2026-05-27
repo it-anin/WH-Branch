@@ -216,17 +216,23 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     if (!val) return;
     e.target.value = '';
 
-    let boxId = activeBoxId;
-    if (!activeBoxId) { boxId = await createNewBox(); showToast('เปิดลังใหม่อัตโนมัติ', 'success'); }
-
+    // validate ก่อน (sync ทั้งหมด ไม่รอ network)
     const catMatch = catalog.find(it => matchBarcode(it, val));
     if (!catMatch) { showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
 
     const match = items.find(it => it.sku === catMatch.sku && it.unit === catMatch.unit);
     if (!match || match.got >= match.need) { showToast('⚠ ครบแล้ว', 'error'); return; }
 
+    // optimistic: อัพ UI ทันที ก่อน Firestore
     const newItems = items.map(it => it.sku === match.sku ? { ...it, got: it.got + 1 } : it);
     setItems(newItems);
+
+    // สร้างลัง + sync Firestore ใน background (ไม่บล็อก UI)
+    let boxId = activeBoxId;
+    if (!activeBoxId) {
+      boxId = await createNewBox();
+      showToast('เปิดลังใหม่อัตโนมัติ', 'success');
+    }
     if (onScanProgress && boxId) onScanProgress(boxId, newItems);
   }
 
