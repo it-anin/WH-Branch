@@ -196,6 +196,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   );
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
+  const [showSearch, setShowSearch] = useState(false); // Android: toggle ค้นหา
   const [showHistory, setShowHistory] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -348,6 +349,15 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                 style={{ flex: 1, fontSize: 16, padding: '10px 12px' }}
                 onKeyDown={handleBarcode}
               />
+              {/* ปุ่ม toggle ค้นหา — แยกออกจากช่องสแกน ป้องกัน focus ผิด */}
+              <button
+                className={`btn sm ${showSearch ? 'primary' : 'ghost'}`}
+                style={{ flexShrink: 0, fontSize: 18, padding: '10px 12px' }}
+                onClick={() => {
+                  setShowSearch(v => !v);
+                  if (showSearch) { setSearch(''); setPage(0); }
+                }}
+              >🔍</button>
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 {confirmClose && (
                   <div style={{
@@ -366,13 +376,17 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                 <button className="btn primary" style={{ fontSize: 15, padding: '10px 16px', whiteSpace: 'nowrap' }} onClick={handleCloseBox}>ปิดลัง</button>
               </div>
             </div>
-            <input
-              className="input"
-              placeholder="🔍 ค้นหาสินค้า / SKU"
-              style={{ width: '100%', marginBottom: 10, fontSize: 14, padding: '7px 12px' }}
-              value={search}
-              onChange={e => { setSearch(e.target.value); setPage(0); }}
-            />
+            {/* search input แสดงเฉพาะเมื่อกด 🔍 — ป้องกัน focus โดยบังเอิญขณะสแกน */}
+            {showSearch && (
+              <input
+                className="input"
+                placeholder="ค้นหาสินค้า / SKU"
+                style={{ width: '100%', marginBottom: 8, fontSize: 14, padding: '7px 12px' }}
+                value={search}
+                autoFocus
+                onChange={e => { setSearch(e.target.value); setPage(0); }}
+              />
+            )}
           </>
         ) : (
           /* ── Desktop: 1 row ── */
