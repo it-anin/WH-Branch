@@ -302,16 +302,23 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
             </span>
           )}
           <div className="spacer" />
-          <button className={`btn primary ${isAndroid ? 'sm' : ''}`} onClick={() => setShowHistory(true)}>
-            {isAndroid ? '📦 ลัง' : '📦 ลังที่ปิดแล้ว'}
-          </button>
+          {/* Android: เช็ค X/Y ชิดขวา แทนปุ่มลังที่ปิด */}
+          {isAndroid ? (
+            <span style={{ fontSize: 11, color: 'var(--mute)', fontFamily: 'Patrick Hand' }}>
+              เช็ค {doneCount}/{items.length}
+            </span>
+          ) : (
+            <button className="btn primary" onClick={() => setShowHistory(true)}>📦 ลังที่ปิดแล้ว</button>
+          )}
           <button className={`btn primary ${isAndroid ? 'sm' : ''}`} onClick={async () => { await createNewBox(); showToast('เปิดลังใหม่แล้ว ✓', 'success'); }}>
             + {isAndroid ? 'ใหม่' : 'เปิดลังใหม่'}
           </button>
         </div>
-        <div className="row">
-          <span className="mono" style={{ fontSize: isAndroid ? 12 : 13 }}>เช็ค {doneCount} / {items.length} รายการ</span>
-        </div>
+        {!isAndroid && (
+          <div className="row">
+            <span className="mono" style={{ fontSize: 13 }}>เช็ค {doneCount} / {items.length} รายการ</span>
+          </div>
+        )}
       </div>
 
       <div style={{ padding: isAndroid ? 10 : 18 }}>
@@ -403,13 +410,15 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
               </button>
             ))}
             <button className="btn sm ghost" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}>ถัดไป →</button>
-            <span className="mono" style={{ fontSize: 12, color: 'var(--mute)', marginLeft: 4 }}>
-              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, items.length)} / {items.length} รายการ
-            </span>
+            {!isAndroid && (
+              <span className="mono" style={{ fontSize: 12, color: 'var(--mute)', marginLeft: 4 }}>
+                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, items.length)} / {items.length} รายการ
+              </span>
+            )}
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isAndroid ? 6 : 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isAndroid ? '1fr' : '1fr 1fr', gap: isAndroid ? 6 : 12 }}>
           {pageItems.map((c) => {
             const done = c.got >= c.need;
             const partial = c.got > 0 && c.got < c.need;
