@@ -22,7 +22,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         // เปลี่ยน URL เป็น domain จริงถ้ามี custom domain
-        const val WEBAPP_URL = "https://warehousetobranch.web.app"
+        const val WEBAPP_URL = "https://wh-branch.vercel.app"
 
         // Scanner broadcast action — KTE: com.kte.scan.result
         // เพิ่ม action อื่นได้ใน onResume() ถ้าใช้ scanner ยี่ห้ออื่น
