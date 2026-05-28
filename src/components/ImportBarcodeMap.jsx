@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 
 function splitCSVLine(line) {
@@ -57,6 +57,8 @@ function parseXLSX(buffer) {
 
 export default function ImportBarcodeMap({ matchCount, onImport }) {
   const fileRef = useRef(null);
+  const [label, setLabel] = useState(null);
+  const [uploadedAt, setUploadedAt] = useState(null);
 
   function handleFile(e) {
     const file = e.target.files[0];
@@ -69,6 +71,10 @@ export default function ImportBarcodeMap({ matchCount, onImport }) {
         alert('ไม่พบข้อมูล Barcode กรุณาตรวจสอบรูปแบบไฟล์');
         return;
       }
+      const name = file.name.replace(/\.[^.]+$/, '');
+      setLabel(name);
+      const d = new Date(file.lastModified);
+      setUploadedAt(`${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`);
       onImport(map);
     };
     if (isXLSX) reader.readAsArrayBuffer(file);
@@ -78,15 +84,15 @@ export default function ImportBarcodeMap({ matchCount, onImport }) {
 
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-      {matchCount > 0 && (
+      <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
+      <button className={`btn sm${label ? ' primary' : ''}`} onClick={() => fileRef.current?.click()}>
+        {label ? `✅ อัปโหลดไฟล์ ${label} แล้ว` : '⇑ อัปโหลดไฟล์ Barcode'}
+      </button>
+      {uploadedAt && (
         <span className="chip ok" style={{ fontFamily: 'Patrick Hand', fontSize: 13 }}>
-          🔖 Barcode map: {matchCount} รายการ
+          ไฟล์วันที่ {uploadedAt}
         </span>
       )}
-      <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className="btn sm" onClick={() => fileRef.current?.click()}>
-        ⇑ นำเข้าไฟล์ Barcode (.csv / .xlsx)
-      </button>
     </div>
   );
 }

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import Annotation from '../components/Annotation.jsx';
 
 const statusLabel = {
   open:     { label: 'กำลังแพ็ค',       bg: '#ffd080', border: '#c88a10' },
@@ -171,7 +170,6 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
         )}
       </div>
 
-      <Annotation text="คลิกลัง → ไปหน้าสแกน" style={{ top: 180, right: 20 }} arrow="br" />
     </div>
   );
 }

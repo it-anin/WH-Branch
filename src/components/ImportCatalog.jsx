@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 
 const TEMPLATE_CSV = [
@@ -62,8 +62,15 @@ function parseXLSX(buffer) {
   return rowsToItems(rows);
 }
 
+function extractBranch(filename) {
+  const m = filename.match(/picklist[_-]([A-Za-z0-9]+)/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
 export default function ImportCatalog({ catalog, onImport }) {
   const fileRef = useRef(null);
+  const [branch, setBranch] = useState(null);
+  const [fileDate, setFileDate] = useState(null);
 
   function handleFile(e) {
     const file = e.target.files[0];
@@ -80,6 +87,9 @@ export default function ImportCatalog({ catalog, onImport }) {
         alert('ไม่พบรายการสินค้าในไฟล์ กรุณาตรวจสอบรูปแบบ');
         return;
       }
+      setBranch(extractBranch(file.name));
+      const d = new Date(file.lastModified);
+      setFileDate(`${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`);
       onImport(items);
     };
 
@@ -100,15 +110,15 @@ export default function ImportCatalog({ catalog, onImport }) {
 
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-      {catalog.length > 0 && (
+      <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
+      <button className={`btn sm${branch ? ' primary' : ''}`} onClick={() => fileRef.current?.click()}>
+        {branch ? `✅ อัปโหลดไฟล์ Picklist_${branch} แล้ว` : '⇑ อัปโหลดไฟล์ Picklist'}
+      </button>
+      {branch && catalog.length > 0 && (
         <span className="chip ok" style={{ fontFamily: 'Patrick Hand', fontSize: 13 }}>
-          📋 รายการเบิก: {catalog.length} รายการ
+          ✅ รายการเบิก: {catalog.length} รายการ · ไฟล์วันที่ {fileDate}
         </span>
       )}
-      <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className="btn sm primary" onClick={() => fileRef.current?.click()}>
-        ⇑ นำเข้ารายการเบิกสินค้า (.csv / .xlsx)
-      </button>
     </div>
   );
 }

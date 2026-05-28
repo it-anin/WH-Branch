@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
-import Annotation from '../components/Annotation.jsx';
 
 export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, triggerDownload, costMap = {} }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
@@ -335,7 +334,6 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           </div>
         )}
       </div>
-      <Annotation text="ค้นหาสินค้าข้ามทุกลัง → กด ดูลัง" style={{ top: 60, right: 280, maxWidth: 180 }} arrow="tr" />
     </div>
   );
 }

@@ -103,8 +103,8 @@ src/
 │   ├── ImportBarcodeMap.jsx     # Upload barcode map (.csv/.xlsx)
 │   ├── ImportCostMap.jsx        # Upload ราคาทุน (.csv/.xlsx) — ColA=SKU, ColD=unit, ColJ=cost
 │   ├── Toast.jsx                # Fixed-bottom toast overlay
-│   ├── TweaksPanel.jsx          # Dev panel (density/accent) — variant selector ไม่มีผลแล้ว
-│   ├── Annotation.jsx           # Sticky note annotations (UI flavor)
+│   ├── TweaksPanel.jsx          # (unused — ไม่ได้ import แล้ว)
+│   ├── Annotation.jsx           # (unused — ไม่ได้ import แล้ว)
 │   └── SketchyBarcode.jsx       # SVG barcode renderer
 │
 └── screens/
@@ -269,6 +269,20 @@ input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bu
 **Import order:** catalog ก่อน → barcode map → cost map (แต่ละไฟล์ import แยกอิสระ)
 **Re-import:** ต้อง import ทั้งสองไฟล์แรกใหม่ถ้าแก้ไข applyBarcodeMap logic
 
+### Import Button UX (หน้า Tab: รายการเบิกสินค้า)
+ปุ่ม 3 ปุ่มเรียงเป็น column แยกแถว:
+
+| ปุ่ม | ก่อนอัปโหลด | หลังอัปโหลด |
+|---|---|---|
+| ImportCatalog | `⇑ อัปโหลดไฟล์ Picklist` (ไม่มีสี) | `✅ อัปโหลดไฟล์ Picklist_XXX แล้ว` (สีส้ม) + badge `✅ รายการเบิก: N รายการ · ไฟล์วันที่ D/M/YYYY` |
+| ImportBarcodeMap | `⇑ อัปโหลดไฟล์ Barcode` (ไม่มีสี) | `✅ อัปโหลดไฟล์ {filename} แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
+| ImportCostMap | `⇑ อัปโหลดไฟล์ Price` (ไม่มีสี) | `✅ อัปโหลดไฟล์ Price แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
+
+- **XXX** ใน Picklist — parse จาก filename pattern `Picklist_XXX` (regex `picklist[_-]([A-Za-z0-9]+)`) เช่น `Picklist_SRC` → `SRC`
+- **{filename}** ใน Barcode — ชื่อไฟล์ไม่มีนามสกุล เช่น `R05.106`
+- วันที่ใน badge ทุกปุ่มมาจาก **`file.lastModified`** (Date Modified จริงของไฟล์ ไม่ใช่วันที่อัปโหลด)
+- badge แสดงเฉพาะหลังอัปโหลดใน session นั้น — reload หน้าแล้ว badge หาย (state ไม่ได้ persist)
+
 ---
 
 ## Box Status Flow
@@ -292,7 +306,6 @@ open → packing → closed → exported → received
 | key | ข้อมูล |
 |---|---|
 | `wh_tab` | tab ที่เปิดอยู่ |
-| `wh_tweaks` | TweaksPanel settings |
 | `wh_history` | ประวัติลังที่ clear แล้ว (30 วัน) |
 
 ---
@@ -492,8 +505,8 @@ webView.evaluateJavascript(
 - `isAndroid` ใน PackScanC, `isAndroidMode` ใน App.jsx
 
 **App.jsx:** ถ้า `isAndroidMode` → render `<AndroidApp>` แทน desktop layout ทั้งหมด
-- ไม่มี topbar, tabs, canvas, TweaksPanel
-- Annotations ซ่อนด้วย `--note-display: none`
+- ไม่มี topbar, tabs, canvas
+- `--note-display` ตั้งเป็น `none` ตายตัว (Annotation component ไม่ได้ใช้แล้ว)
 
 **AndroidApp.jsx (`src/screens/AndroidApp.jsx`):**
 - Full-screen fixed layout (`position: fixed; inset: 0`)
@@ -525,7 +538,8 @@ webView.evaluateJavascript(
 ---
 
 ## Notes
-- ไฟล์ที่ไม่ได้ใช้แล้ว: `PackScanA.jsx`, `PackScanB.jsx`, `ExportPOS.jsx`, `LookupByBoxBarcode.jsx`, `FlowDiagram.jsx` — ยังอยู่ในโปรเจกต์แต่ไม่ได้ import ใน routing
+- ไฟล์ที่ไม่ได้ใช้แล้ว: `PackScanA.jsx`, `PackScanB.jsx`, `ExportPOS.jsx`, `LookupByBoxBarcode.jsx`, `FlowDiagram.jsx`, `TweaksPanel.jsx`, `Annotation.jsx` — ยังอยู่ในโปรเจกต์แต่ไม่ได้ import
+- Accent color ตรึงเป็น orange (`#e8692b` / `#f5c9a8`) ใน App.jsx โดยตรง — ไม่มี TweaksPanel หรือ DEFAULT_TWEAKS แล้ว
 - `data.js` ยังมี mock data ที่ไม่ได้ใช้ — ควรลบออก
 - ไม่มี TypeScript, ไม่มี test suite
 - PDA support: **แนะนำ Broadcast Mode** (`com.kte.scan.result`) — ไม่มีปัญหา barcode ต่อกัน ไม่ต้องพึ่ง HID keyboard

@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import Annotation from '../components/Annotation.jsx';
 import { generatePOS, matchBarcode } from '../data.js';
 
 const PAGE_SIZE = 30;
@@ -501,7 +500,6 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
         </div>
 
       </div>
-      <Annotation text="เขียวแปลว่าครบ · เหลือง = ยังขาด" style={{ top: 140, right: 40 }} arrow="br" />
     </div>
   );
 }

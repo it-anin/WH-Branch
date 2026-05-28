@@ -9,11 +9,11 @@ import LookupByBoxBarcode from './screens/LookupByBoxBarcode.jsx';
 import BranchReceive from './screens/BranchReceive.jsx';
 import PackerDashboard from './screens/PackerDashboard.jsx';
 import AndroidApp from './screens/AndroidApp.jsx';
-import TweaksPanel from './components/TweaksPanel.jsx';
 import Toast from './components/Toast.jsx';
 import ImportCatalog from './components/ImportCatalog.jsx';
 import ImportBarcodeMap from './components/ImportBarcodeMap.jsx';
 import ImportCostMap from './components/ImportCostMap.jsx';
+import ZoneAssign from './components/ZoneAssign.jsx';
 
 const TABS = [
   { k: 'flow',   label: 'Dashboard' },
@@ -23,27 +23,13 @@ const TABS = [
   { k: 'receive', label: '📥 รับสินค้า (สาขา)' },
 ];
 
-const DEFAULT_TWEAKS = {
-  density: 'comfy',
-  variant: 'A',
-  accent: 'orange',
-  barcode: '1D',
-  annotations: 'on',
-};
-
-const ACCENTS = { orange: '#e8692b', blue: '#2b6ce8', green: '#5c8a3a', pink: '#d94a8a' };
-const ACCENT_SOFT = { orange: '#f5c9a8', blue: '#b8cef5', green: '#c4d8a8', pink: '#f5c2db' };
+const ACCENT = '#e8692b';
+const ACCENT_SOFT = '#f5c9a8';
 
 const isAndroidMode = new URLSearchParams(window.location.search).get('android') === '1';
 
 export default function App() {
   const [tab, setTab] = useState(() => localStorage.getItem('wh_tab') || 'flow');
-  const [tweaks, setTweaks] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('wh_tweaks')) || {}; }
-    catch { return {}; }
-  });
-  const [open, setOpen] = useState(false);
-
   const [boxes, _setBoxes] = useState([]);
   const [activeBoxId, setActiveBoxId] = useState(null);
   const [packer, setPacker] = useState(null);
@@ -62,17 +48,14 @@ export default function App() {
   const itemsByBoxRef = useRef({});
   const receiveBoxIdsRef = useRef([]);
 
-  const merged = { ...DEFAULT_TWEAKS, ...tweaks };
-
   useEffect(() => { localStorage.setItem('wh_tab', tab); }, [tab]);
-  useEffect(() => { localStorage.setItem('wh_tweaks', JSON.stringify(merged)); }, [tweaks]);
   useEffect(() => { localStorage.setItem('wh_history', JSON.stringify(history)); }, [history]);
 
   useEffect(() => {
-    document.documentElement.style.setProperty('--accent', ACCENTS[merged.accent]);
-    document.documentElement.style.setProperty('--accent-soft', ACCENT_SOFT[merged.accent]);
-    document.documentElement.style.setProperty('--note-display', isAndroidMode || merged.annotations !== 'on' ? 'none' : 'block');
-  }, [merged.accent, merged.annotations]);
+    document.documentElement.style.setProperty('--accent', ACCENT);
+    document.documentElement.style.setProperty('--accent-soft', ACCENT_SOFT);
+    document.documentElement.style.setProperty('--note-display', 'none');
+  }, []);
 
   useEffect(() => {
     return () => toastTimers.current.forEach(clearTimeout);
@@ -163,7 +146,10 @@ export default function App() {
         setCostMap(Object.fromEntries(entries.map(e => [e.key, e.cost])));
       }
     }, onErr('costMap'));
-    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); };
+    const unsubZone = onSnapshot(doc(db, 'config', 'zoneAssignments'), snap => {
+      if (snap.exists()) setZoneAssignments(snap.data().assignments || {});
+    }, onErr('zoneAssignments'));
+    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); unsubZone(); };
   }, []);
 
   function setBoxes(updater) {
@@ -342,6 +328,8 @@ export default function App() {
   const [catalogByPacker, setCatalogByPacker] = useState({});
   const [barcodeMap, setBarcodeMap] = useState({});
   const [costMap, setCostMap] = useState({});
+  const [zoneAssignments, setZoneAssignments] = useState({});
+  const [showZoneAssign, setShowZoneAssign] = useState(false);
 
   // debug helper — พิมพ์ใน console: __wh.sku('708422') | __wh.info()
   useEffect(() => {
@@ -428,6 +416,24 @@ export default function App() {
     setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
   }
 
+  function handleZoneAssign(assignments) {
+    setZoneAssignments(assignments);
+    setDoc(doc(db, 'config', 'zoneAssignments'), { assignments });
+    const result = {};
+    PACKERS.forEach(p => {
+      const zones = assignments[p.code] || [];
+      result[p.code] = zones.length > 0
+        ? catalog.filter(item => {
+            const m = (item.location || '').match(/^([A-Za-z]+)/);
+            return zones.includes(m ? m[1].toUpperCase() : null);
+          })
+        : [];
+    });
+    setCatalogByPacker(result);
+    setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
+    showToast('บันทึกโซนแล้ว ✓', 'success');
+  }
+
   const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap };
 
   if (isAndroidMode) {
@@ -484,7 +490,7 @@ export default function App() {
               <span className="num">01</span> Box List
               <span className="desc">— ภาพรวมลังทั้งหมดวันนี้</span>
             </div>
-            <div className="row" style={{ marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <ImportCatalog catalog={catalog} onImport={(items) => {
                 const updated = Object.keys(barcodeMap).length > 0 ? applyBarcodeMap(items, barcodeMap) : items;
                 setCatalog(updated);
@@ -501,6 +507,11 @@ export default function App() {
                 matchCount={Object.keys(costMap).length}
                 onImport={handleCostMapImport}
               />
+              <div style={{ marginTop: 4 }}>
+                <button className="btn sm" onClick={() => setShowZoneAssign(true)}>
+                  📍 กำหนดโซน
+                </button>
+              </div>
             </div>
             <BoxList {...screenProps} />
           </>
@@ -563,7 +574,7 @@ export default function App() {
             </div>
 
             {packer ? (
-              <PackScanC key={`${packer.code}-${Object.keys(catalogByPacker).length}`} {...screenProps} catalog={catalogByPacker[packer.code] || catalog} onScanProgress={handleScanProgress} />
+              <PackScanC key={`${packer.code}-${(catalogByPacker[packer.code] || catalog).length}`} {...screenProps} catalog={catalogByPacker[packer.code] || catalog} onScanProgress={handleScanProgress} />
             ) : (
               <div style={{
                 border: '2px dashed var(--line)', borderRadius: 14,
@@ -626,7 +637,15 @@ export default function App() {
         </div>
       </div>
 
-      <TweaksPanel tweaks={merged} setTweaks={setTweaks} open={open} setOpen={setOpen} />
+      {showZoneAssign && (
+        <ZoneAssign
+          catalog={catalog}
+          packers={PACKERS}
+          zoneAssignments={zoneAssignments}
+          onSave={handleZoneAssign}
+          onClose={() => setShowZoneAssign(false)}
+        />
+      )}
       <Toast toasts={toasts} />
     </>
   );

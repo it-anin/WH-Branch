@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 
 // ColA(0)=SKU  ColD(3)=unit  ColJ(9)=cost
@@ -44,6 +44,7 @@ function parseXLSX(buffer) {
 
 export default function ImportCostMap({ matchCount, onImport }) {
   const fileRef = useRef(null);
+  const [uploadedAt, setUploadedAt] = useState(null);
 
   function handleFile(e) {
     const file = e.target.files[0];
@@ -56,6 +57,8 @@ export default function ImportCostMap({ matchCount, onImport }) {
         alert('ไม่พบข้อมูล Cost กรุณาตรวจสอบรูปแบบไฟล์\n(ColA=SKU, ColB=ราคาทุน)');
         return;
       }
+      const d = new Date(file.lastModified);
+      setUploadedAt(`${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`);
       onImport(map);
     };
     if (isXLSX) reader.readAsArrayBuffer(file);
@@ -65,15 +68,15 @@ export default function ImportCostMap({ matchCount, onImport }) {
 
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-      {matchCount > 0 && (
+      <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
+      <button className={`btn sm${uploadedAt ? ' primary' : ''}`} onClick={() => fileRef.current?.click()}>
+        {uploadedAt ? '✅ อัปโหลดไฟล์ Price แล้ว' : '⇑ อัปโหลดไฟล์ Price'}
+      </button>
+      {uploadedAt && (
         <span className="chip ok" style={{ fontFamily: 'Patrick Hand', fontSize: 13 }}>
-          💰 Cost map: {matchCount} SKU
+          ไฟล์วันที่ {uploadedAt}
         </span>
       )}
-      <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className="btn sm" onClick={() => fileRef.current?.click()}>
-        ⇑ นำเข้าราคาทุน (.csv / .xlsx)
-      </button>
     </div>
   );
 }
