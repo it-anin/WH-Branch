@@ -202,9 +202,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const [confirmClose, setConfirmClose] = useState(false);
   const barcodeRef = useRef(null);
 
-  // Android: คืน focus กลับ barcode input หลัง render ทุกครั้ง (ป้องกัน scanner ยิงผิด field)
+  // Android: คืน focus กลับ barcode input หลัง render — ยกเว้นตอนที่ช่องค้นหาเปิดอยู่
   useEffect(() => {
-    if (isAndroid && barcodeRef.current) barcodeRef.current.focus();
+    if (isAndroid && !showSearch && barcodeRef.current) barcodeRef.current.focus();
   });
 
   const boxLabel = activeBoxId || 'BX-????';
