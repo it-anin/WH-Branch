@@ -52,11 +52,6 @@ export default function AndroidApp({
                   </button>
                 );
               })}
-              {packer && (
-                <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', marginLeft: 4 }}>
-                  · {catalogByPacker[packer.code]?.length ?? 0} SKU
-                </span>
-              )}
             </div>
 
             {/* pack content */}
