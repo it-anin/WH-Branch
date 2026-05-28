@@ -7,7 +7,8 @@ function extractZone(location) {
 }
 
 export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, onClose }) {
-  const zones = [...new Set(catalog.map(item => extractZone(item.location)).filter(Boolean))].sort();
+  const zones = [...new Set(catalog.map(item => extractZone(item.location)).filter(Boolean))]
+    .sort((a, b) => a.length !== b.length ? a.length - b.length : a.localeCompare(b));
 
   const [assignments, setAssignments] = useState(() => {
     const init = {};

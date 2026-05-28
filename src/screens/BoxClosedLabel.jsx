@@ -32,8 +32,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
   function handleExportBarcode() {
     if (!activeBox) return;
-    if (activeBox.status !== 'exported') {
-      showToast('⚠ กรุณากรอกเลขที่เอกสารและอนุมัติเอกสารก่อน', 'error');
+    if (activeBox.status !== 'closed' && activeBox.status !== 'exported') {
+      showToast('⚠ ไม่สามารถส่งออกได้', 'error');
       return;
     }
     if (boxItems.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังนี้'); return; }
@@ -264,17 +264,21 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               </div>
             </div>
 
+            {/* Step 1: ส่งออก + พิมพ์ — ส่งออก active เมื่อ closed/exported, พิมพ์ active เฉพาะ exported */}
             <div className="row" style={{ marginTop: 14, gap: 10 }}>
+              <button
+                className="btn"
+                onClick={handleExportBarcode}
+                style={{
+                  opacity: (activeBox.status === 'closed' || activeBox.status === 'exported') ? 1 : 0.45,
+                  cursor: (activeBox.status === 'closed' || activeBox.status === 'exported') ? 'pointer' : 'not-allowed',
+                }}
+              >⇩ ส่งออกไฟล์ Text</button>
               <button
                 className="btn primary"
                 onClick={handlePrint}
                 style={{ opacity: activeBox.status === 'exported' ? 1 : 0.45, cursor: activeBox.status === 'exported' ? 'pointer' : 'not-allowed' }}
               >🖨 พิมพ์ใบปิดลัง</button>
-              <button
-                className="btn"
-                onClick={handleExportBarcode}
-                style={{ opacity: activeBox.status === 'exported' ? 1 : 0.45, cursor: activeBox.status === 'exported' ? 'pointer' : 'not-allowed' }}
-              >⇩ ส่งออกไฟล์ Text</button>
             </div>
 
             <div style={{ marginTop: 18 }}>
@@ -309,6 +313,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               </div>
             </div>
 
+            {/* Step 2: อนุมัติเอกสาร — แสดงเฉพาะยังไม่ exported */}
             {activeBox.status !== 'exported' && (
               <div className="row" style={{ marginTop: 14, gap: 8, flexWrap: 'wrap' }}>
                 <input
@@ -327,6 +332,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 </button>
               </div>
             )}
+
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--mute)', fontFamily: 'Patrick Hand', fontSize: 16 }}>
