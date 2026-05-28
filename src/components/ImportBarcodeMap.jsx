@@ -85,7 +85,7 @@ export default function ImportBarcodeMap({ matchCount, onImport }) {
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className={`btn sm${label ? ' primary' : ''}`} onClick={() => fileRef.current?.click()}>
+      <button className={`btn sm${label ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
         {label ? `✅ อัปโหลดไฟล์ ${label} แล้ว` : '⇑ อัปโหลดไฟล์ Barcode'}
       </button>
       {uploadedAt && (

@@ -69,7 +69,7 @@ export default function ImportCostMap({ matchCount, onImport }) {
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className={`btn sm${uploadedAt ? ' primary' : ''}`} onClick={() => fileRef.current?.click()}>
+      <button className={`btn sm${uploadedAt ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
         {uploadedAt ? '✅ อัปโหลดไฟล์ Price แล้ว' : '⇑ อัปโหลดไฟล์ Price'}
       </button>
       {uploadedAt && (

@@ -111,7 +111,7 @@ export default function ImportCatalog({ catalog, onImport }) {
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className={`btn sm${branch ? ' primary' : ''}`} onClick={() => fileRef.current?.click()}>
+      <button className={`btn sm${branch ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
         {branch ? `✅ อัปโหลดไฟล์ Picklist_${branch} แล้ว` : '⇑ อัปโหลดไฟล์ Picklist'}
       </button>
       {branch && catalog.length > 0 && (

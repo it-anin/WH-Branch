@@ -491,14 +491,19 @@ export default function App() {
               <span className="desc">— ภาพรวมลังทั้งหมดวันนี้</span>
             </div>
             <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <ImportCatalog catalog={catalog} onImport={(items) => {
-                const updated = Object.keys(barcodeMap).length > 0 ? applyBarcodeMap(items, barcodeMap) : items;
-                setCatalog(updated);
-                setDoc(doc(db, 'config', 'catalog'), { items: updated })
-                  .then(() => console.log('Firestore catalog saved', updated.length, 'items'))
-                  .catch(err => { console.error('Firestore catalog write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code); });
-                showToast(`นำเข้าแล้ว ${items.length} รายการ ✓`);
-              }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <ImportCatalog catalog={catalog} onImport={(items) => {
+                  const updated = Object.keys(barcodeMap).length > 0 ? applyBarcodeMap(items, barcodeMap) : items;
+                  setCatalog(updated);
+                  setDoc(doc(db, 'config', 'catalog'), { items: updated })
+                    .then(() => console.log('Firestore catalog saved', updated.length, 'items'))
+                    .catch(err => { console.error('Firestore catalog write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code); });
+                  showToast(`นำเข้าแล้ว ${items.length} รายการ ✓`);
+                }} />
+                <button className="btn sm" style={{ minWidth: 240 }} onClick={() => setShowZoneAssign(true)}>
+                  📍 กำหนดโซน
+                </button>
+              </div>
               <ImportBarcodeMap
                 matchCount={Object.keys(barcodeMap).length}
                 onImport={handleBarcodeMapImport}
@@ -507,11 +512,6 @@ export default function App() {
                 matchCount={Object.keys(costMap).length}
                 onImport={handleCostMapImport}
               />
-              <div style={{ marginTop: 4 }}>
-                <button className="btn sm" onClick={() => setShowZoneAssign(true)}>
-                  📍 กำหนดโซน
-                </button>
-              </div>
             </div>
             <BoxList {...screenProps} />
           </>
@@ -564,13 +564,6 @@ export default function App() {
                   )}
                 </span>
               )}
-              <button
-                className="btn sm ghost"
-                onClick={() => { distributeCatalog(catalog); showToast('สุ่มรายการใหม่แล้ว ✓'); }}
-                title="สุ่มแบ่งรายการเบิกใหม่"
-              >
-                🔀 สุ่มใหม่
-              </button>
             </div>
 
             {packer ? (

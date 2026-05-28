@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { generatePOS, matchBarcode } from '../data.js';
 
 const PAGE_SIZE = 30;
@@ -295,6 +296,27 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
 
   return (
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 580, ...(isAndroid ? { boxShadow: 'none', border: 'none', borderRadius: 0 } : {}) }}>
+      {confirmClose && createPortal(
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: 'white', borderRadius: 14, padding: '24px 28px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+            textAlign: 'center', minWidth: 260,
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>⚠ ยังขาดสินค้า</div>
+            <div style={{ fontSize: 14, color: '#555', marginBottom: 20 }}>ต้องการปิดลังเลยไหม?</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="btn sm ghost" onClick={() => setConfirmClose(false)}>ยกเลิก</button>
+              <button className="btn primary sm" onClick={doClose}>ปิดลัง</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
       {showHistory && (
         <BoxHistoryModal
           boxes={boxes}
@@ -357,23 +379,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                   if (showSearch) { setSearch(''); setPage(0); }
                 }}
               >🔍</button>
-              <div style={{ position: 'relative', flexShrink: 0 }}>
-                {confirmClose && (
-                  <div style={{
-                    position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
-                    background: 'white', border: '1.5px solid var(--line)', borderRadius: 10,
-                    padding: '10px 12px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-                    whiteSpace: 'nowrap', zIndex: 10,
-                  }}>
-                    <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, marginBottom: 8 }}>⚠ ยังขาดสินค้า ปิดลังเลยไหม?</div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn primary sm" onClick={doClose}>ปิดลัง</button>
-                      <button className="btn sm ghost" onClick={() => setConfirmClose(false)}>ยกเลิก</button>
-                    </div>
-                  </div>
-                )}
-                <button className="btn primary" style={{ fontSize: 15, padding: '10px 16px', whiteSpace: 'nowrap' }} onClick={handleCloseBox}>ปิดลัง</button>
-              </div>
+              <button className="btn primary" style={{ fontSize: 15, padding: '10px 16px', whiteSpace: 'nowrap' }} onClick={handleCloseBox}>ปิดลัง</button>
             </div>
             {/* search input แสดงเฉพาะเมื่อกด 🔍 — ป้องกัน focus โดยบังเอิญขณะสแกน */}
             {showSearch && (
@@ -404,21 +410,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(0); }}
             />
-            <div style={{ position: 'relative' }}>
-              {confirmClose && (
-                <div style={{
-                  position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
-                  background: 'white', border: '1.5px solid var(--line)', borderRadius: 10,
-                  padding: '12px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-                  whiteSpace: 'nowrap', zIndex: 10,
-                }}>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginBottom: 10 }}>⚠ ยังขาดสินค้า ปิดลังเลยไหม?</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn primary sm" onClick={doClose}>ปิดลัง</button>
-                    <button className="btn sm ghost" onClick={() => setConfirmClose(false)}>ยกเลิก</button>
-                  </div>
-                </div>
-              )}
+            <div>
               <button className="btn primary lg" onClick={handleCloseBox}>ปิดลัง</button>
             </div>
           </div>
