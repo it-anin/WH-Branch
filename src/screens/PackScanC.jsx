@@ -345,9 +345,11 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
           ) : (
             <button className="btn primary" onClick={() => setShowHistory(true)}>📦 ลังที่ปิดแล้ว</button>
           )}
-          <button className={`btn primary ${isAndroid ? 'sm' : ''}`} onClick={async () => { await createNewBox(); showToast('เปิดลังใหม่แล้ว ✓', 'success'); }}>
-            + {isAndroid ? 'ใหม่' : 'เปิดลังใหม่'}
-          </button>
+          {!isAndroid && (
+            <button className="btn primary" onClick={async () => { await createNewBox(); showToast('เปิดลังใหม่แล้ว ✓', 'success'); }}>
+              + เปิดลังใหม่
+            </button>
+          )}
         </div>
         {!isAndroid && (
           <div className="row">
