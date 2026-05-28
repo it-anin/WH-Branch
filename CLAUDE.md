@@ -324,13 +324,15 @@ open → packing → closed → exported → received
   3. **reset `items` / `page` / `search` ทันที ก่อน await** — ป้องกันสแกนซ้ำลงลังเก่า
   4. `await createNewBox()` — เปิดลังใหม่
   5. `setIsClosing(false)`
-- **`confirmClose`** state — แทน `window.confirm`: inline popover เหนือปุ่มปิดลัง แสดงเมื่อสินค้ายังไม่ครบ
+- **`confirmClose`** state — แทน `window.confirm`: ใช้ `createPortal(content, document.body)` render ตรงไปที่ root DOM — แสดง dialog ตรงกลางจอ ทำงานทั้ง Android และ Desktop โดยไม่ถูก stacking context ของ AndroidApp (`position: fixed; inset: 0`) บัง
+  - Portal อยู่ที่ top-level ของ component (ก่อน `showHistory`) — ไม่อยู่ใน Android/Desktop branch ใดทั้งนั้น
 - เมื่อปิดลัง: บันทึกเฉพาะ item ที่ `got > 0`, ลบ item ที่ `got >= need` ออกจาก checklist, เปิดลังใหม่อัตโนมัติ
 - **ต้องเลือกพนักงานก่อน** ถึงจะเห็นรายการสินค้า — ถ้า `packer === null` แสดง placeholder แทน PackScanC
 - Toast: `'error'` สำหรับ scan ล้มเหลว, `'success'` สำหรับปิดลัง/เปิดลังใหม่สำเร็จ
 - **Android mode** (`isAndroid` = module-level const จาก `?android=1`):
   - Layout 2 rows: barcode input + ปิดลัง (row 1) / search (row 2) — ไม่ใช้ `.btn.lg` / `.input.big`
-  - `barcodeRef` + `useEffect` คืน focus กลับ barcode input หลังทุก render — ป้องกัน scanner ยิงผิด field
+  - ไม่มีปุ่ม "+ ใหม่" บน Android — ปิดลังแล้วเปิดลังใหม่อัตโนมัติจาก `doClose()` เสมอ
+  - `barcodeRef` + `useEffect` (ไม่มี dependency) คืน focus กลับ barcode input หลังทุก render **ยกเว้นเมื่อ `showSearch === true`** — ป้องกัน focus ถูกดึงกลับขณะพิมพ์ค้นหา
   - Card: padding/font เล็กลง, ยังแสดง barcode เหมือนเดิม
 
 ## PackerDashboard — Logic สำคัญ
@@ -354,10 +356,15 @@ open → packing → closed → exported → received
   - active เมื่อมี closedBoxes อย่างน้อย 1 ลัง (ไม่ต้องเลือกลัง)
 - **อนุมัติเอกสาร:** ต้องกรอก **เลขที่เอกสาร** ก่อน → บันทึก `box.pos` + status → `exported`
 - ปุ่ม 🔥 ล้าง Firestore ทั้งหมด → เรียก `clearFirestore()` จาก App.jsx
+- **Flow การอนุมัติลัง:**
+  1. ⇩ ส่งออกไฟล์ Text — active ทันทีเมื่อ `closed` หรือ `exported`
+  2. กรอกเลขที่เอกสาร + กด "อนุมัติเอกสาร" → status `exported` (แสดงเฉพาะยังไม่ exported)
+  3. 🖨 พิมพ์ใบปิดลัง — active เฉพาะหลัง `exported`
 
 ## BoxList — Logic สำคัญ
 - คอลัมน์ตาราง: Box ID / สถานะ / พนักงาน / SKU / ชิ้น / **เลขที่เอกสาร** / อัปเดต (ไม่มีปุ่ม action)
 - Badge header นับ: กำลังแพ็ค = `open + packing`, ปิดลังแล้ว = `closed`, อนุมัติแล้ว = `exported`
+- ปุ่ม Export: **"⇩ Export รายการลังทั้งหมด"** (เดิม: Export ทั้งวัน)
 
 ## BranchReceive — Logic สำคัญ
 - **ต้องเลือกพนักงานก่อน** ถึงจะใช้หน้านี้ได้ — ถ้า `branchStaff === null` แสดง placeholder

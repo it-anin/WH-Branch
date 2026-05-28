@@ -120,7 +120,7 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
           <span className="chip" style={{ background: '#96e096', borderColor: '#3a9a3a' }}>อนุมัติแล้ว · {boxes.filter(b => b.status === 'exported').length}</span>
           <div className="spacer" />
           <button className="btn sm ghost" onClick={() => showToast('รีเฟรชแล้ว')}>⟲ รีเฟรช</button>
-          <button className="btn sm" onClick={handleExport}>⇩ Export ทั้งวัน</button>
+          <button className="btn sm" onClick={handleExport}>⇩ Export รายการลังทั้งหมด</button>
           <button
             className="btn sm"
             style={{ borderColor: 'var(--red)', color: 'var(--red)' }}
