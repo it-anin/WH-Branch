@@ -238,9 +238,6 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           <>
             <div className="row">
               <span className="title">📥 รับสินค้าเข้าสาขา</span>
-              {scannedBoxes.length > 0 && (
-                <span className="btn sm" style={{ marginLeft: 8, cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap' }}>{scannedBoxes.length} ลัง</span>
-              )}
             </div>
             {(phase === 'verify' || phase === 'result') && (
               <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
