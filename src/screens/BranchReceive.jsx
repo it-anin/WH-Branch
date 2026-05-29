@@ -211,11 +211,6 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
     const needed = match.qty ?? match.got ?? 0;
     const current = scanCounts[match.sku] || 0;
-    if (current >= needed) {
-      setScanError(`${match.name} — สแกนครบแล้ว`);
-      setLastScannedSku(match.sku);
-      return;
-    }
 
     setScanError('');
     setLastScannedSku(match.sku);
