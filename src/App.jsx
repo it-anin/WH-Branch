@@ -464,6 +464,7 @@ export default function App() {
           catalogByPacker={catalogByPacker}
           onScanProgress={handleScanProgress}
           catalogMeta={catalogMeta}
+          scanProgress={scanProgress}
         />
         <Toast toasts={toasts} />
       </>

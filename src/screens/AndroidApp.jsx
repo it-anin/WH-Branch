@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import PackScanC from './PackScanC.jsx';
 import BranchReceive from './BranchReceive.jsx';
 
@@ -12,22 +12,11 @@ const BRANCH_STAFF = [
 export default function AndroidApp({
   screenProps,
   packer, setPacker, PACKERS, catalogByPacker,
-  onScanProgress, catalogMeta,
+  onScanProgress, catalogMeta, scanProgress,
 }) {
   const [tab, setAndroidTab] = useState('pack');
   const [branchStaff, setBranchStaff] = useState(null);
-  const [showBanner, setShowBanner] = useState(false);
-  const bannerShownRef = useRef(false);
   const packCatalog = packer ? (catalogByPacker[packer.code] || screenProps.catalog) : screenProps.catalog;
-
-  useEffect(() => {
-    if (catalogMeta && !bannerShownRef.current) {
-      bannerShownRef.current = true;
-      setShowBanner(true);
-      const t = setTimeout(() => setShowBanner(false), 6000);
-      return () => clearTimeout(t);
-    }
-  }, [catalogMeta]);
 
   return (
     <div style={{
@@ -41,57 +30,73 @@ export default function AndroidApp({
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
         {/* ── แพ็คกิ้ง ── */}
-        {tab === 'pack' && (
+        {tab === 'pack' && (() => {
+          const activeId = screenProps.activeBoxId;
+          const progress = activeId ? (scanProgress?.[activeId] || []) : [];
+          const got = progress.reduce((s, i) => s + (i.got || 0), 0);
+          const need = packCatalog.reduce((s, i) => s + (i.qty || 1), 0);
+          const picklistLabel = catalogMeta
+            ? `${catalogMeta.branch ? `Picklist_${catalogMeta.branch}` : 'Picklist'}${catalogMeta.fileDate ? ` · ${catalogMeta.fileDate}` : ''}`
+            : null;
+          return (
           <>
-            {/* packer selector strip */}
+            {/* packer + info strip */}
             <div style={{
-              padding: '8px 12px',
+              padding: '6px 12px',
               borderBottom: '1.5px solid var(--line)',
               background: 'var(--paper-dark)',
-              display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap',
+              flexShrink: 0,
             }}>
-              <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', whiteSpace: 'nowrap' }}>
-                พนักงาน:
-              </span>
-              {PACKERS.map(p => {
-                const active = packer?.code === p.code;
-                return (
-                  <button key={p.code} onClick={() => setPacker(active ? null : p)} style={{
-                    padding: '5px 14px',
-                    border: `2px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
-                    borderRadius: 999,
-                    background: active ? 'var(--accent)' : 'white',
-                    color: active ? 'white' : 'var(--ink)',
-                    fontFamily: 'Patrick Hand', fontSize: 15,
-                    cursor: 'pointer',
-                    fontWeight: active ? 700 : 400,
-                    boxShadow: active ? '2px 2px 0 var(--line)' : '1px 1px 0 var(--line)',
-                  }}>
-                    {p.name}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* picklist banner */}
-            {showBanner && catalogMeta && (
-              <div style={{
-                background: 'var(--accent)', color: 'white',
-                padding: '7px 12px',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                flexShrink: 0, gap: 8,
-              }}>
-                <span style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>
-                  📋{' '}
-                  {catalogMeta.branch ? `Picklist_${catalogMeta.branch}` : 'Picklist'}
-                  {catalogMeta.fileDate ? ` · ${catalogMeta.fileDate}` : ''}
+              {/* row 1: packer buttons */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', whiteSpace: 'nowrap' }}>
+                  พนักงาน:
                 </span>
-                <button onClick={() => setShowBanner(false)} style={{
-                  background: 'none', border: 'none', color: 'white',
-                  fontSize: 20, lineHeight: 1, cursor: 'pointer', padding: '0 2px', flexShrink: 0,
-                }}>×</button>
+                {PACKERS.map(p => {
+                  const active = packer?.code === p.code;
+                  return (
+                    <button key={p.code} onClick={() => setPacker(active ? null : p)} style={{
+                      padding: '5px 14px',
+                      border: `2px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+                      borderRadius: 999,
+                      background: active ? 'var(--accent)' : 'white',
+                      color: active ? 'white' : 'var(--ink)',
+                      fontFamily: 'Patrick Hand', fontSize: 15,
+                      cursor: 'pointer',
+                      fontWeight: active ? 700 : 400,
+                      boxShadow: active ? '2px 2px 0 var(--line)' : '1px 1px 0 var(--line)',
+                    }}>
+                      {p.name}
+                    </button>
+                  );
+                })}
               </div>
-            )}
+              {/* row 2: box info */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginTop: 5, gap: 6, flexWrap: 'wrap',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {activeId ? (
+                    <>
+                      <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, background: 'var(--accent-soft)', color: 'var(--accent)', padding: '2px 7px', borderRadius: 6, fontWeight: 700 }}>
+                        {activeId}
+                      </span>
+                      <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--ink)' }}>
+                        {got} / {need} ชิ้น
+                      </span>
+                    </>
+                  ) : (
+                    <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>ยังไม่มีลัง</span>
+                  )}
+                </div>
+                {picklistLabel && (
+                  <span style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', whiteSpace: 'nowrap' }}>
+                    📋 {picklistLabel}
+                  </span>
+                )}
+              </div>
+            </div>
 
             {/* pack content */}
             {packer ? (
@@ -120,7 +125,8 @@ export default function AndroidApp({
               </div>
             )}
           </>
-        )}
+          );
+        })()}
 
         {/* ── รับสินค้า ── */}
         {tab === 'receive' && (
