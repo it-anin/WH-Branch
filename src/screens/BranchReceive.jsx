@@ -241,12 +241,14 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           )}
           <div className="spacer" />
           {phase === 'verify' && !isReceived && (
-            <button className="btn primary" onClick={handleSkip}>
-              ↩ ข้ามลัง · สแกนลังใหม่
+            <button className={`btn primary${isAndroid ? ' sm' : ''}`} onClick={handleSkip}>
+              {isAndroid ? '↩ ข้ามลัง' : '↩ ข้ามลัง · สแกนลังใหม่'}
             </button>
           )}
           {(phase === 'verify' || phase === 'result') && (
-            <button className="btn primary" style={{ marginLeft: 8 }} onClick={handleScanNext}>+ สแกนลังถัดไป</button>
+            <button className={`btn primary${isAndroid ? ' sm' : ''}`} style={{ marginLeft: 8 }} onClick={handleScanNext}>
+              {isAndroid ? '+ ลังถัดไป' : '+ สแกนลังถัดไป'}
+            </button>
           )}
         </div>
         {!isControlled && (
