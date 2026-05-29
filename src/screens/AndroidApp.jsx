@@ -102,7 +102,7 @@ export default function AndroidApp({
               display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap',
             }}>
               <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', whiteSpace: 'nowrap' }}>
-                พนักงานสาขา:
+                พนักงาน:
               </span>
               {BRANCH_STAFF.map(s => {
                 const active = branchStaff?.code === s.code;

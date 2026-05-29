@@ -251,7 +251,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
         </div>
         {!isControlled && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>พนักงานสาขา:</span>
+            <span style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>พนักงาน:</span>
             {BRANCH_STAFF.map(s => {
               const active = branchStaff?.code === s.code;
               return (
@@ -300,7 +300,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           <div style={{ fontSize: 42, marginBottom: 10 }}>👤</div>
           <div style={{ fontFamily: 'Caveat', fontSize: 24, fontWeight: 700, marginBottom: 6 }}>เลือกพนักงานก่อน</div>
           <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>
-            กรุณาเลือกชื่อพนักงานสาขาด้านบน เพื่อเริ่มรับสินค้า
+            กรุณาเลือกชื่อพนักงานด้านบน เพื่อเริ่มรับสินค้า
           </div>
         </div>
       ) : (
