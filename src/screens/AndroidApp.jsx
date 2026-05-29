@@ -132,6 +132,7 @@ export default function AndroidApp({
                   setTab={() => {}}
                   branchStaff={branchStaff}
                   setBranchStaff={setBranchStaff}
+                  isAndroid={true}
                 />
               </div>
             ) : (

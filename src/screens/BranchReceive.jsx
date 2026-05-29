@@ -74,7 +74,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onClick }) {
   );
 }
 
-export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp }) {
+export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false }) {
   const [internalBranchStaff, setInternalBranchStaff] = useState(null);
   const isControlled = branchStaffProp !== undefined;
   const branchStaff = isControlled ? branchStaffProp : internalBranchStaff;
@@ -231,7 +231,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
   const scannedSkuCount  = boxItems.filter(l => (scanCounts[l.sku] || 0) >= 1).length;
 
   return (
-    <div className="frame" style={{ padding: 0, position: 'relative', minHeight: 560 }}>
+    <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 560 }}>
       {/* ── header ── */}
       <div className="frame-header">
         <div className="row">
@@ -304,47 +304,50 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           </div>
         </div>
       ) : (
-      <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20 }}>
+      <div style={isAndroid
+        ? { padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }
+        : { padding: 20, display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20 }
+      }>
 
-        {/* LEFT: stacked box cards */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', maxHeight: 520 }}>
-          {scannedBoxes.length === 0 ? (
-            <div style={{
-              padding: '18px 16px',
-              border: '2px dashed var(--line)', borderRadius: 14,
-              background: 'var(--paper-dark)', textAlign: 'center',
-              color: 'var(--mute)', fontFamily: 'Patrick Hand', fontSize: 14,
-            }}>
-              <div style={{ fontSize: 36, marginBottom: 8 }}>📦</div>
-              <div>ยังไม่ได้สแกนลัง</div>
-              <div style={{ fontSize: 12, marginTop: 4 }}>สแกนบาร์โค้ดลังเพื่อเริ่มต้น</div>
-            </div>
-          ) : (
-            scannedBoxes.map((box, i) => (
-              <BoxCard
-                key={box.id}
-                box={box}
-                isActive={i === 0 && !isViewingOther}
-                isViewing={box.id === viewingId}
-                isPendingApproval={i === 0 && phase === 'result'}
-                onClick={() => setViewingId(prev => prev === box.id ? null : box.id)}
-              />
-            ))
-          )}
+        {/* LEFT: stacked box cards — desktop only */}
+        {!isAndroid && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', maxHeight: 520 }}>
+            {scannedBoxes.length === 0 ? (
+              <div style={{
+                padding: '18px 16px',
+                border: '2px dashed var(--line)', borderRadius: 14,
+                background: 'var(--paper-dark)', textAlign: 'center',
+                color: 'var(--mute)', fontFamily: 'Patrick Hand', fontSize: 14,
+              }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>📦</div>
+                <div>ยังไม่ได้สแกนลัง</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>สแกนบาร์โค้ดลังเพื่อเริ่มต้น</div>
+              </div>
+            ) : (
+              scannedBoxes.map((box, i) => (
+                <BoxCard
+                  key={box.id}
+                  box={box}
+                  isActive={i === 0 && !isViewingOther}
+                  isViewing={box.id === viewingId}
+                  isPendingApproval={i === 0 && phase === 'result'}
+                  onClick={() => setViewingId(prev => prev === box.id ? null : box.id)}
+                />
+              ))
+            )}
+            {phase === 'verify' && !isReceived && (
+              <div style={{
+                padding: 12, border: '1.5px dashed var(--line)', borderRadius: 10,
+                fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', background: 'var(--paper-dark)',
+              }}>
+                <b>ถ้าสินค้าขาดหรือไม่ครบ</b><br />
+                กดปุ่ม "↩ ข้ามลัง" เพื่อแจ้งปัญหาและสแกนลังถัดไป
+              </div>
+            )}
+          </div>
+        )}
 
-
-          {phase === 'verify' && !isReceived && (
-            <div style={{
-              padding: 12, border: '1.5px dashed var(--line)', borderRadius: 10,
-              fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', background: 'var(--paper-dark)',
-            }}>
-              <b>ถ้าสินค้าขาดหรือไม่ครบ</b><br />
-              กดปุ่ม "↩ ข้ามลัง" เพื่อแจ้งปัญหาและสแกนลังถัดไป
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT: scan zone OR checklist */}
+        {/* RIGHT / main content */}
         <div>
           {isViewingOther ? (
             <div>
@@ -483,6 +486,29 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               )}
             </div>
           ) : phase === 'scan' ? (
+            isAndroid ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>ยิงบาร์โค้ดที่ติดลัง หรือพิมพ์ BX-…</div>
+                <input
+                  ref={inputRef}
+                  className="input big"
+                  placeholder="BX-… หรือ POS number"
+                  style={{ width: '100%', textAlign: 'center' }}
+                  value={query}
+                  onChange={(e) => { setQuery(e.target.value); setNotFound(false); }}
+                  onKeyDown={handleScan}
+                />
+                {notFound && (
+                  <div style={{
+                    padding: '10px 14px',
+                    border: '2px solid var(--red)', borderRadius: 10,
+                    background: '#fde8e8', fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--red)',
+                  }}>
+                    ⚠ ไม่พบลัง "{query}" — ลองสแกนใหม่
+                  </div>
+                )}
+              </div>
+            ) : (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, paddingTop: 20 }}>
               <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700 }}>สแกนบาร์โค้ดลัง</div>
               <div style={{
@@ -515,6 +541,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 </div>
               )}
             </div>
+            )
           ) : (
             <>
               {boxItems.length === 0 ? (
@@ -575,8 +602,8 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                       </div>
                     </div>
                   )}
-                  <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 300, overflowY: 'auto' }}>
-                    <table className="tbl" style={{ fontSize: 14 }}>
+                  <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: isAndroid ? 360 : 300, overflowY: 'auto' }}>
+                    <table className="tbl" style={{ fontSize: isAndroid ? 13 : 14 }}>
                       <thead style={{ position: 'sticky', top: 0 }}>
                         <tr>
                           <th>SKU / ชื่อ</th>
