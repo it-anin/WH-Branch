@@ -234,23 +234,38 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 560 }}>
       {/* ── header ── */}
       <div className="frame-header">
-        <div className="row">
-          <span className="title" style={{ whiteSpace: 'nowrap' }}>📥 รับสินค้าเข้าสาขา</span>
-          {scannedBoxes.length > 0 && (
-            <span className="btn sm" style={{ marginLeft: 8, cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap' }}>{scannedBoxes.length} ลัง</span>
-          )}
-          <div className="spacer" />
-          {phase === 'verify' && !isReceived && (
-            <button className={`btn primary${isAndroid ? ' sm' : ''}`} onClick={handleSkip}>
-              {isAndroid ? '↩ ข้ามลัง' : '↩ ข้ามลัง · สแกนลังใหม่'}
-            </button>
-          )}
-          {(phase === 'verify' || phase === 'result') && (
-            <button className={`btn primary${isAndroid ? ' sm' : ''}`} style={{ marginLeft: 8 }} onClick={handleScanNext}>
-              {isAndroid ? '+ ลังถัดไป' : '+ สแกนลังถัดไป'}
-            </button>
-          )}
-        </div>
+        {isAndroid ? (
+          <>
+            <div className="row">
+              <span className="title">📥 รับสินค้าเข้าสาขา</span>
+              {scannedBoxes.length > 0 && (
+                <span className="btn sm" style={{ marginLeft: 8, cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap' }}>{scannedBoxes.length} ลัง</span>
+              )}
+            </div>
+            {(phase === 'verify' || phase === 'result') && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                {phase === 'verify' && !isReceived && (
+                  <button className="btn sm primary" style={{ flex: 1 }} onClick={handleSkip}>↩ ข้ามลัง</button>
+                )}
+                <button className="btn sm primary" style={{ flex: 1 }} onClick={handleScanNext}>+ ลังถัดไป</button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="row">
+            <span className="title" style={{ whiteSpace: 'nowrap' }}>📥 รับสินค้าเข้าสาขา</span>
+            {scannedBoxes.length > 0 && (
+              <span className="btn sm" style={{ marginLeft: 8, cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap' }}>{scannedBoxes.length} ลัง</span>
+            )}
+            <div className="spacer" />
+            {phase === 'verify' && !isReceived && (
+              <button className="btn primary" onClick={handleSkip}>↩ ข้ามลัง · สแกนลังใหม่</button>
+            )}
+            {(phase === 'verify' || phase === 'result') && (
+              <button className="btn primary" style={{ marginLeft: 8 }} onClick={handleScanNext}>+ สแกนลังถัดไป</button>
+            )}
+          </div>
+        )}
         {!isControlled && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
             <span style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>พนักงาน:</span>
