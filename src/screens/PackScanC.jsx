@@ -190,7 +190,7 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
   );
 }
 
-export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, packer, onScanProgress }) {
+export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, packer, onScanProgress, catalogMeta }) {
   const [items, setItems] = useState(() =>
     catalog.map(c => ({ sku: c.sku, barcode: c.barcode, name: c.name, unit: c.unit, need: c.qty, got: 0, location: c.location || '' }))
   );
@@ -341,6 +341,11 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
           {isAndroid ? (
             <span style={{ fontSize: 11, color: 'var(--mute)', fontFamily: 'Patrick Hand' }}>
               เช็ค {doneCount}/{items.length}
+              {catalogMeta && (
+                <span style={{ marginLeft: 6 }}>
+                  · 📋 {catalogMeta.branch ? `Picklist_${catalogMeta.branch}` : 'Picklist'}{catalogMeta.fileDate ? ` ${catalogMeta.fileDate}` : ''}
+                </span>
+              )}
             </span>
           ) : (
             <button className="btn primary" onClick={() => setShowHistory(true)}>📦 ลังที่ปิดแล้ว</button>
