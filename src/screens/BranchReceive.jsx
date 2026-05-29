@@ -16,9 +16,9 @@ const statusLabel = {
   received: 'รับสินค้าแล้ว',
 };
 
-function BoxCard({ box, isActive, isViewing, isPendingApproval, onClick }) {
+function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onClick }) {
   const isReceived = box.status === 'received';
-  const borderColor = isReceived ? 'var(--green)' : isActive ? 'var(--accent)' : 'var(--line)';
+  const borderColor = isPendingApproval ? 'var(--accent)' : isReceived ? 'var(--green)' : isActive ? 'var(--accent)' : 'var(--line)';
   const bg = isReceived ? '#edf5e0' : isActive ? 'var(--paper-dark)' : 'white';
 
   return (
@@ -30,10 +30,11 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onClick }) {
         border: `2px solid ${isViewing ? 'var(--accent)' : borderColor}`,
         borderRadius: 14,
         background: bg,
-        opacity: (!isActive && !isViewing && !isReceived) ? 0.7 : 1,
+        opacity: (!isActive && !isViewing && !isReceived && !isPendingApproval) ? 0.7 : 1,
         cursor: 'pointer',
         boxShadow: isViewing
           ? '0 0 0 3px var(--accent-soft), 0 0 10px 2px var(--accent-soft)'
+          : isPendingApproval ? '0 0 0 3px var(--accent-soft)'
           : isReceived ? '3px 3px 0 #c6dea6' : 'none',
         transition: 'all 0.1s',
       }}
@@ -68,6 +69,15 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onClick }) {
         <span className={isReceived ? 'chip ok' : 'chip'}>{box.skuCount ?? 0} SKU</span>
         <span className={isReceived ? 'chip ok' : 'chip'}>{box.totalQty ?? 0} ชิ้น</span>
       </div>
+      {isPendingApproval && (
+        <button
+          className="btn primary"
+          style={{ marginTop: 10, width: '100%' }}
+          onClick={(e) => { e.stopPropagation(); onApprove(); }}
+        >
+          ✓ อนุมัติรับสินค้า
+        </button>
+      )}
     </div>
   );
 }
@@ -151,31 +161,35 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
   function handleConfirm() {
     if (!foundBox) return;
+    setBoxes(prev => prev.map(b => b.id === foundBox.id ? { ...b, pendingApproval: true } : b));
     setVerifyResult(allChecked ? 'ok' : 'fail');
     setViewingId(null);
     setPhase('result');
   }
 
-  function handleApprove() {
-    if (!foundBox) return;
+  function handleApprove(targetBoxId) {
+    if (!targetBoxId) return;
     setBoxes(prev => prev.map(b =>
-      b.id === foundBox.id
-        ? { ...b, status: 'received', updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) }
+      b.id === targetBoxId
+        ? { ...b, status: 'received', pendingApproval: false, updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) }
         : b
     ));
-    setScanCounts({});
-    setItemScan('');
-    setLastScannedSku(null);
-    setScanError('');
-    setQuery('');
-    setViewingId(null);
-    setVerifyResult(null);
-    setSupervisorCode('');
-    setPhase('scan');
-    showToast(`อนุมัติรับ ${foundBox.id} แล้ว ✓ · พร้อมสแกนลังถัดไป`, 'success');
+    if (targetBoxId === foundBox?.id) {
+      setScanCounts({});
+      setItemScan('');
+      setLastScannedSku(null);
+      setScanError('');
+      setQuery('');
+      setViewingId(null);
+      setVerifyResult(null);
+      setSupervisorCode('');
+      setPhase('scan');
+    }
+    showToast(`อนุมัติรับ ${targetBoxId} แล้ว ✓ · พร้อมสแกนลังถัดไป`, 'success');
   }
 
   function handleRecheck() {
+    if (foundBox) setBoxes(prev => prev.map(b => b.id === foundBox.id ? { ...b, pendingApproval: false } : b));
     setScanCounts({});
     setItemScan('');
     setLastScannedSku(null);
@@ -337,7 +351,8 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   box={box}
                   isActive={i === 0 && !isViewingOther}
                   isViewing={box.id === viewingId}
-                  isPendingApproval={i === 0 && phase === 'result'}
+                  isPendingApproval={box.pendingApproval === true}
+                  onApprove={() => handleApprove(box.id)}
                   onClick={() => setViewingId(prev => prev === box.id ? null : box.id)}
                 />
               ))
@@ -462,7 +477,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
 
               {verifyResult === 'ok' ? (
                 <div className="row" style={{ gap: 10, justifyContent: 'flex-end' }}>
-                  <button className="btn primary lg" onClick={handleApprove}>✓ อนุมัติ</button>
+                  <button className="btn primary lg" onClick={() => handleApprove(foundBox?.id)}>✓ อนุมัติ</button>
                 </div>
               ) : (
                 <div style={{ border: '1.5px solid #c0392b', borderRadius: 10, padding: '14px 16px', background: '#fde8e8' }}>
