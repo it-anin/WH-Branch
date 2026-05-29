@@ -573,7 +573,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 <>
                   <div className="row" style={{ marginBottom: 10 }}>
                     <div>
-                      <b style={{ fontFamily: 'Caveat', fontSize: 22 }}>ตรวจสอบสินค้าในลัง</b>
+                      <b style={{ fontFamily: 'Caveat', fontSize: isAndroid ? 16 : 22 }}>ตรวจสอบสินค้าในลัง</b>
                       {foundBox?.packer && (
                         <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', marginLeft: 10 }}>
                           แพ็คโดย: <b style={{ color: '#555' }}>{foundBox.packer.name} · {foundBox.packer.code}</b>
