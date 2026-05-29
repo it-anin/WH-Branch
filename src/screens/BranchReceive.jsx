@@ -162,7 +162,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   function handleConfirm() {
     if (!foundBox) return;
     setPendingApprovalBoxId(foundBox.id);
-    setVerifyResult(allChecked ? 'ok' : 'fail');
+    const hasOver = boxItems.some(l => (scanCounts[l.sku] || 0) > (l.qty ?? l.got ?? 0));
+    setVerifyResult(!allChecked ? 'fail' : hasOver ? 'over' : 'ok');
     setViewingId(null);
     setPhase('result');
   }
@@ -426,6 +427,8 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 <span className="chip ok">✓ ตรวจสอบแล้ว</span>
                 {verifyResult === 'ok'
                   ? <span className="chip ok" style={{ background: 'var(--green)', borderColor: 'var(--green)', color: 'white' }}>สินค้าถูกต้อง</span>
+                  : verifyResult === 'over'
+                  ? <span className="chip warn" style={{ background: '#e67e22', borderColor: '#b86000', color: 'white' }}>สินค้าเกินจำนวน</span>
                   : <span className="chip" style={{ background: '#c0392b', borderColor: '#922b21', color: 'white' }}>สินค้าไม่ถูกต้อง</span>
                 }
               </div>
@@ -445,17 +448,22 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                     {boxItems.map((l) => {
                       const needed = l.qty ?? l.got ?? 0;
                       const count  = scanCounts[l.sku] || 0;
+                      const over   = count > needed;
                       const done   = count >= needed;
+                      const rowBg  = over ? '#fff3cd' : done ? '#e8f0d8' : '#fde8e8';
+                      const dotBg  = over ? '#e67e22' : done ? 'var(--green)' : '#c0392b';
+                      const dotIcon = over ? '!' : done ? '✓' : '✗';
+                      const countColor = over ? '#e67e22' : done ? 'var(--green)' : '#c0392b';
                       return (
-                        <tr key={l.sku} style={{ background: done ? '#e8f0d8' : '#fde8e8' }}>
+                        <tr key={l.sku} style={{ background: rowBg }}>
                           <td style={{ textAlign: 'center' }}>
                             <div style={{
                               width: 22, height: 22, borderRadius: '50%', margin: '0 auto',
-                              background: done ? 'var(--green)' : '#c0392b',
+                              background: dotBg,
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               color: 'white', fontSize: 13, fontWeight: 700,
                             }}>
-                              {done ? '✓' : '✗'}
+                              {dotIcon}
                             </div>
                           </td>
                           <td>
@@ -466,8 +474,8 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                           <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, color: 'var(--mute)' }}>
                             {needed}
                           </td>
-                          <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: done ? 'var(--green)' : '#c0392b' }}>
-                            {count}
+                          <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: countColor }}>
+                            {count}{over && <span style={{ fontSize: 13, marginLeft: 2 }}>+{count - needed}</span>}
                           </td>
                         </tr>
                       );
@@ -481,9 +489,9 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   <button className="btn primary lg" onClick={() => handleApprove(foundBox?.id)}>✓ อนุมัติ</button>
                 </div>
               ) : (
-                <div style={{ border: '1.5px solid #c0392b', borderRadius: 10, padding: '14px 16px', background: '#fde8e8' }}>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: '#c0392b', marginBottom: 10 }}>
-                    ⚠ พบสินค้าไม่ครบ — ต้องใช้รหัสหัวหน้างานเพื่อรีเช็ค
+                <div style={{ border: `1.5px solid ${verifyResult === 'over' ? '#e67e22' : '#c0392b'}`, borderRadius: 10, padding: '14px 16px', background: verifyResult === 'over' ? '#fff3cd' : '#fde8e8' }}>
+                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: verifyResult === 'over' ? '#b86000' : '#c0392b', marginBottom: 10 }}>
+                    {verifyResult === 'over' ? '⚠ พบสินค้าเกินจำนวน — ต้องใช้รหัสหัวหน้างานเพื่อรีเช็ค' : '⚠ พบสินค้าไม่ครบ — ต้องใช้รหัสหัวหน้างานเพื่อรีเช็ค'}
                   </div>
                   <div className="row" style={{ gap: 10 }}>
                     <input
