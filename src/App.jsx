@@ -123,7 +123,12 @@ export default function App() {
       _setReceiveBoxIds(ids);
     }, onErr('receive'));
     const unsubCatalog = onSnapshot(doc(db, 'config', 'catalog'), snap => {
-      if (snap.exists()) setCatalog(snap.data().items || []);
+      if (snap.exists()) {
+        setCatalog(snap.data().items || []);
+        setCatalogMeta(snap.data()._meta || null);
+      } else {
+        setCatalogMeta(null);
+      }
     }, onErr('catalog'));
     const unsubCatalogByPacker = onSnapshot(doc(db, 'config', 'catalogByPacker'), snap => {
       if (snap.exists()) setCatalogByPacker(snap.data().assignments || {});
@@ -133,6 +138,9 @@ export default function App() {
         const entries = snap.data().entries || [];
         const map = Object.fromEntries(entries.map(e => [e.key, e.barcodes]));
         setBarcodeMap(map);
+        setBarcodeMapMeta(snap.data()._meta || null);
+      } else {
+        setBarcodeMapMeta(null);
       }
     }, onErr('barcodeMap'));
     const unsubProgress = onSnapshot(collection(db, 'progress'), snap => {
@@ -144,6 +152,9 @@ export default function App() {
       if (snap.exists()) {
         const entries = snap.data().entries || [];
         setCostMap(Object.fromEntries(entries.map(e => [e.key, e.cost])));
+        setCostMapMeta(snap.data()._meta || null);
+      } else {
+        setCostMapMeta(null);
       }
     }, onErr('costMap'));
     const unsubZone = onSnapshot(doc(db, 'config', 'zoneAssignments'), snap => {
@@ -289,6 +300,9 @@ export default function App() {
       setCatalogByPacker({});
       setBarcodeMap({});
       setCostMap({});
+      setCatalogMeta(null);
+      setBarcodeMapMeta(null);
+      setCostMapMeta(null);
       showToast('ล้าง Firestore ทั้งหมดแล้ว ✓');
     } catch (err) {
       console.error('clearFirestore failed:', err);
@@ -328,6 +342,9 @@ export default function App() {
   const [catalogByPacker, setCatalogByPacker] = useState({});
   const [barcodeMap, setBarcodeMap] = useState({});
   const [costMap, setCostMap] = useState({});
+  const [catalogMeta, setCatalogMeta] = useState(null);
+  const [barcodeMapMeta, setBarcodeMapMeta] = useState(null);
+  const [costMapMeta, setCostMapMeta] = useState(null);
   const [zoneAssignments, setZoneAssignments] = useState({});
   const [showZoneAssign, setShowZoneAssign] = useState(false);
 
@@ -375,15 +392,15 @@ export default function App() {
     });
   }
 
-  function handleBarcodeMapImport(map) {
+  function handleBarcodeMapImport(map, meta) {
     setBarcodeMap(map);
     const mapEntries = Object.entries(map).map(([key, barcodes]) => ({ key, barcodes }));
-    setDoc(doc(db, 'config', 'barcodeMap'), { entries: mapEntries })
+    setDoc(doc(db, 'config', 'barcodeMap'), { entries: mapEntries, ...(meta ? { _meta: meta } : {}) })
       .catch(err => console.error('barcodeMap write failed:', err.code));
     const matched = catalog.filter(item => map[`${item.sku}__${item.unit}`]).length;
     const updated = applyBarcodeMap(catalog, map);
     setCatalog(updated);
-    setDoc(doc(db, 'config', 'catalog'), { items: updated });
+    setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(catalogMeta ? { _meta: catalogMeta } : {}) });
     setCatalogByPacker(prev => {
       const result = {};
       for (const code of Object.keys(prev)) {
@@ -395,10 +412,10 @@ export default function App() {
     showToast(`Barcode map: ${matched} รายการ matched ✓`);
   }
 
-  function handleCostMapImport(map) {
+  function handleCostMapImport(map, meta) {
     setCostMap(map);
     const entries = Object.entries(map).map(([key, cost]) => ({ key, cost }));
-    setDoc(doc(db, 'config', 'costMap'), { entries })
+    setDoc(doc(db, 'config', 'costMap'), { entries, ...(meta ? { _meta: meta } : {}) })
       .catch(err => console.error('costMap write failed:', err.code));
     showToast(`Cost map: ${entries.length} รายการ ✓`);
   }
@@ -492,10 +509,10 @@ export default function App() {
             </div>
             <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <ImportCatalog catalog={catalog} onImport={(items) => {
+                <ImportCatalog catalog={catalog} meta={catalogMeta} onImport={(items, meta) => {
                   const updated = Object.keys(barcodeMap).length > 0 ? applyBarcodeMap(items, barcodeMap) : items;
                   setCatalog(updated);
-                  setDoc(doc(db, 'config', 'catalog'), { items: updated })
+                  setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(meta ? { _meta: meta } : {}) })
                     .then(() => console.log('Firestore catalog saved', updated.length, 'items'))
                     .catch(err => { console.error('Firestore catalog write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code); });
                   showToast(`นำเข้าแล้ว ${items.length} รายการ ✓`);
@@ -506,10 +523,12 @@ export default function App() {
               </div>
               <ImportBarcodeMap
                 matchCount={Object.keys(barcodeMap).length}
+                meta={barcodeMapMeta}
                 onImport={handleBarcodeMapImport}
               />
               <ImportCostMap
                 matchCount={Object.keys(costMap).length}
+                meta={costMapMeta}
                 onImport={handleCostMapImport}
               />
             </div>

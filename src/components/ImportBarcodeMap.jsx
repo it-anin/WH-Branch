@@ -55,10 +55,13 @@ function parseXLSX(buffer) {
   return rowsToMap(rows);
 }
 
-export default function ImportBarcodeMap({ matchCount, onImport }) {
+export default function ImportBarcodeMap({ matchCount, meta, onImport }) {
   const fileRef = useRef(null);
   const [label, setLabel] = useState(null);
   const [uploadedAt, setUploadedAt] = useState(null);
+
+  const displayLabel = label ?? meta?.fileName;
+  const displayUploadedAt = uploadedAt ?? meta?.fileDate;
 
   function handleFile(e) {
     const file = e.target.files[0];
@@ -74,8 +77,9 @@ export default function ImportBarcodeMap({ matchCount, onImport }) {
       const name = file.name.replace(/\.[^.]+$/, '');
       setLabel(name);
       const d = new Date(file.lastModified);
-      setUploadedAt(`${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`);
-      onImport(map);
+      const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+      setUploadedAt(fd);
+      onImport(map, { fileName: name, fileDate: fd });
     };
     if (isXLSX) reader.readAsArrayBuffer(file);
     else reader.readAsText(file, 'utf-8');
@@ -85,12 +89,14 @@ export default function ImportBarcodeMap({ matchCount, onImport }) {
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className={`btn sm${label ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
-        {label ? `✅ อัปโหลดไฟล์ ${label} แล้ว` : '⇑ อัปโหลดไฟล์ R05.106'}
+      <button className={`btn sm${displayUploadedAt ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
+        {displayUploadedAt
+          ? `✅ อัปโหลดไฟล์ ${displayLabel || 'R05.106'} แล้ว`
+          : '⇑ อัปโหลดไฟล์ R05.106'}
       </button>
-      {uploadedAt && (
+      {displayUploadedAt && (
         <span className="chip ok" style={{ fontFamily: 'Patrick Hand', fontSize: 13 }}>
-          ไฟล์วันที่ {uploadedAt}
+          ไฟล์วันที่ {displayUploadedAt}
         </span>
       )}
     </div>

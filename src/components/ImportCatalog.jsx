@@ -67,10 +67,13 @@ function extractBranch(filename) {
   return m ? m[1].toUpperCase() : null;
 }
 
-export default function ImportCatalog({ catalog, onImport }) {
+export default function ImportCatalog({ catalog, meta, onImport }) {
   const fileRef = useRef(null);
   const [branch, setBranch] = useState(null);
   const [fileDate, setFileDate] = useState(null);
+
+  const displayBranch = branch ?? meta?.branch;
+  const displayFileDate = fileDate ?? meta?.fileDate;
 
   function handleFile(e) {
     const file = e.target.files[0];
@@ -87,10 +90,12 @@ export default function ImportCatalog({ catalog, onImport }) {
         alert('ไม่พบรายการสินค้าในไฟล์ กรุณาตรวจสอบรูปแบบ');
         return;
       }
-      setBranch(extractBranch(file.name));
+      const b = extractBranch(file.name);
+      setBranch(b);
       const d = new Date(file.lastModified);
-      setFileDate(`${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`);
-      onImport(items);
+      const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+      setFileDate(fd);
+      onImport(items, { branch: b, fileDate: fd });
     };
 
     if (isXLSX) reader.readAsArrayBuffer(file);
@@ -111,12 +116,14 @@ export default function ImportCatalog({ catalog, onImport }) {
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className={`btn sm${branch ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
-        {branch ? `✅ อัปโหลดไฟล์ Picklist_${branch} แล้ว` : '⇑ อัปโหลดไฟล์ Picklist'}
+      <button className={`btn sm${displayFileDate ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
+        {displayFileDate
+          ? displayBranch ? `✅ อัปโหลดไฟล์ Picklist_${displayBranch} แล้ว` : '✅ อัปโหลดไฟล์ Picklist แล้ว'
+          : '⇑ อัปโหลดไฟล์ Picklist'}
       </button>
-      {branch && catalog.length > 0 && (
+      {displayFileDate && catalog.length > 0 && (
         <span className="chip ok" style={{ fontFamily: 'Patrick Hand', fontSize: 13 }}>
-          ✅ รายการเบิก: {catalog.length} รายการ · ไฟล์วันที่ {fileDate}
+          ✅ รายการเบิก: {catalog.length} รายการ · ไฟล์วันที่ {displayFileDate}
         </span>
       )}
     </div>

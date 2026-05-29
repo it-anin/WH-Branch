@@ -42,9 +42,11 @@ function parseXLSX(buffer) {
   return rowsToMap(rows);
 }
 
-export default function ImportCostMap({ matchCount, onImport }) {
+export default function ImportCostMap({ matchCount, meta, onImport }) {
   const fileRef = useRef(null);
   const [uploadedAt, setUploadedAt] = useState(null);
+
+  const displayUploadedAt = uploadedAt ?? meta?.fileDate;
 
   function handleFile(e) {
     const file = e.target.files[0];
@@ -58,8 +60,9 @@ export default function ImportCostMap({ matchCount, onImport }) {
         return;
       }
       const d = new Date(file.lastModified);
-      setUploadedAt(`${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`);
-      onImport(map);
+      const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+      setUploadedAt(fd);
+      onImport(map, { fileDate: fd });
     };
     if (isXLSX) reader.readAsArrayBuffer(file);
     else reader.readAsText(file, 'utf-8');
@@ -69,12 +72,12 @@ export default function ImportCostMap({ matchCount, onImport }) {
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className={`btn sm${uploadedAt ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
-        {uploadedAt ? '✅ อัปโหลดไฟล์ Price แล้ว' : '⇑ อัปโหลดไฟล์ Price'}
+      <button className={`btn sm${displayUploadedAt ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
+        {displayUploadedAt ? '✅ อัปโหลดไฟล์ Price แล้ว' : '⇑ อัปโหลดไฟล์ Price'}
       </button>
-      {uploadedAt && (
+      {displayUploadedAt && (
         <span className="chip ok" style={{ fontFamily: 'Patrick Hand', fontSize: 13 }}>
-          ไฟล์วันที่ {uploadedAt}
+          ไฟล์วันที่ {displayUploadedAt}
         </span>
       )}
     </div>
