@@ -395,7 +395,10 @@ open → packing → closed → exported → received
 
 ## BranchReceive — Logic สำคัญ
 - **ต้องเลือกพนักงานก่อน** ถึงจะใช้หน้านี้ได้ — ถ้า `branchStaff === null` แสดง placeholder
-- **`BRANCH_STAFF`** (hardcoded ใน BranchReceive.jsx):
+- **Controlled mode (Android):** รับ `branchStaff` / `setBranchStaff` เป็น optional props จาก AndroidApp
+  - ถ้ามี props → ใช้ external state, ซ่อน staff selector row ใน header (`!isControlled`)
+  - ถ้าไม่มี props (Desktop) → ใช้ internal state ตามปกติ
+- **`BRANCH_STAFF`** (hardcoded ใน BranchReceive.jsx และ AndroidApp.jsx):
   ```js
   [{ code: 'BR-01', name: 'ก้า' }, { code: 'BR-02', name: 'กิ๊ฟ' },
    { code: 'BR-03', name: 'นิคกี้' }, { code: 'BR-04', name: 'สุ่ย' }]
@@ -546,7 +549,10 @@ webView.evaluateJavascript(
 - Full-screen fixed layout (`position: fixed; inset: 0`)
 - 2 tabs ด้านล่าง (height 56px): 📦 แพ็คกิ้ง / 📥 รับสินค้า
 - Pack tab: packer selector strip (compact) + PackScanC fills remaining height
-- Receive tab: BranchReceive fills full height
+- Receive tab: branch staff selector strip (compact, ดีไซน์เดียวกับ pack tab) + BranchReceive fills remaining height
+  - `branchStaff`/`setBranchStaff` state managed ที่ AndroidApp (controlled mode)
+  - `BRANCH_STAFF` constant ซ้ำไว้ที่ AndroidApp.jsx ด้วย (นอกจาก BranchReceive.jsx)
+  - ถ้ายังไม่เลือกพนักงาน → placeholder "👆 เลือกชื่อพนักงานก่อน" (เดียวกับ pack tab)
 - `setTab={() => {}}` — ปิด navigation ที่ไม่เกี่ยว
 
 **PackScanC Android layout:**

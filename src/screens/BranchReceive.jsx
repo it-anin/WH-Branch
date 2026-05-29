@@ -74,8 +74,11 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onClick }) {
   );
 }
 
-export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds }) {
-  const [branchStaff, setBranchStaff] = useState(null);
+export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp }) {
+  const [internalBranchStaff, setInternalBranchStaff] = useState(null);
+  const isControlled = branchStaffProp !== undefined;
+  const branchStaff = isControlled ? branchStaffProp : internalBranchStaff;
+  const setBranchStaff = isControlled ? setBranchStaffProp : setInternalBranchStaff;
   const [phase, setPhase]             = useState('scan');
   const [query, setQuery]             = useState('');
   const [notFound, setNotFound]       = useState(false);
@@ -246,42 +249,44 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
             <button className="btn primary" style={{ marginLeft: 8 }} onClick={handleScanNext}>+ สแกนลังถัดไป</button>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>พนักงานสาขา:</span>
-          {BRANCH_STAFF.map(s => {
-            const active = branchStaff?.code === s.code;
-            return (
-              <button
-                key={s.code}
-                onClick={() => setBranchStaff(active ? null : s)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '6px 14px',
-                  border: `2px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
-                  borderRadius: 999,
-                  background: active ? 'var(--accent)' : 'white',
-                  color: active ? 'white' : 'var(--ink)',
-                  fontFamily: 'Patrick Hand', fontSize: 15,
-                  cursor: 'pointer',
-                  boxShadow: active ? '2px 2px 0 var(--line)' : '1px 1px 0 var(--line)',
-                  transition: 'all 0.12s',
-                }}
-              >
-                <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, opacity: 0.75 }}>{s.code}</span>
-                <span style={{ fontWeight: active ? 700 : 400 }}>{s.name}</span>
-              </button>
-            );
-          })}
-          {branchStaff && (
-            <span style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>
-              · กำลังรับโดย <b>{branchStaff.name}</b>
+        {!isControlled && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>พนักงานสาขา:</span>
+            {BRANCH_STAFF.map(s => {
+              const active = branchStaff?.code === s.code;
+              return (
+                <button
+                  key={s.code}
+                  onClick={() => setBranchStaff(active ? null : s)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '6px 14px',
+                    border: `2px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+                    borderRadius: 999,
+                    background: active ? 'var(--accent)' : 'white',
+                    color: active ? 'white' : 'var(--ink)',
+                    fontFamily: 'Patrick Hand', fontSize: 15,
+                    cursor: 'pointer',
+                    boxShadow: active ? '2px 2px 0 var(--line)' : '1px 1px 0 var(--line)',
+                    transition: 'all 0.12s',
+                  }}
+                >
+                  <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, opacity: 0.75 }}>{s.code}</span>
+                  <span style={{ fontWeight: active ? 700 : 400 }}>{s.name}</span>
+                </button>
+              );
+            })}
+            {branchStaff && (
+              <span style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>
+                · กำลังรับโดย <b>{branchStaff.name}</b>
+              </span>
+            )}
+            <div className="spacer" />
+            <span className="mono" style={{ color: 'var(--ink)', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 700 }}>
+              {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
-          )}
-          <div className="spacer" />
-          <span className="mono" style={{ color: 'var(--ink)', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 700 }}>
-            {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
-          </span>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* ── body: 2-col ── */}
