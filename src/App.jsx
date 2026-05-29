@@ -42,6 +42,7 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const toastTimers = useRef([]);
   const [receiveBoxIds, _setReceiveBoxIds] = useState([]);
+  const [pendingApprovalBoxId, setPendingApprovalBoxId] = useState(null);
   const [scanProgress, setScanProgress] = useState({});
 
   const boxesRef = useRef([]);
@@ -451,7 +452,7 @@ export default function App() {
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
-  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap };
+  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   if (isAndroidMode) {
     return (

@@ -82,7 +82,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
   );
 }
 
-export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false }) {
+export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false }) {
   const [internalBranchStaff, setInternalBranchStaff] = useState(null);
   const isControlled = branchStaffProp !== undefined;
   const branchStaff = isControlled ? branchStaffProp : internalBranchStaff;
@@ -161,7 +161,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
   function handleConfirm() {
     if (!foundBox) return;
-    setBoxes(prev => prev.map(b => b.id === foundBox.id ? { ...b, pendingApproval: true } : b));
+    setPendingApprovalBoxId(foundBox.id);
     setVerifyResult(allChecked ? 'ok' : 'fail');
     setViewingId(null);
     setPhase('result');
@@ -171,9 +171,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     if (!targetBoxId) return;
     setBoxes(prev => prev.map(b =>
       b.id === targetBoxId
-        ? { ...b, status: 'received', pendingApproval: false, updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) }
+        ? { ...b, status: 'received', updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) }
         : b
     ));
+    setPendingApprovalBoxId(null);
     if (targetBoxId === foundBox?.id) {
       setScanCounts({});
       setItemScan('');
@@ -189,7 +190,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   }
 
   function handleRecheck() {
-    if (foundBox) setBoxes(prev => prev.map(b => b.id === foundBox.id ? { ...b, pendingApproval: false } : b));
+    setPendingApprovalBoxId(null);
     setScanCounts({});
     setItemScan('');
     setLastScannedSku(null);
@@ -351,7 +352,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   box={box}
                   isActive={i === 0 && !isViewingOther}
                   isViewing={box.id === viewingId}
-                  isPendingApproval={box.pendingApproval === true}
+                  isPendingApproval={pendingApprovalBoxId === box.id}
                   onApprove={() => handleApprove(box.id)}
                   onClick={() => setViewingId(prev => prev === box.id ? null : box.id)}
                 />
