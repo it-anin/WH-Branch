@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import PackScanC from './PackScanC.jsx';
 import BranchReceive from './BranchReceive.jsx';
 
@@ -12,11 +12,22 @@ const BRANCH_STAFF = [
 export default function AndroidApp({
   screenProps,
   packer, setPacker, PACKERS, catalogByPacker,
-  onScanProgress,
+  onScanProgress, catalogMeta,
 }) {
   const [tab, setAndroidTab] = useState('pack');
   const [branchStaff, setBranchStaff] = useState(null);
+  const [showBanner, setShowBanner] = useState(false);
+  const bannerShownRef = useRef(false);
   const packCatalog = packer ? (catalogByPacker[packer.code] || screenProps.catalog) : screenProps.catalog;
+
+  useEffect(() => {
+    if (catalogMeta && !bannerShownRef.current) {
+      bannerShownRef.current = true;
+      setShowBanner(true);
+      const t = setTimeout(() => setShowBanner(false), 6000);
+      return () => clearTimeout(t);
+    }
+  }, [catalogMeta]);
 
   return (
     <div style={{
@@ -61,6 +72,26 @@ export default function AndroidApp({
                 );
               })}
             </div>
+
+            {/* picklist banner */}
+            {showBanner && catalogMeta && (
+              <div style={{
+                background: 'var(--accent)', color: 'white',
+                padding: '7px 12px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                flexShrink: 0, gap: 8,
+              }}>
+                <span style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>
+                  📋{' '}
+                  {catalogMeta.branch ? `Picklist_${catalogMeta.branch}` : 'Picklist'}
+                  {catalogMeta.fileDate ? ` · ${catalogMeta.fileDate}` : ''}
+                </span>
+                <button onClick={() => setShowBanner(false)} style={{
+                  background: 'none', border: 'none', color: 'white',
+                  fontSize: 20, lineHeight: 1, cursor: 'pointer', padding: '0 2px', flexShrink: 0,
+                }}>×</button>
+              </div>
+            )}
 
             {/* pack content */}
             {packer ? (
