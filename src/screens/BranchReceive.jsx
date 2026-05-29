@@ -18,8 +18,16 @@ const statusLabel = {
 
 function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onClick }) {
   const isReceived = box.status === 'received';
-  const borderColor = isPendingApproval ? 'var(--accent)' : isReceived ? 'var(--green)' : isActive ? 'var(--accent)' : 'var(--line)';
-  const bg = isReceived ? '#edf5e0' : isActive ? 'var(--paper-dark)' : 'white';
+  const isSelected = isActive || isViewing || isPendingApproval;
+
+  const borderColor = isSelected
+    ? 'var(--accent)'
+    : isReceived ? 'var(--green)' : 'var(--line)';
+  const bg = isReceived ? '#edf5e0' : isSelected ? 'var(--accent-soft)' : 'white';
+  const shadow = isSelected
+    ? '3px 3px 0 var(--line)'
+    : isReceived ? '3px 3px 0 #c6dea6' : '1px 1px 0 var(--line)';
+  const shift = isSelected ? 'translate(-1px, -1px)' : 'none';
 
   return (
     <div
@@ -27,15 +35,13 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
       style={{
         position: 'relative',
         padding: '14px 16px',
-        border: `2px solid ${isViewing ? 'var(--accent)' : borderColor}`,
+        border: `2px solid ${borderColor}`,
         borderRadius: 14,
         background: bg,
-        opacity: (!isActive && !isViewing && !isReceived && !isPendingApproval) ? 0.7 : 1,
+        opacity: (!isSelected && !isReceived) ? 0.65 : 1,
         cursor: 'pointer',
-        boxShadow: isViewing
-          ? '0 0 0 3px var(--accent-soft), 0 0 10px 2px var(--accent-soft)'
-          : isPendingApproval ? '0 0 0 3px var(--accent-soft)'
-          : isReceived ? '3px 3px 0 #c6dea6' : 'none',
+        boxShadow: shadow,
+        transform: shift,
         transition: 'all 0.1s',
       }}
     >
