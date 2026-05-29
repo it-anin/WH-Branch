@@ -279,7 +279,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     setPage(0);
     setSearch('');
     await createNewBox();
-    showToast(`ปิดลัง ${closingBoxId} แล้ว · เปิดลังใหม่อัตโนมัติ ✓`, 'success');
+    showToast(`ปิดลัง ${closingBoxId} แล้ว ✓`, 'success');
     setIsClosing(false);
   }
 
