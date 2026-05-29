@@ -214,7 +214,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     const needed = match.qty ?? match.got ?? 0;
     const current = scanCounts[match.sku] || 0;
     if (current >= needed) {
-      setScanError(`${match.name} — ครบ ${needed} ชิ้นแล้ว`);
+      setScanError(`${match.name} — สแกนครบแล้ว`);
       setLastScannedSku(match.sku);
       return;
     }
@@ -428,7 +428,8 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                       <th style={{ width: 36 }}>✓</th>
                       <th>SKU / ชื่อ</th>
                       <th style={{ width: 70 }}>หน่วย</th>
-                      <th style={{ width: 90, textAlign: 'center' }}>สแกนแล้ว</th>
+                      <th style={{ width: 60, textAlign: 'center' }}>ต้องมี</th>
+                      <th style={{ width: 70, textAlign: 'center' }}>สแกนแล้ว</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -453,6 +454,9 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                             <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
                           </td>
                           <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
+                          <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, color: 'var(--mute)' }}>
+                            {needed}
+                          </td>
                           <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: done ? 'var(--green)' : '#c0392b' }}>
                             {count}
                           </td>
@@ -604,60 +608,54 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                     </div>
                   )}
 
-                  {boxItems.length > 0 && (
-                    <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px solid var(--line)', borderRadius: 10, background: 'white' }}>
-                      <div className="row" style={{ marginBottom: 6 }}>
-                        <span style={{ fontFamily: 'Patrick Hand', fontSize: 14 }}>ความคืบหน้า</span>
-                        <div className="spacer" />
-                        <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>{scannedSkuCount} / {boxItems.length} SKU</span>
-                      </div>
-                      <div style={{ height: 10, background: 'var(--paper-dark)', borderRadius: 5, overflow: 'hidden', border: '1.5px solid var(--line)' }}>
-                        <div style={{ width: `${(scannedSkuCount / boxItems.length) * 100}%`, height: '100%', background: 'var(--green)', transition: 'width 0.2s' }} />
-                      </div>
-                    </div>
-                  )}
-                  <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: isAndroid ? 360 : 300, overflowY: 'auto' }}>
-                    <table className="tbl" style={{ fontSize: isAndroid ? 13 : 14 }}>
-                      <thead style={{ position: 'sticky', top: 0 }}>
-                        <tr>
-                          <th>SKU / ชื่อ</th>
-                          <th>Barcode</th>
-                          <th style={{ width: 70 }}>หน่วย</th>
-                          <th style={{ width: 90, textAlign: 'center' }}>สแกนแล้ว</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...boxItems]
-                          .sort((a, b) => (a.sku === lastScannedSku ? -1 : b.sku === lastScannedSku ? 1 : 0))
-                          .map((l) => {
-                          const count       = scanCounts[l.sku] || 0;
-                          const scanned     = count >= 1;
-                          return (
-                            <tr
-                              key={l.sku}
-                              style={{
-                                background: scanned ? '#e8f0d8' : 'white',
-                                transition: 'background 0.12s',
-                              }}
-                            >
-                              <td>
-                                <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                                <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
-                              </td>
-                              <td className="num-col" style={{ fontSize: 12, color: 'var(--mute)' }}>{l.barcode || '—'}</td>
-                              <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
-                              <td style={{ textAlign: 'center' }}>
-                                <span style={{
-                                  fontFamily: 'Caveat', fontSize: 22, fontWeight: 700,
-                                  color: 'var(--ink)',
-                                }}>{count}</span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                  {(() => {
+                    const totalPieces = Object.values(scanCounts).reduce((s, c) => s + c, 0);
+                    const scannedItems = [...boxItems]
+                      .filter(l => (scanCounts[l.sku] || 0) > 0)
+                      .sort((a, b) => (a.sku === lastScannedSku ? -1 : b.sku === lastScannedSku ? 1 : 0));
+                    return (
+                      <>
+                        <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px solid var(--line)', borderRadius: 10, background: 'white' }}>
+                          <div className="row">
+                            <span style={{ fontFamily: 'Patrick Hand', fontSize: 14 }}>สแกนแล้ว</span>
+                            <div className="spacer" />
+                            <span style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>{totalPieces} ชิ้น</span>
+                          </div>
+                        </div>
+                        {scannedItems.length === 0 ? (
+                          <div style={{ padding: '20px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', textAlign: 'center', fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>
+                            ยิงบาร์โค้ดสินค้าเพื่อเริ่มตรวจสอบ
+                          </div>
+                        ) : (
+                          <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: isAndroid ? 360 : 300, overflowY: 'auto' }}>
+                            <table className="tbl" style={{ fontSize: isAndroid ? 13 : 14 }}>
+                              <thead style={{ position: 'sticky', top: 0 }}>
+                                <tr>
+                                  <th>SKU / ชื่อ</th>
+                                  <th style={{ width: 70 }}>หน่วย</th>
+                                  <th style={{ width: 80, textAlign: 'center' }}>สแกนแล้ว</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {scannedItems.map((l) => (
+                                  <tr key={l.sku} style={{ background: '#e8f0d8' }}>
+                                    <td>
+                                      <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
+                                      <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                                    </td>
+                                    <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
+                                    <td style={{ textAlign: 'center' }}>
+                                      <span style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: 'var(--ink)' }}>{scanCounts[l.sku]}</span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {isReceived ? (
                     <div style={{
