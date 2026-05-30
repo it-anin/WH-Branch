@@ -122,6 +122,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     .filter(Boolean)
     .reverse();
 
+  const availableBoxes = boxes
+    .filter(b => (b.status === 'exported' || b.status === 'closed') && !receiveBoxIds.includes(b.id))
+    .sort((a, b) => (a.status === b.status ? 0 : a.status === 'exported' ? -1 : 1));
+
   useEffect(() => {
     if (phase === 'scan') setTimeout(() => inputRef.current?.focus(), 50);
     if (phase === 'verify') setTimeout(() => itemScanRef.current?.focus(), 50);
@@ -136,6 +140,18 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     return () => document.removeEventListener('mousedown', handler);
   }, [staffMenuOpen]);
 
+  function startReceive(box) {
+    setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id]);
+    setNotFound(false);
+    setScanCounts({});
+    setItemScan('');
+    setLastScannedSku(null);
+    setScanError('');
+    setQuery('');
+    setViewingId(null);
+    setPhase('verify');
+  }
+
   function handleScan(e) {
     if (e.key !== 'Enter') return;
     const q = e.target.value.trim().toLowerCase();
@@ -147,14 +163,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     );
 
     if (box) {
-      setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id]);
-      setNotFound(false);
-      setScanCounts({});
-      setItemScan('');
-      setLastScannedSku(null);
-      setScanError('');
-      setQuery('');
-      setPhase('verify');
+      startReceive(box);
     } else {
       setNotFound(true);
     }
@@ -282,10 +291,10 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
             )}
             <div className="spacer" />
             {phase === 'verify' && !isReceived && (
-              <button className="btn primary" onClick={handleSkip}>↩ ข้ามลัง · สแกนลังใหม่</button>
+              <button className="btn primary" onClick={handleSkip}>↩ ข้ามลัง · เลือกลังใหม่</button>
             )}
             {(phase === 'verify' || phase === 'result') && (
-              <button className="btn primary" style={{ marginLeft: 8 }} onClick={handleScanNext}>+ สแกนลังถัดไป</button>
+              <button className="btn primary" style={{ marginLeft: 8 }} onClick={handleScanNext}>+ รับลังถัดไป</button>
             )}
             <span className="mono" style={{ marginLeft: 12, color: 'var(--ink)', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 700 }}>
               {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -358,8 +367,8 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 color: 'var(--mute)', fontFamily: 'Patrick Hand', fontSize: 14,
               }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>📦</div>
-                <div>ยังไม่ได้สแกนลัง</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>สแกนบาร์โค้ดลังเพื่อเริ่มต้น</div>
+                <div>ยังไม่ได้เลือกลัง</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>เลือกลังจากรายการเพื่อเริ่มรับ</div>
               </div>
             ) : (
               scannedBoxes.map((box, i) => (
@@ -380,7 +389,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', background: 'var(--paper-dark)',
               }}>
                 <b>ถ้าสินค้าขาดหรือไม่ครบ</b><br />
-                กดปุ่ม "↩ ข้ามลัง" เพื่อแจ้งปัญหาและสแกนลังถัดไป
+                กดปุ่ม "↩ ข้ามลัง" เพื่อแจ้งปัญหาและเลือกลังถัดไป
               </div>
             )}
           </div>
@@ -559,35 +568,58 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 )}
               </div>
             ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, paddingTop: 20 }}>
-              <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700 }}>สแกนบาร์โค้ดลัง</div>
-              <div style={{
-                width: '100%',
-                border: '3px dashed var(--line)', borderRadius: 20,
-                padding: '32px 28px', textAlign: 'center', background: 'white',
-              }}>
-                <div style={{ fontFamily: 'Caveat', fontSize: 72, fontWeight: 700, color: 'var(--accent)', letterSpacing: 6, lineHeight: 1 }}>|||</div>
-                <div className="hand" style={{ fontSize: 18, color: 'var(--mute)', margin: '10px 0' }}>ยิงบาร์โค้ดที่ติดลัง</div>
-                <input
-                  ref={inputRef}
-                  className="input big"
-                  placeholder="BX-… หรือ POS number"
-                  style={{ textAlign: 'center', fontSize: 20, width: '100%' }}
-                  value={query}
-                  onChange={(e) => { setQuery(e.target.value); setNotFound(false); }}
-                  onKeyDown={handleScan}
-                />
-                <div style={{ fontFamily: 'Patrick Hand', color: 'var(--mute)', marginTop: 10, fontSize: 14 }}>
-                  กด Enter หรือยิงบาร์โค้ดเพื่อค้นหาลัง
-                </div>
+            <div>
+              <div className="row" style={{ marginBottom: 14, gap: 10 }}>
+                <b style={{ fontFamily: 'Caveat', fontSize: 24 }}>รายการลังที่พร้อมรับ</b>
+                <span className="chip info">{availableBoxes.length} ลัง</span>
               </div>
-              {notFound && (
+              {availableBoxes.length === 0 ? (
                 <div style={{
-                  padding: '12px 20px', width: '100%',
-                  border: '2px solid var(--red)', borderRadius: 12,
-                  background: '#fde8e8', fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--red)',
+                  padding: '50px 20px',
+                  border: '2px dashed var(--line)', borderRadius: 14,
+                  background: 'var(--paper-dark)', textAlign: 'center', color: 'var(--mute)',
                 }}>
-                  ⚠ ไม่พบลัง "{query}" — ลองสแกนใหม่อีกครั้ง
+                  <div style={{ fontSize: 42, marginBottom: 10 }}>📭</div>
+                  <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700 }}>ยังไม่มีลังที่พร้อมรับ</div>
+                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginTop: 4 }}>ลังจะปรากฏที่นี่เมื่อคลังปิดลัง / อนุมัติส่งออกแล้ว</div>
+                </div>
+              ) : (
+                <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 460, overflowY: 'auto' }}>
+                  <table className="tbl" style={{ fontSize: 14 }}>
+                    <thead style={{ position: 'sticky', top: 0 }}>
+                      <tr>
+                        <th>Box ID</th>
+                        <th style={{ width: 90 }}>สถานะ</th>
+                        <th>พนักงานแพ็ค</th>
+                        <th style={{ width: 56, textAlign: 'center' }}>SKU</th>
+                        <th style={{ width: 56, textAlign: 'center' }}>ชิ้น</th>
+                        <th style={{ width: 96 }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {availableBoxes.map(box => (
+                        <tr key={box.id} style={{ cursor: 'pointer' }} onClick={() => startReceive(box)}>
+                          <td>
+                            <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
+                            <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)' }}>POS: {box.pos}</div>
+                          </td>
+                          <td>
+                            <span className="chip" style={box.status === 'exported'
+                              ? { background: '#96e096', borderColor: '#6fc06f' }
+                              : { background: '#b8d4f0', borderColor: '#8ab4e0' }}>
+                              {box.status === 'exported' ? 'อนุมัติแล้ว' : 'ปิดลังแล้ว'}
+                            </span>
+                          </td>
+                          <td style={{ fontFamily: 'Patrick Hand' }}>{box.packer?.name || '—'}</td>
+                          <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700 }}>{box.skuCount ?? 0}</td>
+                          <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700 }}>{box.totalQty ?? 0}</td>
+                          <td>
+                            <button className="btn sm primary" onClick={(e) => { e.stopPropagation(); startReceive(box); }}>รับลังนี้</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
