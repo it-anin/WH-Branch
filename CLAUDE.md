@@ -537,6 +537,8 @@ android/
 - `WEBAPP_URL = "https://wh-branch.vercel.app?android=1"` — `?android=1` trigger Android-only UI (AndroidApp.jsx)
 - WebView: `javaScriptEnabled`, `domStorageEnabled`, `setSupportZoom(false)`, `MIXED_CONTENT_NEVER_ALLOW`
 - **BroadcastReceiver** ลงทะเบียนใน `onResume` / ยกเลิกใน `onPause`
+- **File chooser (`<input type=file>`):** override `WebChromeClient.onShowFileChooser()` → เปิด chooser กล้อง (ACTION_IMAGE_CAPTURE ผ่าน FileProvider `${applicationId}.fileprovider` → `cacheDir/images`) + แกลเลอรี (`params.createIntent()`) — **ถ้าไม่ override ปุ่มเลือกรูปจะกดแล้วเงียบ** ใช้กับหน้าแจ้งปัญหา (แนบรูปหลักฐาน)
+  - ต้องมี `<provider>` ใน AndroidManifest + `res/xml/file_paths.xml` (`<cache-path name="images" path="images/" />`)
 
 ### Scanner Broadcast Integration
 | ยี่ห้อ | Action | Extra key |
