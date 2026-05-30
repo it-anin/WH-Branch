@@ -105,8 +105,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [supervisorCode, setSupervisorCode] = useState('');
   const [reportOpen, setReportOpen]   = useState(false);
   const [reportImage, setReportImage] = useState(null);
+  const [staffMenuOpen, setStaffMenuOpen] = useState(false);
   const inputRef    = useRef(null);
   const itemScanRef = useRef(null);
+  const staffMenuRef = useRef(null);
 
   const activeBoxId    = receiveBoxIds.length > 0 ? receiveBoxIds[receiveBoxIds.length - 1] : null;
   const foundBox       = activeBoxId ? boxes.find(b => b.id === activeBoxId) || null : null;
@@ -124,6 +126,15 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     if (phase === 'scan') setTimeout(() => inputRef.current?.focus(), 50);
     if (phase === 'verify') setTimeout(() => itemScanRef.current?.focus(), 50);
   }, [phase]);
+
+  useEffect(() => {
+    if (!staffMenuOpen) return;
+    const handler = (e) => {
+      if (staffMenuRef.current && !staffMenuRef.current.contains(e.target)) setStaffMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [staffMenuOpen]);
 
   function handleScan(e) {
     if (e.key !== 'Enter') return;
@@ -276,63 +287,61 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
             {(phase === 'verify' || phase === 'result') && (
               <button className="btn primary" style={{ marginLeft: 8 }} onClick={handleScanNext}>+ สแกนลังถัดไป</button>
             )}
-          </div>
-        )}
-        {!isControlled && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>พนักงาน:</span>
-            {BRANCH_STAFF.map(s => {
-              const active = branchStaff?.code === s.code;
-              return (
-                <button
-                  key={s.code}
-                  onClick={() => setBranchStaff(active ? null : s)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '6px 14px',
-                    border: `2px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
-                    borderRadius: 999,
-                    background: active ? 'var(--accent)' : 'white',
-                    color: active ? 'white' : 'var(--ink)',
-                    fontFamily: 'Patrick Hand', fontSize: 15,
-                    cursor: 'pointer',
-                    boxShadow: active ? '2px 2px 0 var(--line)' : '1px 1px 0 var(--line)',
-                    transition: 'all 0.12s',
-                  }}
-                >
-                  <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, opacity: 0.75 }}>{s.code}</span>
-                  <span style={{ fontWeight: active ? 700 : 400 }}>{s.name}</span>
-                </button>
-              );
-            })}
-            {branchStaff && (
-              <span style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>
-                · กำลังรับโดย <b>{branchStaff.name}</b>
-              </span>
-            )}
-            <div className="spacer" />
-            <span className="mono" style={{ color: 'var(--ink)', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 700 }}>
+            <span className="mono" style={{ marginLeft: 12, color: 'var(--ink)', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 700 }}>
               {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
+            {!isControlled && (
+              <div ref={staffMenuRef} style={{ position: 'relative', marginLeft: 12 }}>
+                <button
+                  className="btn"
+                  onClick={() => setStaffMenuOpen(o => !o)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
+                    borderColor: branchStaff ? 'var(--accent)' : 'var(--line)',
+                    color: branchStaff ? 'var(--accent)' : 'var(--mute)',
+                    fontWeight: branchStaff ? 700 : 400,
+                  }}
+                >
+                  <span>👤</span>
+                  <span>{branchStaff ? branchStaff.name : 'เลือกพนักงาน'}</span>
+                  <span style={{ fontSize: 11 }}>▾</span>
+                </button>
+                {staffMenuOpen && (
+                  <div style={{
+                    position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 50,
+                    background: 'white', border: '2px solid var(--line)', borderRadius: 12,
+                    boxShadow: '3px 3px 0 var(--line)', padding: 6, minWidth: 170,
+                    display: 'flex', flexDirection: 'column', gap: 4,
+                  }}>
+                    {BRANCH_STAFF.map(s => {
+                      const active = branchStaff?.code === s.code;
+                      return (
+                        <button
+                          key={s.code}
+                          onClick={() => { setBranchStaff(active ? null : s); setStaffMenuOpen(false); }}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            padding: '8px 12px', borderRadius: 8, cursor: 'pointer', border: 'none',
+                            background: active ? 'var(--accent)' : 'transparent',
+                            color: active ? 'white' : 'var(--ink)',
+                            fontFamily: 'Patrick Hand', fontSize: 15, textAlign: 'left',
+                          }}
+                        >
+                          <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, opacity: 0.7 }}>{s.code}</span>
+                          <span style={{ fontWeight: active ? 700 : 400 }}>{s.name}</span>
+                          {active && <span style={{ marginLeft: 'auto' }}>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {/* ── body: 2-col ── */}
-      {!branchStaff ? (
-        <div style={{
-          margin: 20,
-          border: '2px dashed var(--line)', borderRadius: 14,
-          padding: '60px 20px', textAlign: 'center',
-          background: 'var(--paper-dark)',
-        }}>
-          <div style={{ fontSize: 42, marginBottom: 10 }}>👤</div>
-          <div style={{ fontFamily: 'Caveat', fontSize: 24, fontWeight: 700, marginBottom: 6 }}>เลือกพนักงานก่อน</div>
-          <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>
-            กรุณาเลือกชื่อพนักงานด้านบน เพื่อเริ่มรับสินค้า
-          </div>
-        </div>
-      ) : (
       <div style={isAndroid
         ? { padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }
         : { padding: 20, display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20 }
@@ -746,7 +755,6 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           )}
         </div>
       </div>
-      )}
     </div>
   );
 }
