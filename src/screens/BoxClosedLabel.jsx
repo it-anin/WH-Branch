@@ -235,12 +235,12 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
             )}
           </div>
         ) : activeBox ? (
-          <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24, alignItems: 'start' }}>
+          <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24, alignItems: 'stretch', minHeight: 420 }}>
 
-            {/* LEFT: รายชื่อสินค้าในลัง + เลขที่เอกสาร */}
-            <div>
+            {/* LEFT: รายชื่อสินค้าในลัง — ขยายเต็มความสูง frame */}
+            <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
               <div className="hand" style={{ fontSize: 20, marginBottom: 6 }}>รายชื่อสินค้าในลัง</div>
-              <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'hidden', maxHeight: 360, overflowY: 'auto', background: 'white' }}>
+              <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'hidden', flex: 1, minHeight: 0, overflowY: 'auto', background: 'white' }}>
                 {boxItems.length > 0 ? (
                   <table className="tbl" style={{ fontSize: 13 }}>
                     <thead>
