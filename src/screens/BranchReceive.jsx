@@ -18,16 +18,15 @@ const statusLabel = {
 
 function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onClick }) {
   const isReceived = box.status === 'received';
-  const isSelected = isActive || isViewing || isPendingApproval;
-
-  const borderColor = isSelected
-    ? 'var(--accent)'
-    : isReceived ? 'var(--green)' : 'var(--line)';
-  const bg = isReceived ? '#edf5e0' : isSelected ? 'var(--accent-soft)' : 'white';
-  const shadow = isSelected
+  // สีพื้น/ขอบ ตามสถานะลังเอง (ไม่ใช่ตอนคลิก) — accentState = pending/active
+  const accentState = isActive || isPendingApproval;
+  const borderColor = accentState ? 'var(--accent)' : isReceived ? 'var(--green)' : 'var(--line)';
+  const bg = isReceived ? '#edf5e0' : accentState ? 'var(--accent-soft)' : 'white';
+  // คลิก (viewing) = เข้มขึ้น + ยกขึ้น โดยไม่เปลี่ยนสีพื้น
+  const shadow = (isViewing || accentState)
     ? '3px 3px 0 var(--line)'
     : isReceived ? '3px 3px 0 #c6dea6' : '1px 1px 0 var(--line)';
-  const shift = isSelected ? 'translate(-1px, -1px)' : 'none';
+  const shift = (isViewing || accentState) ? 'translate(-1px, -1px)' : 'none';
 
   return (
     <div
@@ -38,7 +37,8 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
         border: `2px solid ${borderColor}`,
         borderRadius: 14,
         background: bg,
-        opacity: (!isSelected && !isReceived) ? 0.65 : 1,
+        opacity: (!isViewing && !accentState && !isReceived) ? 0.65 : 1,
+        filter: isViewing ? 'brightness(0.9)' : 'none',
         cursor: 'pointer',
         boxShadow: shadow,
         transform: shift,
