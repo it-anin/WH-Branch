@@ -119,7 +119,7 @@ src/
     ├── PackerDashboard.jsx      # Tab: Dashboard — real-time X/Y ชิ้น + doughnut per packer
     ├── BoxList.jsx              # Tab: รายการเบิกสินค้า — ตารางลังทั้งหมด
     ├── PackScanC.jsx            # Tab: แพ็คกิ้ง — Checklist (variant เดียวที่ใช้)
-    ├── BoxClosedLabel.jsx       # Tab: Outbound — สติกเกอร์ + ค้นหาสินค้าข้ามลัง + Export Excel
+    ├── BoxClosedLabel.jsx       # Tab: Outbound (รายการส่งสินค้า) — สติกเกอร์ + ค้นหาข้ามลัง + filter สถานะ/พนักงาน + แก้ไขลังมีปัญหา
     ├── BranchReceive.jsx        # Tab: รับสินค้า (สาขา) — ยืนยันรับลัง
     ├── AndroidApp.jsx           # Android-only UI — 2 tabs (แพ็คกิ้ง + รับสินค้า) full-screen portrait
     ├── PackScanA.jsx            # (unused — ลบออกจาก routing แล้ว)
@@ -446,7 +446,7 @@ open → packing → closed → exported → received
 - `fullyChecked(item)` = `scanCounts[sku] >= item.qty`
 - `allChecked` = ทุก item ผ่าน fullyChecked
 - `hasOver` = มี item ใด item หนึ่งที่ `scanCounts[sku] > item.qty` (สแกนเกิน)
-- reset `scanCounts` เมื่อสแกนลังใหม่ / ข้ามลัง / สแกนลังถัดไป / handleApprove / handleRecheck
+- reset `scanCounts` เมื่อสแกนลังใหม่ / สแกนลังถัดไป / handleApprove / handleRecheck
 - **ตารางตรวจสอบสินค้า (phase verify):** แสดงคอลัมน์ SKU / ชื่อ / หน่วย / สแกนแล้ว
   - ไม่มีคอลัมน์ ✓ และไม่มีตัวเลขเปลี่ยนสีเมื่อครบ — ตัวเลขสีดำเสมอ (Blind)
   - **พนักงานสาขาไม่เห็นจำนวนที่ควรมีในลัง (`needed`)** — เห็นแค่จำนวนที่สแกนไปแล้ว (`count`)
@@ -473,7 +473,8 @@ open → packing → closed → exported → received
   - `isViewingOther = viewingId !== null && phase !== 'result'` (Desktop phase = `scan` เสมอ → คลิกแล้วโชว์ detail)
   - ปุ่ม "× ปิด" ใน read-only view → `setViewingId(null)` → กลับ placeholder
 - **Re-scan fix:** `setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id])` — ย้ายลังที่สแกนซ้ำไปท้าย array เสมอ (`startReceive`)
-- **`handleScanNext`** (ปุ่ม "+ รับลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'`
+- **`handleScanNext`** (ปุ่ม "+ รับลังถัดไป" / Android "+ ลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'`
+- **ไม่มีปุ่ม "ข้ามลัง" แล้ว** (ลบ `handleSkip` ออก — ซ้ำซ้อนกับ "ลังถัดไป" + toast เดิม "แจ้งปัญหาแล้ว" ทำให้สับสน); การแจ้งปัญหาจริงใช้ `handleReportProblem` เท่านั้น
 - **`pendingApprovalBoxId`** (App.jsx state) — local-only, ใช้ track result phase บน Android เท่านั้น (ไม่ sync ข้ามเครื่อง — การข้ามเครื่องใช้ `box.receivePending` แทน)
 - **BoxCard `isPendingApproval`**: `box.receivePending` — ซ่อนบรรทัด label สถานะ, ปุ่มสีส้ม **✓ อนุมัติเอกสาร** บน card → `handleApprove(box.id)` (ไม่มี watermark แล้ว)
 - **BoxCard selected state** (isActive / isViewing / isPendingApproval): ใช้ raised button style เหมือน Topbar tab active
