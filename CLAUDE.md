@@ -435,8 +435,13 @@ open → packing → closed → exported → received
   - ตาราง result: `count > needed` → row สีเหลือง + วงกลม `!` สีส้ม + แสดง `count +N` (ส่วนเกิน)
 - **Desktop layout (approval-only):**
   - แผงซ้าย: `approvalBoxes` = boxes ที่ `receivePending` หรืออยู่ใน `receiveBoxIds` (pending ขึ้นก่อน) → BoxCard
-  - badge header: `pendingCount` = จำนวน box ที่ `receivePending` → chip "N รออนุมัติ"
+  - badge header: `pendingCount` = จำนวน box ที่ `receivePending` (เคารพตัวกรองพนักงาน) → chip "N รออนุมัติ"
   - แผงขวา: คลิก card → `isViewingOther` true → ตารางรายการสินค้า read-only (เลขที่ลัง / SKU / ชื่อ / หน่วย / จำนวน); ไม่คลิก → placeholder
+  - **frame-header date:** prefix "รอบเบิก {วันที่}"
+  - **ปุ่มเลือกพนักงาน (dropdown 🔽):** = **filter** ลังตามผู้ตรวจรับ (`box.receivedBy.code`) ไม่ใช่เลือกผู้รับ — `staffFilter = !isControlled && branchStaff?.code`; มีตัวเลือก "ทุกพนักงาน" ล้างตัวกรอง
+  - **ช่องค้นหา (`itemSearch`):** ค้น SKU/ชื่อ ว่าอยู่ลังไหน — ค้นข้ามทุกลัง status `closed`/`exported`/`received`/`receivePending` (ไม่ผูกตัวกรองพนักงาน) → แผงขวาแสดงตารางผล (อยู่ลังที่ / SKU/ชื่อ / หน่วย / จำนวน) แทน detail; คลิกแถว → `setViewingId(boxId)` + ล้างค้นหา
+  - **`searchQ` มี priority สูงสุด** ในแผงขวา (override isViewingOther/placeholder)
+- **Tab badge (App.jsx):** ปุ่ม tab `📥 รับสินค้า (สาขา)` แสดง badge สีส้มนับ `boxes.filter(b => b.receivePending).length` (นับรวมทุกพนักงาน) เมื่อ > 0
 - **`viewingId`** = local state สำหรับดูสินค้าในลังใดก็ได้จากแผงซ้าย
   - `isViewingOther = viewingId !== null && phase !== 'result'` (Desktop phase = `scan` เสมอ → คลิกแล้วโชว์ detail)
   - ปุ่ม "× ปิด" ใน read-only view → `setViewingId(null)` → กลับ placeholder

@@ -120,6 +120,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [reportOpen, setReportOpen]   = useState(false);
   const [reportImage, setReportImage] = useState(null);
   const [staffMenuOpen, setStaffMenuOpen] = useState(false);
+  const [itemSearch, setItemSearch] = useState('');
   const inputRef    = useRef(null);
   const itemScanRef = useRef(null);
   const staffMenuRef = useRef(null);
@@ -132,10 +133,25 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const viewingItems   = viewingId ? (itemsByBox[viewingId] || []) : [];
 
   // ลังที่พนักงานหน้าร้านสแกนรับแล้ว (รออนุมัติ) หรือเคยเข้ารับใน session นี้ — pending ขึ้นก่อน
+  // Desktop: ปุ่มเลือกพนักงาน = filter เฉพาะลังที่พนักงานคนนั้นสแกน (receivedBy)
+  const staffFilter = !isControlled && branchStaff ? branchStaff.code : null;
   const approvalBoxes = boxes
     .filter(b => b.receivePending || receiveBoxIds.includes(b.id))
+    .filter(b => !staffFilter || b.receivedBy?.code === staffFilter)
     .sort((a, b) => (a.receivePending ? 0 : 1) - (b.receivePending ? 0 : 1));
-  const pendingCount = boxes.filter(b => b.receivePending).length;
+  const pendingCount = boxes.filter(b => b.receivePending && (!staffFilter || b.receivedBy?.code === staffFilter)).length;
+
+  // ค้นหา SKU/ชื่อ ว่าอยู่ลังไหน — ค้นข้ามทุกลังที่ปิด/ส่งออก/รับแล้ว (ไม่ผูกกับตัวกรองพนักงาน)
+  const searchQ = itemSearch.trim().toLowerCase();
+  const searchResults = searchQ
+    ? boxes
+        .filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received' || b.receivePending)
+        .flatMap(box =>
+          (itemsByBox[box.id] || [])
+            .filter(l => (l.sku || '').toLowerCase().includes(searchQ) || (l.name || '').toLowerCase().includes(searchQ))
+            .map(l => ({ boxId: box.id, status: box.status, sku: l.sku, name: l.name, unit: l.unit, qty: l.qty ?? l.got ?? 0 }))
+        )
+    : [];
 
   useEffect(() => {
     if (phase === 'scan') setTimeout(() => inputRef.current?.focus(), 50);
@@ -317,8 +333,15 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
             {(phase === 'verify' || phase === 'result') && (
               <button className="btn primary" style={{ marginLeft: 8 }} onClick={handleScanNext}>+ รับลังถัดไป</button>
             )}
+            <input
+              className="input"
+              placeholder="🔍 ค้นหา SKU / ชื่อ ว่าอยู่ลังไหน…"
+              value={itemSearch}
+              onChange={e => setItemSearch(e.target.value)}
+              style={{ marginLeft: 12, width: 240 }}
+            />
             <span className="mono" style={{ marginLeft: 12, color: 'var(--ink)', fontSize: 12, whiteSpace: 'nowrap', fontWeight: 700 }}>
-              {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+              รอบเบิก {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
             {!isControlled && (
               <div ref={staffMenuRef} style={{ position: 'relative', marginLeft: 12 }}>
@@ -332,17 +355,33 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                     fontWeight: branchStaff ? 700 : 400,
                   }}
                 >
-                  <span>👤</span>
-                  <span>{branchStaff ? branchStaff.name : 'เลือกพนักงาน'}</span>
+                  <span>🔽</span>
+                  <span>{branchStaff ? `กรอง: ${branchStaff.name}` : 'ทุกพนักงาน'}</span>
                   <span style={{ fontSize: 11 }}>▾</span>
                 </button>
                 {staffMenuOpen && (
                   <div style={{
                     position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 50,
                     background: 'white', border: '2px solid var(--line)', borderRadius: 12,
-                    boxShadow: '3px 3px 0 var(--line)', padding: 6, minWidth: 170,
+                    boxShadow: '3px 3px 0 var(--line)', padding: 6, minWidth: 190,
                     display: 'flex', flexDirection: 'column', gap: 4,
                   }}>
+                    <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', padding: '2px 12px' }}>
+                      กรองลังตามผู้ตรวจรับ
+                    </div>
+                    <button
+                      onClick={() => { setBranchStaff(null); setStaffMenuOpen(false); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '8px 12px', borderRadius: 8, cursor: 'pointer', border: 'none',
+                        background: !branchStaff ? 'var(--accent)' : 'transparent',
+                        color: !branchStaff ? 'white' : 'var(--ink)',
+                        fontFamily: 'Patrick Hand', fontSize: 15, textAlign: 'left',
+                      }}
+                    >
+                      <span style={{ fontWeight: !branchStaff ? 700 : 400 }}>ทุกพนักงาน</span>
+                      {!branchStaff && <span style={{ marginLeft: 'auto' }}>✓</span>}
+                    </button>
                     {BRANCH_STAFF.map(s => {
                       const active = branchStaff?.code === s.code;
                       return (
@@ -388,8 +427,17 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 color: 'var(--mute)', fontFamily: 'Patrick Hand', fontSize: 14,
               }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>📦</div>
-                <div>ยังไม่มีลังรออนุมัติ</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>ลังจะปรากฏเมื่อพนักงานหน้าร้านสแกนรับเสร็จ</div>
+                {staffFilter ? (
+                  <>
+                    <div>ไม่มีลังที่ {branchStaff?.name} ตรวจรับ</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>ลองเลือก "ทุกพนักงาน" เพื่อดูทั้งหมด</div>
+                  </>
+                ) : (
+                  <>
+                    <div>ยังไม่มีลังรออนุมัติ</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>ลังจะปรากฏเมื่อพนักงานหน้าร้านสแกนรับเสร็จ</div>
+                  </>
+                )}
               </div>
             ) : (
               approvalBoxes.map((box) => (
@@ -409,7 +457,54 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
 
         {/* RIGHT / main content */}
         <div>
-          {isViewingOther ? (
+          {!isAndroid && searchQ ? (
+            <div>
+              <div className="row" style={{ marginBottom: 12, gap: 10 }}>
+                <b style={{ fontFamily: 'Caveat', fontSize: 22 }}>🔍 ผลค้นหา "{itemSearch}"</b>
+                <span className="chip info">{searchResults.length} รายการ</span>
+                <div className="spacer" />
+                <button className="btn sm ghost" onClick={() => setItemSearch('')}>× ล้างค้นหา</button>
+              </div>
+              {searchResults.length === 0 ? (
+                <div style={{
+                  padding: '50px 20px', border: '2px dashed var(--line)', borderRadius: 14,
+                  background: 'var(--paper-dark)', textAlign: 'center', color: 'var(--mute)',
+                }}>
+                  <div style={{ fontSize: 42, marginBottom: 10 }}>🔍</div>
+                  <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700 }}>ไม่พบสินค้า</div>
+                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginTop: 4 }}>
+                    ไม่พบ "{itemSearch}" ในลังรอบเบิกนี้
+                  </div>
+                </div>
+              ) : (
+                <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 460, overflowY: 'auto' }}>
+                  <table className="tbl" style={{ fontSize: 14 }}>
+                    <thead style={{ position: 'sticky', top: 0 }}>
+                      <tr>
+                        <th style={{ width: 130 }}>อยู่ลังที่</th>
+                        <th>SKU / ชื่อ</th>
+                        <th style={{ width: 70 }}>หน่วย</th>
+                        <th style={{ width: 60, textAlign: 'center' }}>จำนวน</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {searchResults.map((r, i) => (
+                        <tr key={`${r.boxId}-${r.sku}-${i}`} style={{ cursor: 'pointer' }} onClick={() => { setViewingId(r.boxId); setItemSearch(''); }}>
+                          <td><span style={{ fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>{r.boxId}</span></td>
+                          <td>
+                            <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{r.sku}</div>
+                            <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{r.name}</div>
+                          </td>
+                          <td style={{ fontFamily: 'Patrick Hand' }}>{r.unit}</td>
+                          <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 20, fontWeight: 700 }}>×{r.qty}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : isViewingOther ? (
             <div>
               <div className="row" style={{ marginBottom: 12, gap: 10 }}>
                 <b style={{ fontFamily: 'Caveat', fontSize: 22 }}>👁 {viewingBox?.id || viewingId}</b>
