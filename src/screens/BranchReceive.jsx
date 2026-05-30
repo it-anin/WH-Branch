@@ -11,8 +11,8 @@ const BRANCH_STAFF = [
 const statusLabel = {
   open:     'เปิด',
   packing:  'กำลังแพ็ค',
-  closed:   'ปิดลังแล้ว',
-  exported: 'ส่ง POS แล้ว',
+  closed:   'รอคลังอนุมัติเอกสาร',
+  exported: 'รอตรวจสอบสินค้า',
   received: 'รับสินค้าแล้ว',
 };
 
@@ -48,7 +48,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
       {(() => {
         const label = isViewing ? ''
           : isPendingApproval ? ''
-          : isReceived ? '✓ รับเข้าสาขาแล้ว'
+          : isReceived ? 'อนุมัติเอกสารแล้ว ✓'
           : isActive ? 'ลังที่กำลังตรวจ'
           : statusLabel[box.status] || box.status;
         return label ? (
