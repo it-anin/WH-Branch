@@ -59,7 +59,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
         </div>
       )}
       {(() => {
-        const label = isViewing ? '👁 กำลังดู'
+        const label = isViewing ? ''
           : isPendingApproval ? ''
           : isReceived ? '✓ รับเข้าสาขาแล้ว'
           : isActive ? 'ลังที่กำลังตรวจ'
@@ -71,9 +71,9 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
         ) : null;
       })()}
       <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
-      <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 3 }}>POS: {box.pos}</div>
+      <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 3 }}>เลขที่เอกสาร: {box.pos}</div>
       <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
-        Barcode: <span className="mono" style={{ fontSize: 11 }}>{box.id}</span>
+        เลขที่ลัง: <span className="mono" style={{ fontSize: 11 }}>{box.id}</span>
       </div>
       {box.packer && (
         <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
@@ -82,7 +82,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
       )}
       {box.receivedBy && (
         <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
-          รับโดย: {box.receivedBy.name}
+          ตรวจสอบโดย: {box.receivedBy.name}
         </div>
       )}
       <div className="row" style={{ marginTop: 10, gap: 6 }}>
