@@ -6,7 +6,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
-    if (activeBoxId && boxes.find(b => b.id === activeBoxId)) return activeBoxId;
+    // เลือก activeBoxId เฉพาะเมื่อเป็นลังที่ปิดแล้วจริง — หลังปิดลัง activeBoxId คือลังใหม่ที่ยัง open
+    if (activeBoxId && closedBoxes.find(b => b.id === activeBoxId)) return activeBoxId;
     if (closedBoxes.length > 0) return closedBoxes[0].id;
     return null;
   });
