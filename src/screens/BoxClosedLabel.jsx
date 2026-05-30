@@ -64,7 +64,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   function handleSendPOS() {
     if (!activeBox) return;
     if (!activeBox.textExported) {
-      showToast('⚠ กรุณากดส่งออกไฟล์ Text ก่อน', 'error');
+      showToast('⚠ กรุณาอัปโหลดไฟล์ Text ก่อน', 'error');
       return;
     }
     if (!docNumber.trim()) {

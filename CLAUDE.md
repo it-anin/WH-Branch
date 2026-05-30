@@ -408,7 +408,7 @@ open → packing → closed → exported → received
 - **Tab badge:** ปุ่ม tab Outbound แสดง badge ส้มนับ `boxes.filter(b => b.status === 'closed').length` (ลังรออนุมัติเอกสาร)
 - **Flow การอนุมัติลัง (บังคับลำดับ):**
   1. ⇩ ส่งออกไฟล์ Text — active เมื่อ `closed`/`exported` (กดได้ครั้งเดียวต่อลัง → set `textExported`)
-  2. **ช่องเลขที่เอกสาร disable จนกว่า `textExported === true`** (placeholder "กดส่งออกไฟล์ Text ก่อน") → กรอก + กด "อนุมัติเอกสาร" (ปุ่ม active เมื่อ textExported && มีเลขเอกสาร) → status `exported`
+  2. **ช่องเลขที่เอกสาร disable จนกว่า `textExported === true`** (placeholder "อัปโหลดไฟล์ Text ก่อน") → กรอก + กด "อนุมัติเอกสาร" (ปุ่ม active เมื่อ textExported && มีเลขเอกสาร) → status `exported`
   3. 🖨 พิมพ์ใบปิดลัง — active เฉพาะหลัง `exported`
 
 ## BoxList — Logic สำคัญ
