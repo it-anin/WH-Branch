@@ -443,7 +443,7 @@ open → packing → closed → exported → received
 - **Re-scan fix:** `setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id])` — ย้ายลังที่สแกนซ้ำไปท้าย array เสมอ (`startReceive`)
 - **`handleScanNext`** (ปุ่ม "+ รับลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'`
 - **`pendingApprovalBoxId`** (App.jsx state) — local-only, ใช้ track result phase บน Android เท่านั้น (ไม่ sync ข้ามเครื่อง — การข้ามเครื่องใช้ `box.receivePending` แทน)
-- **BoxCard `isPendingApproval`**: `box.receivePending` — label "📥 พนักงานสแกนรับแล้ว · รออนุมัติเอกสาร", watermark "รออนุมัติเอกสาร", ปุ่มสีส้ม **✓ อนุมัติเอกสาร** บน card → `handleApprove(box.id)`
+- **BoxCard `isPendingApproval`**: `box.receivePending` — ซ่อนบรรทัด label สถานะ (มี watermark "รออนุมัติเอกสาร" มุมขวาแทน), ปุ่มสีส้ม **✓ อนุมัติเอกสาร** บน card → `handleApprove(box.id)`
 - **BoxCard selected state** (isActive / isViewing / isPendingApproval): ใช้ raised button style เหมือน Topbar tab active
   - `box-shadow: 3px 3px 0 var(--line)`, `transform: translate(-1px,-1px)`, พื้นหลัง `var(--accent-soft)`
   - การ์ดที่ไม่ถูกเลือก → `opacity: 0.65`

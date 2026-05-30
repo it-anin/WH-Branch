@@ -58,13 +58,18 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
           </div>
         </div>
       )}
-      <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: isReceived ? '#6a9a3a' : isPendingApproval ? 'var(--accent)' : 'var(--mute)', marginBottom: 2 }}>
-        {isViewing ? '👁 กำลังดู'
-          : isPendingApproval ? '📥 พนักงานสแกนรับแล้ว · รออนุมัติเอกสาร'
+      {(() => {
+        const label = isViewing ? '👁 กำลังดู'
+          : isPendingApproval ? ''
           : isReceived ? '✓ รับเข้าสาขาแล้ว'
           : isActive ? 'ลังที่กำลังตรวจ'
-          : statusLabel[box.status] || box.status}
-      </div>
+          : statusLabel[box.status] || box.status;
+        return label ? (
+          <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginBottom: 2 }}>
+            {label}
+          </div>
+        ) : null;
+      })()}
       <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
       <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 3 }}>POS: {box.pos}</div>
       <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
