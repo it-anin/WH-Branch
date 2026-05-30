@@ -384,7 +384,8 @@ open → packing → closed → exported → received
 - รายชื่อสินค้ามีตาราง: SKU / ชื่อสินค้า / หน่วย / จำนวน / Location
 - ปุ่ม "⇩ ส่งออกไฟล์ Text" → export `.txt` แบบ TSV ไม่มี header: `barcode\tจำนวนสินค้า\tทุนสินค้า`
   - ทุนสินค้า = ดึงจาก `costMap[sku__unit]` (0 ถ้ายังไม่ได้ import cost map)
-  - **ล็อก:** ใช้งานได้เฉพาะเมื่อ `box.status === 'exported'` เท่านั้น
+  - active เมื่อ `box.status === 'closed'` หรือ `'exported'`
+  - **กันส่งซ้ำ:** กดแล้ว set `box.textExported = true` (sync Firestore) → ปุ่ม disable + เปลี่ยนเป็น "✓ ส่งออกไฟล์ Text แล้ว" ถาวร จนกว่าจะกด **Clear · เริ่มวันถัดไป** (clearBoxes ลบ box → flag หาย)
 - ปุ่ม "🖨 พิมพ์ใบปิดลัง" → **ล็อกเช่นกัน** จนกว่า `box.status === 'exported'`
 - **ปุ่ม "⇩ Export Excel"** (frame-header ขวา) — export **ทุกลังที่ปิดแล้ว** เป็นไฟล์ `.xls` HTML table:
   - คอลัมน์: เลขที่ลังสินค้า / เลขที่เอกสาร / SKU / ชื่อสินค้า / Barcode / หน่วย / จำนวน / พนักงานแพ็คสินค้า / วันที่ส่งสินค้า (DD/MM/YYYY)

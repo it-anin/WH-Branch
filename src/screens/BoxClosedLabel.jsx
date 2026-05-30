@@ -37,12 +37,18 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       showToast('⚠ ไม่สามารถส่งออกได้', 'error');
       return;
     }
+    if (activeBox.textExported) {
+      showToast('⚠ ลังนี้ส่งออกไฟล์ Text แล้ว · กด Clear เริ่มวันถัดไปเพื่อส่งใหม่', 'error');
+      return;
+    }
     if (boxItems.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังนี้'); return; }
     const lines = boxItems.map(l => {
       const cost = costMap[`${l.sku}__${l.unit}`] ?? 0;
       return `${l.barcode || ''}\t${l.qty ?? l.got ?? 0}\t${cost}`;
     });
     triggerDownload(lines.join('\n'), `${activeBox.id}.txt`, 'text/plain');
+    // mark ว่าลังนี้ส่งออก Text แล้ว — disable ปุ่มจนกว่าจะกด Clear (clearBoxes ลบ box → flag หาย)
+    setBoxes(prev => prev.map(b => b.id === activeBox.id ? { ...b, textExported: true } : b));
     showToast(`ส่งออก ${lines.length} รายการ ✓`);
   }
 
@@ -301,16 +307,23 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 </div>
               </div>
 
-              {/* ปุ่ม: ส่งออกไฟล์ Text */}
+              {/* ปุ่ม: ส่งออกไฟล์ Text — disable ถาวรหลังกด จนกว่าจะ Clear */}
               <div className="row" style={{ marginTop: 14, gap: 10, flexWrap: 'wrap' }}>
-                <button
-                  className="btn"
-                  onClick={handleExportBarcode}
-                  style={{
-                    opacity: (activeBox.status === 'closed' || activeBox.status === 'exported') ? 1 : 0.45,
-                    cursor: (activeBox.status === 'closed' || activeBox.status === 'exported') ? 'pointer' : 'not-allowed',
-                  }}
-                >⇩ ส่งออกไฟล์ Text</button>
+                {(() => {
+                  const exportable = (activeBox.status === 'closed' || activeBox.status === 'exported');
+                  const done = !!activeBox.textExported;
+                  return (
+                    <button
+                      className="btn"
+                      onClick={handleExportBarcode}
+                      disabled={!exportable || done}
+                      style={{
+                        opacity: (exportable && !done) ? 1 : 0.45,
+                        cursor: (exportable && !done) ? 'pointer' : 'not-allowed',
+                      }}
+                    >{done ? '✓ ส่งออกไฟล์ Text แล้ว' : '⇩ ส่งออกไฟล์ Text'}</button>
+                  );
+                })()}
               </div>
 
               {/* เลขที่เอกสาร + อนุมัติเอกสาร (แถวเดียวกัน) — แสดงเฉพาะยังไม่ exported */}
