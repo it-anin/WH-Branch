@@ -338,7 +338,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
                     <input
                       className="input"
-                      placeholder={textDone ? 'เลขที่เอกสาร…' : 'กดส่งออกไฟล์ Text ก่อน'}
+                      placeholder={textDone ? 'เลขที่เอกสาร…' : 'อัปโหลดไฟล์ Text ก่อน'}
                       style={{ flex: 1, minWidth: 150, opacity: textDone ? 1 : 0.5, cursor: textDone ? 'text' : 'not-allowed' }}
                       value={docNumber}
                       onChange={e => setDocNumber(e.target.value)}
