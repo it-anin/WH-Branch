@@ -419,7 +419,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700 }}>{activeBox.id}</div>
                     {activeBox.status === 'exported' && activeBox.pos && activeBox.pos !== '—' && (
-                      <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700 }}>เลขที่: {activeBox.pos}</div>
+                      <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700 }}>เลขที่เอกสาร: {activeBox.pos}</div>
                     )}
                   </div>
                 </div>
