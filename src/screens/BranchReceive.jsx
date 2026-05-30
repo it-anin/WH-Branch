@@ -16,14 +16,39 @@ const statusLabel = {
   received: 'รับสินค้าแล้ว',
 };
 
-function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onClick }) {
+// ย่อรูปหลักฐาน → base64 JPEG (กว้างสุด ~800px) เพื่อเก็บลง Firestore (1 doc ≤ 1MB)
+function compressImage(file, maxW = 800, quality = 0.7) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(null);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onInspect, onClick }) {
   const isReceived = box.status === 'received';
+  const hasProblem = box.problemReported && !box.problemResolved;
+  const problemFixed = box.problemReported && box.problemResolved;
   // สีพื้น/ขอบ ตามสถานะลังเอง (ไม่ใช่ตอนคลิก) — accentState = pending/active
   const accentState = isActive || isPendingApproval;
-  const borderColor = accentState ? 'var(--accent)' : isReceived ? 'var(--green)' : 'var(--line)';
-  const bg = isReceived ? '#edf5e0' : accentState ? 'var(--accent-soft)' : 'white';
+  const borderColor = hasProblem ? 'var(--red)' : accentState ? 'var(--accent)' : isReceived ? 'var(--green)' : 'var(--line)';
+  const bg = hasProblem ? '#fde8e8' : isReceived ? '#edf5e0' : accentState ? 'var(--accent-soft)' : 'white';
   // คลิก (viewing) = เข้มขึ้น + ยกขึ้น โดยไม่เปลี่ยนสีพื้น
-  const shadow = (isViewing || accentState)
+  const shadow = (isViewing || accentState || hasProblem)
     ? '3px 3px 0 var(--line)'
     : isReceived ? '3px 3px 0 #c6dea6' : '1px 1px 0 var(--line)';
   const shift = (isViewing || accentState) ? 'translate(-1px, -1px)' : 'none';
@@ -37,7 +62,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
         border: `2px solid ${borderColor}`,
         borderRadius: 14,
         background: bg,
-        opacity: (!isViewing && !accentState && !isReceived) ? 0.65 : 1,
+        opacity: (!isViewing && !accentState && !isReceived && !hasProblem && !problemFixed) ? 0.65 : 1,
         filter: isViewing ? 'brightness(0.9)' : 'none',
         cursor: 'pointer',
         boxShadow: shadow,
@@ -47,12 +72,14 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
     >
       {(() => {
         const label = isViewing ? ''
+          : hasProblem ? '🔴 พบปัญหา · รอตรวจสอบ'
           : isPendingApproval ? ''
+          : problemFixed ? '✓ แก้ไขปัญหาแล้ว'
           : isReceived ? 'เภสัชอนุมัติเอกสารแล้ว ✓'
           : isActive ? 'ลังที่กำลังตรวจ'
           : statusLabel[box.status] || box.status;
         return label ? (
-          <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginBottom: 2 }}>
+          <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: hasProblem ? 'var(--red)' : isReceived ? '#6a9a3a' : 'var(--mute)', marginBottom: 2 }}>
             {label}
           </div>
         ) : null;
@@ -76,7 +103,15 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
         <span className={isReceived ? 'chip ok' : 'chip'}>{box.skuCount ?? 0} SKU</span>
         <span className={isReceived ? 'chip ok' : 'chip'}>{box.totalQty ?? 0} ชิ้น</span>
       </div>
-      {isPendingApproval && (
+      {hasProblem ? (
+        <button
+          className="btn"
+          style={{ marginTop: 10, width: '100%', background: 'var(--red)', borderColor: 'var(--red)', color: 'white', fontWeight: 700 }}
+          onClick={(e) => { e.stopPropagation(); onInspect(); }}
+        >
+          🔍 ตรวจสอบ
+        </button>
+      ) : isPendingApproval ? (
         <button
           className="btn primary"
           style={{ marginTop: 10, width: '100%' }}
@@ -84,7 +119,15 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
         >
           ✓ อนุมัติเอกสาร
         </button>
-      )}
+      ) : problemFixed ? (
+        <button
+          className="btn"
+          disabled
+          style={{ marginTop: 10, width: '100%', background: '#edf5e0', borderColor: 'var(--green)', color: 'var(--green)', fontWeight: 700, cursor: 'default' }}
+        >
+          ✓ แก้ไขแล้ว
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -108,6 +151,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [reportImage, setReportImage] = useState(null);
   const [staffMenuOpen, setStaffMenuOpen] = useState(false);
   const [itemSearch, setItemSearch] = useState('');
+  const [problemNote, setProblemNote] = useState('');
   const inputRef    = useRef(null);
   const itemScanRef = useRef(null);
   const staffMenuRef = useRef(null);
@@ -122,11 +166,15 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   // ลังที่พนักงานหน้าร้านสแกนรับแล้ว (รออนุมัติ) หรือเคยเข้ารับใน session นี้ — pending ขึ้นก่อน
   // Desktop: ปุ่มเลือกพนักงาน = filter เฉพาะลังที่พนักงานคนนั้นสแกน (receivedBy)
   const staffFilter = !isControlled && branchStaff ? branchStaff.code : null;
+  const matchStaff = (b) => !staffFilter || b.receivedBy?.code === staffFilter || b.problemBy?.code === staffFilter;
+  // pending + ลังที่มีปัญหา ขึ้นก่อน (problem สำคัญสุด)
+  const sortRank = (b) => b.problemReported && !b.problemResolved ? 0 : b.receivePending ? 1 : 2;
   const approvalBoxes = boxes
-    .filter(b => b.receivePending || receiveBoxIds.includes(b.id))
-    .filter(b => !staffFilter || b.receivedBy?.code === staffFilter)
-    .sort((a, b) => (a.receivePending ? 0 : 1) - (b.receivePending ? 0 : 1));
-  const pendingCount = boxes.filter(b => b.receivePending && (!staffFilter || b.receivedBy?.code === staffFilter)).length;
+    .filter(b => b.receivePending || b.problemReported || receiveBoxIds.includes(b.id))
+    .filter(matchStaff)
+    .sort((a, b) => sortRank(a) - sortRank(b));
+  const pendingCount = boxes.filter(b => b.receivePending && matchStaff(b)).length;
+  const problemCount = boxes.filter(b => b.problemReported && !b.problemResolved && matchStaff(b)).length;
 
   // ค้นหา SKU/ชื่อ ว่าอยู่ลังไหน — ค้นข้ามทุกลังที่ปิด/ส่งออก/รับแล้ว (ไม่ผูกกับตัวกรองพนักงาน)
   const searchQ = itemSearch.trim().toLowerCase();
@@ -144,6 +192,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     if (phase === 'scan') setTimeout(() => inputRef.current?.focus(), 50);
     if (phase === 'verify') setTimeout(() => itemScanRef.current?.focus(), 50);
   }, [phase]);
+
+  useEffect(() => {
+    const vb = viewingId ? boxes.find(b => b.id === viewingId) : null;
+    setProblemNote(vb?.problemNote || '');
+  }, [viewingId]);
 
   useEffect(() => {
     if (!staffMenuOpen) return;
@@ -183,10 +236,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     }
   }
 
-  function handleImageChange(e) {
+  async function handleImageChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setReportImage({ url: URL.createObjectURL(file), name: file.name });
+    const dataUrl = await compressImage(file);
+    setReportImage({ url: dataUrl || URL.createObjectURL(file), name: file.name });
   }
 
   function handleSkip() {
@@ -197,6 +251,33 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setPhase('scan');
     setReportOpen(false);
     setReportImage(null);
+  }
+
+  // Android: ยืนยันแจ้งปัญหา → persist ลง box (sync ให้หัวหน้าตรวจที่ Desktop)
+  function handleReportProblem() {
+    if (!foundBox) return;
+    setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
+      ...b,
+      problemReported: true,
+      problemResolved: false,
+      problemImage: reportImage?.url || null,
+      problemBy: branchStaff || null,
+      problemScanCounts: { ...scanCounts },
+      problemNote: '',
+      problemAt: new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+    } : b));
+    showToast('แจ้งปัญหาแล้ว · ส่งให้หัวหน้าตรวจสอบ', 'error');
+    setScanCounts({}); setQuery(''); setNotFound(false);
+    setItemScan(''); setLastScannedSku(null); setScanError('');
+    setVerifyResult(null); setViewingId(null);
+    setPhase('scan'); setReportOpen(false); setReportImage(null);
+  }
+
+  function saveProblemNote() {
+    if (!viewingId) return;
+    setBoxes(prev => prev.map(b => b.id === viewingId ? { ...b, problemNote } : b));
+    showToast('บันทึกรายละเอียดปัญหาแล้ว ✓', 'success');
   }
 
   function handleConfirm() {
@@ -312,6 +393,9 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
             <span className="title" style={{ whiteSpace: 'nowrap' }}>📥 รับสินค้าเข้าสาขา</span>
             {pendingCount > 0 && (
               <span className="chip" style={{ marginLeft: 8, background: 'var(--accent-soft)', borderColor: 'var(--accent)', color: 'var(--accent)', whiteSpace: 'nowrap', fontWeight: 700 }}>{pendingCount} รออนุมัติ</span>
+            )}
+            {problemCount > 0 && (
+              <span className="chip" style={{ marginLeft: 8, background: '#fde8e8', borderColor: 'var(--red)', color: 'var(--red)', whiteSpace: 'nowrap', fontWeight: 700 }}>🔴 {problemCount} แจ้งปัญหา</span>
             )}
             <div className="spacer" />
             {phase === 'verify' && !isReceived && (
@@ -436,6 +520,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   isViewing={box.id === viewingId}
                   isPendingApproval={!!box.receivePending}
                   onApprove={() => handleApprove(box.id)}
+                  onInspect={() => setViewingId(box.id)}
                   onClick={() => setViewingId(prev => prev === box.id ? null : box.id)}
                 />
               ))
@@ -491,6 +576,83 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   </table>
                 </div>
               )}
+            </div>
+          ) : (!isAndroid && viewingBox?.problemReported && !viewingBox?.problemResolved) ? (
+            <div>
+              <div className="row" style={{ marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
+                <b style={{ fontFamily: 'Caveat', fontSize: 22, color: 'var(--red)' }}>🔴 ตรวจสอบปัญหา · {viewingBox.id}</b>
+                {viewingBox.problemBy && (
+                  <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
+                    แจ้งโดย: {viewingBox.problemBy.name}{viewingBox.problemAt ? ` · ${viewingBox.problemAt}` : ''}
+                  </span>
+                )}
+                <div className="spacer" />
+                <button className="btn sm ghost" onClick={() => setViewingId(null)}>× ปิด</button>
+              </div>
+
+              {/* รายการสินค้า — ตัวแดง = ขาด (จาก problemScanCounts) */}
+              {(() => {
+                const psc = viewingBox.problemScanCounts || {};
+                return (
+                  <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 280, overflowY: 'auto', marginBottom: 14 }}>
+                    <table className="tbl" style={{ fontSize: 14 }}>
+                      <thead style={{ position: 'sticky', top: 0 }}>
+                        <tr>
+                          <th>SKU / ชื่อ</th>
+                          <th style={{ width: 60 }}>หน่วย</th>
+                          <th style={{ width: 56, textAlign: 'center' }}>ต้องมี</th>
+                          <th style={{ width: 64, textAlign: 'center' }}>สแกนได้</th>
+                          <th style={{ width: 56, textAlign: 'center' }}>ขาด</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewingItems.map(l => {
+                          const need = l.qty ?? l.got ?? 0;
+                          const got = psc[l.sku] || 0;
+                          const short = need - got;
+                          const isShort = short > 0;
+                          return (
+                            <tr key={l.sku} style={{ background: isShort ? '#fde8e8' : 'white' }}>
+                              <td>
+                                <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
+                                <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: isShort ? 'var(--red)' : 'var(--ink)', fontWeight: isShort ? 700 : 400 }}>{l.name}</div>
+                              </td>
+                              <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
+                              <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700 }}>{need}</td>
+                              <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, color: isShort ? 'var(--red)' : 'var(--green)' }}>{got}</td>
+                              <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, color: 'var(--red)' }}>{isShort ? short : '-'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+
+              {/* รูปหลักฐานสินค้าชำรุด */}
+              {viewingBox.problemImage && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', marginBottom: 6 }}>📷 รูปหลักฐาน</div>
+                  <img src={viewingBox.problemImage} alt="หลักฐาน" style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 10, border: '1.5px solid var(--line)', objectFit: 'contain', display: 'block' }} />
+                </div>
+              )}
+
+              {/* รายละเอียดปัญหาที่พบ (หัวหน้าบันทึก) */}
+              <div style={{ marginBottom: 6, fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>รายละเอียดปัญหาที่พบ (หัวหน้าบันทึกเพิ่ม)</div>
+              <textarea
+                className="input"
+                placeholder="เช่น สินค้าขาด 2 ชิ้น / กล่องบุบ / ..."
+                value={problemNote}
+                onChange={e => setProblemNote(e.target.value)}
+                style={{ width: '100%', minHeight: 70, resize: 'vertical' }}
+              />
+              <div className="row" style={{ marginTop: 10, gap: 10, justifyContent: 'flex-end' }}>
+                <button className="btn" onClick={saveProblemNote} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>💾 บันทึกรายละเอียด</button>
+              </div>
+              <div style={{ marginTop: 12, padding: '10px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
+                แก้ไขจำนวนสินค้าจริงได้ที่หน้า <b>Outbound</b> → ลังนี้มี badge "แจ้งปัญหา" → ตาราง "แก้ไขสินค้าที่มีปัญหา"
+              </div>
             </div>
           ) : isViewingOther ? (
             <div>
@@ -832,7 +994,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                           )}
                           <div className="row" style={{ marginTop: 12, gap: 8, justifyContent: 'flex-end' }}>
                             <button className="btn sm ghost" onClick={() => { setReportOpen(false); setReportImage(null); }}>ยกเลิก</button>
-                            <button className="btn lg" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={handleSkip}>
+                            <button className="btn lg" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={handleReportProblem}>
                               ยืนยันแจ้งปัญหา
                             </button>
                           </div>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
 
-export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, triggerDownload, costMap = {} }) {
+export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, costMap = {} }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
@@ -76,6 +76,24 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     ));
     setDocNumber('');
     showToast('อนุมัติแล้ว ✓', 'success');
+  }
+
+  // แก้ไขจำนวนสินค้าในลังที่มีปัญหา (+/-)
+  function adjustQty(sku, delta) {
+    if (!activeBox) return;
+    const items = itemsByBox?.[activeBox.id] || [];
+    const next = items.map(l => l.sku === sku ? { ...l, qty: Math.max(0, (l.qty ?? l.got ?? 0) + delta) } : l);
+    setItemsByBox(prev => ({ ...prev, [activeBox.id]: next }));
+  }
+
+  // แก้ไข/อนุมัติ → ปิดสถานะปัญหา + อัปเดต skuCount/totalQty (แจ้งกลับหน้ารับสินค้า)
+  function resolveProblem() {
+    if (!activeBox) return;
+    const items = itemsByBox?.[activeBox.id] || [];
+    const totalQty = items.reduce((s, l) => s + (l.qty ?? l.got ?? 0), 0);
+    const skuCount = items.filter(l => (l.qty ?? l.got ?? 0) > 0).length;
+    setBoxes(prev => prev.map(b => b.id === activeBox.id ? { ...b, problemResolved: true, skuCount, totalQty } : b));
+    showToast(`แก้ไข ${activeBox.id} เรียบร้อย ✓ · แจ้งกลับหน้ารับสินค้า`, 'success');
   }
 
   function handleExportItems() {
@@ -160,6 +178,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           )}
           {closedBoxes.map(b => {
             const active = b.id === selectedId && !isSearching;
+            const hasProblem = b.problemReported && !b.problemResolved;
             return (
               <button
                 key={b.id}
@@ -167,9 +186,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
                   padding: '8px 4px', gap: 3,
-                  border: `2px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+                  border: `2px solid ${hasProblem ? 'var(--red)' : active ? 'var(--accent)' : 'var(--line)'}`,
                   borderRadius: 10,
-                  background: active ? 'var(--accent-soft)' : 'white',
+                  background: hasProblem ? '#fde8e8' : active ? 'var(--accent-soft)' : 'white',
                   cursor: 'pointer', transition: 'all 0.1s',
                 }}
               >
@@ -185,11 +204,13 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                     {b.packer.name}
                   </div>
                 )}
-                {b.status === 'exported' && b.pos && b.pos !== '—'
+                {hasProblem ? (
+                  <span className="chip" style={{ fontSize: 9, padding: '1px 6px', background: 'var(--red)', borderColor: 'var(--red)', color: 'white', fontWeight: 700 }}>🔴 แจ้งปัญหา</span>
+                ) : b.status === 'exported' && b.pos && b.pos !== '—'
                   ? <span className="chip ok" style={{ fontSize: 9, padding: '1px 6px' }}>อนุมัติแล้ว</span>
                   : <span className="chip" style={{ fontSize: 9, padding: '1px 6px' }}>รออนุมัติ</span>
                 }
-                {b.status === 'exported' && b.pos && b.pos !== '—' && (
+                {!hasProblem && b.status === 'exported' && b.pos && b.pos !== '—' && (
                   <div className="mono" style={{ fontSize: 9, color: 'var(--accent)', marginTop: 1, textAlign: 'center', wordBreak: 'break-all' }}>{b.pos}</div>
                 )}
               </button>
@@ -243,6 +264,75 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 </table>
               </div>
             )}
+          </div>
+        ) : activeBox && activeBox.problemReported && !activeBox.problemResolved ? (
+          <div style={{ padding: 20 }}>
+            <div className="row" style={{ marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
+              <b className="hand" style={{ fontSize: 22, color: 'var(--red)' }}>🔴 แก้ไขสินค้าที่มีปัญหา · {activeBox.id}</b>
+              {activeBox.problemBy && (
+                <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
+                  แจ้งโดย: {activeBox.problemBy.name}{activeBox.problemAt ? ` · ${activeBox.problemAt}` : ''}
+                </span>
+              )}
+            </div>
+
+            {activeBox.problemNote && (
+              <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px solid var(--red)', borderRadius: 10, background: '#fde8e8', fontFamily: 'Patrick Hand', fontSize: 14, color: '#c0392b' }}>
+                📝 {activeBox.problemNote}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: activeBox.problemImage ? '1fr 280px' : '1fr', gap: 20, alignItems: 'start' }}>
+              <div>
+                <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 430, overflowY: 'auto' }}>
+                  {boxItems.length > 0 ? (
+                    <table className="tbl" style={{ fontSize: 14 }}>
+                      <thead style={{ position: 'sticky', top: 0 }}>
+                        <tr>
+                          <th>SKU / ชื่อ</th>
+                          <th style={{ width: 60 }}>หน่วย</th>
+                          <th style={{ width: 150, textAlign: 'center' }}>จำนวน</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {boxItems.map(l => (
+                          <tr key={l.sku}>
+                            <td>
+                              <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
+                              <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                            </td>
+                            <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
+                            <td>
+                              <div className="row" style={{ gap: 8, justifyContent: 'center', alignItems: 'center' }}>
+                                <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--red)', color: 'var(--red)', fontWeight: 700 }} onClick={() => adjustQty(l.sku, -1)}>−</button>
+                                <span style={{ fontFamily: 'Caveat', fontSize: 24, fontWeight: 700, minWidth: 30, textAlign: 'center' }}>{l.qty ?? l.got ?? 0}</span>
+                                <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--green)', color: 'var(--green)', fontWeight: 700 }} onClick={() => adjustQty(l.sku, +1)}>+</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', padding: 10 }}>ไม่มีข้อมูลรายการสินค้า</div>
+                  )}
+                </div>
+
+                {/* ปุ่มแก้ไข/อนุมัติ — ใต้ตาราง */}
+                <div className="row" style={{ marginTop: 14, justifyContent: 'flex-end' }}>
+                  <button className="btn lg" style={{ background: 'var(--red)', borderColor: 'var(--red)', color: 'white', fontWeight: 700 }} onClick={resolveProblem}>
+                    ✓ แก้ไข/อนุมัติ
+                  </button>
+                </div>
+              </div>
+
+              {activeBox.problemImage && (
+                <div>
+                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', marginBottom: 6 }}>📷 รูปหลักฐาน</div>
+                  <img src={activeBox.problemImage} alt="หลักฐาน" style={{ width: '100%', borderRadius: 10, border: '1.5px solid var(--line)', objectFit: 'contain', display: 'block' }} />
+                </div>
+              )}
+            </div>
           </div>
         ) : activeBox ? (
           <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24, alignItems: 'start' }}>

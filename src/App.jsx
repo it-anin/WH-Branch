@@ -477,8 +477,9 @@ export default function App() {
         <h1>Warehouse - Inbound &amp; Outbound</h1>
         <div className="tabs">
           {TABS.map((t) => {
-            const badgeCount = t.k === 'receive' ? boxes.filter(b => b.receivePending).length
-              : t.k === 'closed' ? boxes.filter(b => b.status === 'closed').length
+            const problemN = boxes.filter(b => b.problemReported && !b.problemResolved).length;
+            const badgeCount = t.k === 'receive' ? boxes.filter(b => b.receivePending).length + problemN
+              : t.k === 'closed' ? boxes.filter(b => b.status === 'closed').length + problemN
               : 0;
             return (
               <button key={t.k} className={`tab ${tab === t.k ? 'active' : ''}`} onClick={() => setTab(t.k)} style={{ position: 'relative' }}>
