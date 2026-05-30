@@ -13,6 +13,17 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   });
   const [globalSearch, setGlobalSearch] = useState('');
   const [docNumber, setDocNumber] = useState('');
+  const [outboundFilter, setOutboundFilter] = useState('all'); // all | pending | approved
+
+  // อนุมัติแล้ว = exported/received, รออนุมัติ = closed (ยังไม่ส่ง POS)
+  const isApproved = (b) => b.status === 'exported' || b.status === 'received';
+  const pendingN = closedBoxes.filter(b => !isApproved(b)).length;
+  const approvedN = closedBoxes.filter(isApproved).length;
+  const visibleBoxes = closedBoxes.filter(b =>
+    outboundFilter === 'approved' ? isApproved(b)
+    : outboundFilter === 'pending' ? !isApproved(b)
+    : true
+  );
 
   const activeBox = boxes.find(b => b.id === selectedId) || null;
   const boxItems = selectedId ? (itemsByBox?.[selectedId] || []) : [];
@@ -168,15 +179,34 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           overflowY: 'auto', maxHeight: 560,
           background: 'var(--paper-dark)',
         }}>
-          <div style={{ gridColumn: '1 / -1', fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginBottom: 4 }}>
-            ลังที่ปิดแล้ว ({closedBoxes.length})
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+            {[
+              { k: 'all', label: 'ทั้งหมด', n: closedBoxes.length },
+              { k: 'pending', label: 'รออนุมัติ', n: pendingN },
+              { k: 'approved', label: 'อนุมัติแล้ว', n: approvedN },
+            ].map(f => {
+              const on = outboundFilter === f.k;
+              return (
+                <button
+                  key={f.k}
+                  onClick={() => setOutboundFilter(f.k)}
+                  style={{
+                    padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
+                    border: `1.5px solid ${on ? 'var(--accent)' : 'var(--line)'}`,
+                    background: on ? 'var(--accent)' : 'white',
+                    color: on ? 'white' : 'var(--ink)',
+                    fontFamily: 'Patrick Hand', fontSize: 12, fontWeight: on ? 700 : 400,
+                  }}
+                >{f.label} ({f.n})</button>
+              );
+            })}
           </div>
-          {closedBoxes.length === 0 && (
+          {visibleBoxes.length === 0 && (
             <div style={{ gridColumn: '1 / -1', fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', textAlign: 'center', marginTop: 20 }}>
-              ยังไม่มีลังที่ปิด
+              {closedBoxes.length === 0 ? 'ยังไม่มีลังที่ปิด' : 'ไม่มีลังในกลุ่มนี้'}
             </div>
           )}
-          {closedBoxes.map(b => {
+          {visibleBoxes.map(b => {
             const active = b.id === selectedId && !isSearching;
             const hasProblem = b.problemReviewed && !b.problemResolved;
             return (

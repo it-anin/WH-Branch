@@ -394,7 +394,7 @@ open → packing → closed → exported → received
 - Tab label: **Outbound** (เดิม: Box & Label) — frame title: **"🎉 ปิดลังสำเร็จ"**
 - Global search ข้ามทุก closed box (frame-header) → แผงขวาแสดงตารางผล (maxHeight 450, sticky header)
 - **Layout:** grid `340px 1fr`
-  - ซ้าย = **"ลังที่ปิดแล้ว (N)"** — การ์ดลังเป็น **grid 3 คอลัมน์** (`repeat(3,1fr)`) ลด scroll
+  - ซ้าย = การ์ดลัง **grid 3 คอลัมน์** (`repeat(3,1fr)`) + **ปุ่ม filter** ด้านบน: ทั้งหมด / รออนุมัติ (`status closed`) / อนุมัติแล้ว (`exported`/`received`) — state `outboundFilter`, list = `visibleBoxes`
   - ขวา (detail, grid `1fr 380px`):
     - คอลัมน์ซ้าย: **"รายชื่อสินค้าในลัง"** ตาราง SKU / ชื่อ / หน่วย / จำนวน / Location (maxHeight 450)
     - คอลัมน์ขวา: **"ตัวอย่างสติกเกอร์ติดลัง"** (90×65mm, barcode = Box ID, "คลังสินค้า · WH-01") → ปุ่ม ⇩ ส่งออกไฟล์ Text → แถว [เลขที่เอกสาร input + อนุมัติเอกสาร] → 🖨 พิมพ์ใบปิดลัง
