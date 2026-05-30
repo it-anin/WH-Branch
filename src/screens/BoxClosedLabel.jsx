@@ -268,17 +268,6 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', padding: 10 }}>ไม่มีข้อมูลรายการสินค้า</div>
                 )}
               </div>
-
-              {/* เลขที่เอกสาร — แสดงเฉพาะยังไม่ exported */}
-              {activeBox.status !== 'exported' && (
-                <input
-                  className="input"
-                  placeholder="เลขที่เอกสาร…"
-                  style={{ marginTop: 14, width: '100%' }}
-                  value={docNumber}
-                  onChange={e => setDocNumber(e.target.value)}
-                />
-              )}
             </div>
 
             {/* RIGHT: สติกเกอร์ + ปุ่ม */}
@@ -312,7 +301,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 </div>
               </div>
 
-              {/* ปุ่ม: ส่งออกไฟล์ Text · พิมพ์ใบปิดลัง · อนุมัติเอกสาร */}
+              {/* ปุ่ม: ส่งออกไฟล์ Text · พิมพ์ใบปิดลัง */}
               <div className="row" style={{ marginTop: 14, gap: 10, flexWrap: 'wrap' }}>
                 <button
                   className="btn"
@@ -327,14 +316,25 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   onClick={handlePrint}
                   style={{ opacity: activeBox.status === 'exported' ? 1 : 0.45, cursor: activeBox.status === 'exported' ? 'pointer' : 'not-allowed' }}
                 >🖨 พิมพ์ใบปิดลัง</button>
-                {activeBox.status !== 'exported' && (
+              </div>
+
+              {/* เลขที่เอกสาร + อนุมัติเอกสาร (แถวเดียวกัน) — แสดงเฉพาะยังไม่ exported */}
+              {activeBox.status !== 'exported' && (
+                <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+                  <input
+                    className="input"
+                    placeholder="เลขที่เอกสาร…"
+                    style={{ flex: 1, minWidth: 150 }}
+                    value={docNumber}
+                    onChange={e => setDocNumber(e.target.value)}
+                  />
                   <button
                     className="btn primary"
                     onClick={handleSendPOS}
                     style={{ opacity: docNumber.trim() ? 1 : 0.45, cursor: docNumber.trim() ? 'pointer' : 'not-allowed' }}
                   >อนุมัติเอกสาร</button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
           </div>
