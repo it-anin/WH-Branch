@@ -159,7 +159,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
             return (
               <button
                 key={b.id}
-                onClick={() => { setSelectedId(b.id); setActiveBoxId(b.id); setGlobalSearch(''); }}
+                onClick={() => { setSelectedId(b.id); setGlobalSearch(''); }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
                   padding: '8px 4px', gap: 3,

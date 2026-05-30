@@ -601,7 +601,7 @@ export default function App() {
             </div>
 
             {packer ? (
-              <PackScanC key={`${packer.code}-${(catalogByPacker[packer.code] || catalog).length}`} {...screenProps} catalog={catalogByPacker[packer.code] || catalog} onScanProgress={handleScanProgress} />
+              <PackScanC key={`${packer.code}-${(catalogByPacker[packer.code] || catalog).length}`} {...screenProps} catalog={catalogByPacker[packer.code] || catalog} onScanProgress={handleScanProgress} catalogMeta={catalogMeta} />
             ) : (
               <div style={{
                 border: '2px dashed var(--line)', borderRadius: 14,

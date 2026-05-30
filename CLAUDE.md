@@ -308,6 +308,15 @@ input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bu
 open → packing → closed → exported → received
 ```
 
+### Box object — fields เสริม (นอกจาก id/status/packer/pos/skuCount/totalQty/updated/createdAt)
+| field | ตั้งค่าเมื่อ | ใช้ที่ | ล้างเมื่อ |
+|---|---|---|---|
+| `textExported` | กดส่งออกไฟล์ Text (Outbound) | disable ปุ่มส่งออก Text กันส่งซ้ำ | clearBoxes (ลบ box) |
+| `receivePending` | Android กดยืนยันรับ (ผล ok) | Desktop receive แสดง card รออนุมัติ + tab badge | handleApprove (→ received) |
+| `receivedBy` | Android กดยืนยันรับ | BoxCard "ตรวจสอบโดย:" + staff filter (desktop) | — (คงไว้) |
+
+**สำคัญ:** fields เหล่านี้ sync ผ่าน `setBoxes` (เขียนทั้ง box object → Firestore `boxes/{id}`) — ข้ามเครื่องได้ (Android ↔ Desktop)
+
 ### Status Badge Colors (BoxList.jsx)
 | status | label | สี |
 |---|---|---|
@@ -378,23 +387,27 @@ open → packing → closed → exported → received
 - Props: `catalogByPacker, boxes, itemsByBox, PACKERS, scanProgress`
 
 ## Outbound (BoxClosedLabel) — Logic สำคัญ
-- Tab label: **Outbound** (เดิม: Box & Label)
-- Global search ข้ามทุก closed box โดยไม่ต้องเลือกลังก่อน
-- สติกเกอร์ขนาด 90×65mm — barcode ใช้ Box ID — ชื่อคลัง: "คลังสินค้า · WH-01"
-- รายชื่อสินค้ามีตาราง: SKU / ชื่อสินค้า / หน่วย / จำนวน / Location
+- Tab label: **Outbound** (เดิม: Box & Label) — frame title: **"🎉 ปิดลังสำเร็จ"**
+- Global search ข้ามทุก closed box (frame-header) → แผงขวาแสดงตารางผล (maxHeight 450, sticky header)
+- **Layout:** grid `340px 1fr`
+  - ซ้าย = **"ลังที่ปิดแล้ว (N)"** — การ์ดลังเป็น **grid 3 คอลัมน์** (`repeat(3,1fr)`) ลด scroll
+  - ขวา (detail, grid `1fr 380px`):
+    - คอลัมน์ซ้าย: **"รายชื่อสินค้าในลัง"** ตาราง SKU / ชื่อ / หน่วย / จำนวน / Location (maxHeight 450)
+    - คอลัมน์ขวา: **"ตัวอย่างสติกเกอร์ติดลัง"** (90×65mm, barcode = Box ID, "คลังสินค้า · WH-01") → ปุ่ม ⇩ ส่งออกไฟล์ Text → แถว [เลขที่เอกสาร input + อนุมัติเอกสาร] → 🖨 พิมพ์ใบปิดลัง
+- **selectedId:** useState lazy init — เลือก `activeBoxId` เฉพาะเมื่ออยู่ใน closedBoxes (กันเลือกลัง open ใหม่หลังปิดลัง) ไม่งั้น fallback `closedBoxes[0]` (ลังปิดล่าสุด)
+  - **คลิกการ์ดลัง = set `selectedId` เท่านั้น ไม่แตะ `activeBoxId`** — ป้องกัน activeBoxId ของการแพ็คถูกเปลี่ยนเป็นลังที่ปิดแล้ว (เคยเป็นบั๊ก: สแกนต่อจะลงลังที่ปิดไปแล้ว)
 - ปุ่ม "⇩ ส่งออกไฟล์ Text" → export `.txt` แบบ TSV ไม่มี header: `barcode\tจำนวนสินค้า\tทุนสินค้า`
-  - ทุนสินค้า = ดึงจาก `costMap[sku__unit]` (0 ถ้ายังไม่ได้ import cost map)
-  - active เมื่อ `box.status === 'closed'` หรือ `'exported'`
+  - ทุนสินค้า = `costMap[sku__unit]` (0 ถ้ายังไม่ import cost map); active เมื่อ status `closed`/`exported`
   - **กันส่งซ้ำ:** กดแล้ว set `box.textExported = true` (sync Firestore) → ปุ่ม disable + เปลี่ยนเป็น "✓ ส่งออกไฟล์ Text แล้ว" ถาวร จนกว่าจะกด **Clear · เริ่มวันถัดไป** (clearBoxes ลบ box → flag หาย)
-- ปุ่ม "🖨 พิมพ์ใบปิดลัง" → **ล็อกเช่นกัน** จนกว่า `box.status === 'exported'`
-- **ปุ่ม "⇩ Export Excel"** (frame-header ขวา) — export **ทุกลังที่ปิดแล้ว** เป็นไฟล์ `.xls` HTML table:
+- ปุ่ม "🖨 พิมพ์ใบปิดลัง" → ล็อกจนกว่า `box.status === 'exported'`
+- **ปุ่ม "⇩ ส่งออกรายการลังทั้งหมด"** (frame-header ขวา, เดิมชื่อ "Export Excel") — export **ทุกลังที่ปิดแล้ว** เป็นไฟล์ `.xls` HTML table:
   - คอลัมน์: เลขที่ลังสินค้า / เลขที่เอกสาร / SKU / ชื่อสินค้า / Barcode / หน่วย / จำนวน / พนักงานแพ็คสินค้า / วันที่ส่งสินค้า (DD/MM/YYYY)
-  - Font: Anuphan, column width กำหนดด้วย `<col width>` + inline style บน cell
-  - active เมื่อมี closedBoxes อย่างน้อย 1 ลัง (ไม่ต้องเลือกลัง)
+  - Font: Anuphan, column width กำหนดด้วย `<col width>` + inline style บน cell; active เมื่อมี closedBoxes ≥ 1
 - **อนุมัติเอกสาร:** ต้องกรอก **เลขที่เอกสาร** ก่อน → บันทึก `box.pos` + status → `exported`
 - ปุ่ม 🔥 ล้าง Firestore ทั้งหมด → เรียก `clearFirestore()` จาก App.jsx
+- **Tab badge:** ปุ่ม tab Outbound แสดง badge ส้มนับ `boxes.filter(b => b.status === 'closed').length` (ลังรออนุมัติเอกสาร)
 - **Flow การอนุมัติลัง:**
-  1. ⇩ ส่งออกไฟล์ Text — active ทันทีเมื่อ `closed` หรือ `exported`
+  1. ⇩ ส่งออกไฟล์ Text — active เมื่อ `closed`/`exported` (กดได้ครั้งเดียวต่อลัง)
   2. กรอกเลขที่เอกสาร + กด "อนุมัติเอกสาร" → status `exported` (แสดงเฉพาะยังไม่ exported)
   3. 🖨 พิมพ์ใบปิดลัง — active เฉพาะหลัง `exported`
 
