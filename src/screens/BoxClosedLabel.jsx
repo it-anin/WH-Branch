@@ -130,21 +130,21 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', minHeight: 460 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', minHeight: 460 }}>
 
-        {/* LEFT: box list */}
+        {/* LEFT: box list — grid 3 คอลัมน์ เพื่อให้เห็นหลายลังพร้อมกัน ลด scroll */}
         <div style={{
           borderRight: '1.5px solid var(--line)',
           padding: '14px 10px',
-          display: 'flex', flexDirection: 'column', gap: 8,
-          overflowY: 'auto', maxHeight: 520,
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, alignContent: 'start',
+          overflowY: 'auto', maxHeight: 560,
           background: 'var(--paper-dark)',
         }}>
-          <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginBottom: 4 }}>
+          <div style={{ gridColumn: '1 / -1', fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginBottom: 4 }}>
             ลังที่ปิดแล้ว ({closedBoxes.length})
           </div>
           {closedBoxes.length === 0 && (
-            <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', textAlign: 'center', marginTop: 20 }}>
+            <div style={{ gridColumn: '1 / -1', fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', textAlign: 'center', marginTop: 20 }}>
               ยังไม่มีลังที่ปิด
             </div>
           )}
@@ -156,31 +156,31 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 onClick={() => { setSelectedId(b.id); setActiveBoxId(b.id); setGlobalSearch(''); }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  padding: '10px 8px', gap: 4,
+                  padding: '8px 4px', gap: 3,
                   border: `2px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
                   borderRadius: 10,
                   background: active ? 'var(--accent-soft)' : 'white',
                   cursor: 'pointer', transition: 'all 0.1s',
                 }}
               >
-                <div style={{ fontSize: 32 }}>📦</div>
-                <div style={{ fontFamily: 'Caveat', fontSize: 14, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--ink)' }}>
+                <div style={{ fontSize: 22 }}>📦</div>
+                <div style={{ fontFamily: 'Caveat', fontSize: 13, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--ink)', textAlign: 'center', lineHeight: 1.1 }}>
                   {b.id}
                 </div>
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: 'var(--mute)' }}>
+                <div style={{ fontFamily: 'Patrick Hand', fontSize: 10, color: 'var(--mute)', textAlign: 'center' }}>
                   {b.skuCount ?? 0} SKU · {b.totalQty ?? 0} ชิ้น
                 </div>
                 {b.packer && (
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: 'var(--mute)' }}>
+                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 10, color: 'var(--mute)', textAlign: 'center' }}>
                     {b.packer.name}
                   </div>
                 )}
                 {b.status === 'exported' && b.pos && b.pos !== '—'
-                  ? <span className="chip ok" style={{ fontSize: 10 }}>อนุมัติแล้ว</span>
-                  : <span className="chip" style={{ fontSize: 10 }}>รออนุมัติ</span>
+                  ? <span className="chip ok" style={{ fontSize: 9, padding: '1px 6px' }}>อนุมัติแล้ว</span>
+                  : <span className="chip" style={{ fontSize: 9, padding: '1px 6px' }}>รออนุมัติ</span>
                 }
                 {b.status === 'exported' && b.pos && b.pos !== '—' && (
-                  <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', marginTop: 2 }}>{b.pos}</div>
+                  <div className="mono" style={{ fontSize: 9, color: 'var(--accent)', marginTop: 1, textAlign: 'center', wordBreak: 'break-all' }}>{b.pos}</div>
                 )}
               </button>
             );
