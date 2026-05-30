@@ -54,12 +54,16 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
             animation: 'blink 1s step-start infinite',
             letterSpacing: 1,
           }}>
-            รออนุมัติ
+            รออนุมัติเอกสาร
           </div>
         </div>
       )}
-      <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginBottom: 2 }}>
-        {isViewing ? '👁 กำลังดู' : isActive ? 'ลังที่กำลังตรวจ' : isReceived ? '✓ ตรวจสอบแล้ว' : statusLabel[box.status] || box.status}
+      <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: isReceived ? '#6a9a3a' : isPendingApproval ? 'var(--accent)' : 'var(--mute)', marginBottom: 2 }}>
+        {isViewing ? '👁 กำลังดู'
+          : isPendingApproval ? '📥 พนักงานสแกนรับแล้ว · รออนุมัติเอกสาร'
+          : isReceived ? '✓ รับเข้าสาขาแล้ว'
+          : isActive ? 'ลังที่กำลังตรวจ'
+          : statusLabel[box.status] || box.status}
       </div>
       <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
       <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 3 }}>POS: {box.pos}</div>
@@ -69,6 +73,11 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
       {box.packer && (
         <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
           แพ็คโดย: {box.packer.name}
+        </div>
+      )}
+      {box.receivedBy && (
+        <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
+          รับโดย: {box.receivedBy.name}
         </div>
       )}
       <div className="row" style={{ marginTop: 10, gap: 6 }}>
@@ -81,7 +90,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
           style={{ marginTop: 10, width: '100%' }}
           onClick={(e) => { e.stopPropagation(); onApprove(); }}
         >
-          ✓ อนุมัติรับสินค้า
+          ✓ อนุมัติเอกสาร
         </button>
       )}
     </div>
@@ -117,14 +126,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const viewingBox     = viewingId ? boxes.find(b => b.id === viewingId) : null;
   const viewingItems   = viewingId ? (itemsByBox[viewingId] || []) : [];
 
-  const scannedBoxes = receiveBoxIds
-    .map(id => boxes.find(b => b.id === id))
-    .filter(Boolean)
-    .reverse();
-
-  const availableBoxes = boxes
-    .filter(b => (b.status === 'exported' || b.status === 'closed') && !receiveBoxIds.includes(b.id))
-    .sort((a, b) => (a.status === b.status ? 0 : a.status === 'exported' ? -1 : 1));
+  // ลังที่พนักงานหน้าร้านสแกนรับแล้ว (รออนุมัติ) หรือเคยเข้ารับใน session นี้ — pending ขึ้นก่อน
+  const approvalBoxes = boxes
+    .filter(b => b.receivePending || receiveBoxIds.includes(b.id))
+    .sort((a, b) => (a.receivePending ? 0 : 1) - (b.receivePending ? 0 : 1));
+  const pendingCount = boxes.filter(b => b.receivePending).length;
 
   useEffect(() => {
     if (phase === 'scan') setTimeout(() => inputRef.current?.focus(), 50);
@@ -187,10 +193,20 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
   function handleConfirm() {
     if (!foundBox) return;
-    setPendingApprovalBoxId(foundBox.id);
     const hasOver = boxItems.some(l => (scanCounts[l.sku] || 0) > (l.qty ?? l.got ?? 0));
-    setVerifyResult(!allChecked ? 'fail' : hasOver ? 'over' : 'ok');
+    const result = !allChecked ? 'fail' : hasOver ? 'over' : 'ok';
+    setVerifyResult(result);
     setViewingId(null);
+    // ผลถูกต้อง → ส่งให้หัวหน้าอนุมัติเอกสารที่ Desktop (persist บน box เพื่อ sync ข้ามเครื่อง)
+    if (result === 'ok') {
+      setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
+        ...b,
+        receivePending: true,
+        receivedBy: branchStaff || null,
+        updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+      } : b));
+    }
+    setPendingApprovalBoxId(foundBox.id);
     setPhase('result');
   }
 
@@ -198,7 +214,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     if (!targetBoxId) return;
     setBoxes(prev => prev.map(b =>
       b.id === targetBoxId
-        ? { ...b, status: 'received', updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) }
+        ? { ...b, status: 'received', receivePending: false, updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) }
         : b
     ));
     setPendingApprovalBoxId(null);
@@ -213,7 +229,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       setSupervisorCode('');
       setPhase('scan');
     }
-    showToast(`อนุมัติรับ ${targetBoxId} แล้ว ✓ · พร้อมสแกนลังถัดไป`, 'success');
+    showToast(`อนุมัติเอกสาร ${targetBoxId} แล้ว ✓ · รับเข้าสาขาเรียบร้อย`, 'success');
   }
 
   function handleRecheck() {
@@ -286,8 +302,8 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
         ) : (
           <div className="row">
             <span className="title" style={{ whiteSpace: 'nowrap' }}>📥 รับสินค้าเข้าสาขา</span>
-            {scannedBoxes.length > 0 && (
-              <span className="btn sm" style={{ marginLeft: 8, cursor: 'default', pointerEvents: 'none', whiteSpace: 'nowrap' }}>{scannedBoxes.length} ลัง</span>
+            {pendingCount > 0 && (
+              <span className="chip" style={{ marginLeft: 8, background: 'var(--accent-soft)', borderColor: 'var(--accent)', color: 'var(--accent)', whiteSpace: 'nowrap', fontWeight: 700 }}>{pendingCount} รออนุมัติ</span>
             )}
             <div className="spacer" />
             {phase === 'verify' && !isReceived && (
@@ -359,7 +375,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
         {/* LEFT: stacked box cards — desktop only */}
         {!isAndroid && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', maxHeight: 520 }}>
-            {scannedBoxes.length === 0 ? (
+            {approvalBoxes.length === 0 ? (
               <div style={{
                 padding: '18px 16px',
                 border: '2px dashed var(--line)', borderRadius: 14,
@@ -367,30 +383,21 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 color: 'var(--mute)', fontFamily: 'Patrick Hand', fontSize: 14,
               }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>📦</div>
-                <div>ยังไม่ได้เลือกลัง</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>เลือกลังจากรายการเพื่อเริ่มรับ</div>
+                <div>ยังไม่มีลังรออนุมัติ</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>ลังจะปรากฏเมื่อพนักงานหน้าร้านสแกนรับเสร็จ</div>
               </div>
             ) : (
-              scannedBoxes.map((box, i) => (
+              approvalBoxes.map((box) => (
                 <BoxCard
                   key={box.id}
                   box={box}
-                  isActive={i === 0 && !isViewingOther}
+                  isActive={false}
                   isViewing={box.id === viewingId}
-                  isPendingApproval={pendingApprovalBoxId === box.id}
+                  isPendingApproval={!!box.receivePending}
                   onApprove={() => handleApprove(box.id)}
                   onClick={() => setViewingId(prev => prev === box.id ? null : box.id)}
                 />
               ))
-            )}
-            {phase === 'verify' && !isReceived && (
-              <div style={{
-                padding: 12, border: '1.5px dashed var(--line)', borderRadius: 10,
-                fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', background: 'var(--paper-dark)',
-              }}>
-                <b>ถ้าสินค้าขาดหรือไม่ครบ</b><br />
-                กดปุ่ม "↩ ข้ามลัง" เพื่อแจ้งปัญหาและเลือกลังถัดไป
-              </div>
             )}
           </div>
         )}
@@ -509,8 +516,16 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               </div>
 
               {verifyResult === 'ok' ? (
-                <div className="row" style={{ gap: 10, justifyContent: 'flex-end' }}>
-                  <button className="btn primary lg" onClick={() => handleApprove(foundBox?.id)}>✓ อนุมัติ</button>
+                <div style={{
+                  border: '2px solid var(--accent)', borderRadius: 12, padding: '14px 16px',
+                  background: 'var(--accent-soft)', textAlign: 'center',
+                }}>
+                  <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>
+                    ✓ ส่งให้หัวหน้าอนุมัติเอกสารแล้ว
+                  </div>
+                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', marginTop: 4 }}>
+                    รออนุมัติเอกสารที่หน้าจอหัวหน้างาน · กด "+ รับลังถัดไป" เพื่อสแกนลังต่อไป
+                  </div>
                 </div>
               ) : (
                 <div style={{ border: `1.5px solid ${verifyResult === 'over' ? '#e67e22' : '#c0392b'}`, borderRadius: 10, padding: '14px 16px', background: verifyResult === 'over' ? '#fff3cd' : '#fde8e8' }}>
@@ -568,60 +583,20 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 )}
               </div>
             ) : (
-            <div>
-              <div className="row" style={{ marginBottom: 14, gap: 10 }}>
-                <b style={{ fontFamily: 'Caveat', fontSize: 24 }}>รายการลังที่พร้อมรับ</b>
-                <span className="chip info">{availableBoxes.length} ลัง</span>
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              gap: 10, minHeight: 360, textAlign: 'center', color: 'var(--mute)',
+              border: '2px dashed var(--line)', borderRadius: 16, background: 'var(--paper-dark)',
+            }}>
+              <div style={{ fontSize: 46 }}>📋</div>
+              <div style={{ fontFamily: 'Caveat', fontSize: 24, fontWeight: 700 }}>
+                {approvalBoxes.length > 0 ? 'เลือกลังทางซ้ายเพื่อดูรายละเอียด' : 'ยังไม่มีลังรออนุมัติ'}
               </div>
-              {availableBoxes.length === 0 ? (
-                <div style={{
-                  padding: '50px 20px',
-                  border: '2px dashed var(--line)', borderRadius: 14,
-                  background: 'var(--paper-dark)', textAlign: 'center', color: 'var(--mute)',
-                }}>
-                  <div style={{ fontSize: 42, marginBottom: 10 }}>📭</div>
-                  <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700 }}>ยังไม่มีลังที่พร้อมรับ</div>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginTop: 4 }}>ลังจะปรากฏที่นี่เมื่อคลังปิดลัง / อนุมัติส่งออกแล้ว</div>
-                </div>
-              ) : (
-                <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 460, overflowY: 'auto' }}>
-                  <table className="tbl" style={{ fontSize: 14 }}>
-                    <thead style={{ position: 'sticky', top: 0 }}>
-                      <tr>
-                        <th>Box ID</th>
-                        <th style={{ width: 90 }}>สถานะ</th>
-                        <th>พนักงานแพ็ค</th>
-                        <th style={{ width: 56, textAlign: 'center' }}>SKU</th>
-                        <th style={{ width: 56, textAlign: 'center' }}>ชิ้น</th>
-                        <th style={{ width: 96 }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {availableBoxes.map(box => (
-                        <tr key={box.id} style={{ cursor: 'pointer' }} onClick={() => startReceive(box)}>
-                          <td>
-                            <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
-                            <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)' }}>POS: {box.pos}</div>
-                          </td>
-                          <td>
-                            <span className="chip" style={box.status === 'exported'
-                              ? { background: '#96e096', borderColor: '#6fc06f' }
-                              : { background: '#b8d4f0', borderColor: '#8ab4e0' }}>
-                              {box.status === 'exported' ? 'อนุมัติแล้ว' : 'ปิดลังแล้ว'}
-                            </span>
-                          </td>
-                          <td style={{ fontFamily: 'Patrick Hand' }}>{box.packer?.name || '—'}</td>
-                          <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700 }}>{box.skuCount ?? 0}</td>
-                          <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700 }}>{box.totalQty ?? 0}</td>
-                          <td>
-                            <button className="btn sm primary" onClick={(e) => { e.stopPropagation(); startReceive(box); }}>รับลังนี้</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, maxWidth: 320 }}>
+                {approvalBoxes.length > 0
+                  ? 'คลิก card ลังเพื่อดูรายการสินค้า แล้วกด "อนุมัติเอกสาร" เพื่อยืนยันรับเข้าสาขา'
+                  : 'เมื่อพนักงานหน้าร้านสแกนรับสินค้าเสร็จที่แอป ลังจะมาขึ้นที่นี่ให้อนุมัติเอกสาร'}
+              </div>
             </div>
             )
           ) : (

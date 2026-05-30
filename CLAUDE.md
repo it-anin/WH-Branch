@@ -401,16 +401,21 @@ open → packing → closed → exported → received
 - ปุ่ม Export: **"⇩ Export รายการลังทั้งหมด"** (เดิม: Export ทั้งวัน)
 
 ## BranchReceive — Logic สำคัญ
-- **ต้องเลือกพนักงานก่อน** ถึงจะใช้หน้านี้ได้ — ถ้า `branchStaff === null` แสดง placeholder
+- **แยกหน้าที่ Android ↔ Desktop:**
+  - **Android (พนักงานหน้าร้าน):** สแกนบาร์โค้ดลัง → สแกนสินค้า (phase scan→verify) → กดยืนยันรับ (ผล `ok`) → ลัง `receivePending: true` (sync Firestore) → แสดง "ส่งให้หัวหน้าอนุมัติเอกสารแล้ว"
+  - **Desktop (หัวหน้างาน):** ไม่มีการสแกน — แสดง card ลังที่ `receivePending` (รออนุมัติ) ในแผงซ้าย, คลิก card → ดูตารางรายการสินค้า (read-only) ทางขวา, กดปุ่ม **✓ อนุมัติเอกสาร** บน card → status `received` + `receivePending: false`
+- **`receivePending`** (field บน box, sync ผ่าน `setBoxes` → Firestore `boxes/{id}`) — สะพานข้ามเครื่องระหว่าง Android (สแกนรับ) กับ Desktop (อนุมัติ) แทน `pendingApprovalBoxId` ที่เป็น local-only
+- **`receivedBy`** (field บน box) — พนักงานหน้าร้านที่สแกนรับ (`{code, name}`) แสดงใน BoxCard บรรทัด "รับโดย:"
+- **Desktop ไม่บังคับเลือกพนักงานก่อน** — แสดง card list ทันที, เลือกพนักงานผ่านปุ่ม dropdown `👤` ใน frame header (state `staffMenuOpen` + click-outside ปิดเมนู)
 - **Controlled mode (Android):** รับ `branchStaff` / `setBranchStaff` เป็น optional props จาก AndroidApp
-  - ถ้ามี props → ใช้ external state, ซ่อน staff selector row ใน header (`!isControlled`)
-  - ถ้าไม่มี props (Desktop) → ใช้ internal state ตามปกติ
+  - ถ้ามี props → ใช้ external state, ซ่อน staff dropdown ใน header (`!isControlled`)
+  - ถ้าไม่มี props (Desktop) → ใช้ internal state + ปุ่ม dropdown ใน header
 - **`BRANCH_STAFF`** (hardcoded ใน BranchReceive.jsx และ AndroidApp.jsx) — label selector: `"พนักงาน:"`:
   ```js
   [{ code: 'BR-01', name: 'ก้า' }, { code: 'BR-02', name: 'กิ๊ฟ' },
    { code: 'BR-03', name: 'นิคกี้' }, { code: 'BR-04', name: 'สุ่ย' }]
   ```
-- Phase: `scan` → `verify` → `result` (3 phases)
+- Phase: `scan` → `verify` → `result` (3 phases) — **ใช้บน Android เท่านั้น** (Desktop เป็น approval-only ไม่เข้า phase verify/result)
 - **`scanCounts`** = `{[sku]: number}` นับจำนวนชิ้นที่สแกนจริงต่อ SKU (ไม่ใช่ binary Set)
   - สแกน 1 ครั้ง = +1 ชิ้น
   - **ไม่มี upper limit** — สแกนเกิน qty ได้ (กรณีสินค้ามาเกิน) → บันทึกจำนวนจริงเสมอ
@@ -422,26 +427,23 @@ open → packing → closed → exported → received
 - **ตารางตรวจสอบสินค้า (phase verify):** แสดงคอลัมน์ SKU / ชื่อ / หน่วย / สแกนแล้ว
   - ไม่มีคอลัมน์ ✓ และไม่มีตัวเลขเปลี่ยนสีเมื่อครบ — ตัวเลขสีดำเสมอ (Blind)
   - **พนักงานสาขาไม่เห็นจำนวนที่ควรมีในลัง (`needed`)** — เห็นแค่จำนวนที่สแกนไปแล้ว (`count`)
-- **Phase `result`** (หลังกด ✓ ยืนยันรับสินค้า):
+- **Phase `result`** (Android — หลังกด ✓ ยืนยันรับสินค้า):
   - `verifyResult` = `'ok'` / `'over'` / `'fail'`
-    - `'ok'`: allChecked && !hasOver → badge **"สินค้าถูกต้อง"** (เขียว) + ปุ่ม **✓ อนุมัติ**
-    - `'over'`: allChecked && hasOver → badge **"สินค้าเกินจำนวน"** (ส้ม) + รหัสหัวหน้างาน + **🔄 รีเช็ค**
-    - `'fail'`: !allChecked → badge **"สินค้าไม่ถูกต้อง"** (แดง) + รหัสหัวหน้างาน + **🔄 รีเช็ค**
+    - `'ok'`: allChecked && !hasOver → `handleConfirm` ตั้ง `receivePending: true` บน box → แสดงกล่อง **"✓ ส่งให้หัวหน้าอนุมัติเอกสารแล้ว"** (ไม่มีปุ่มอนุมัติบน Android — อนุมัติที่ Desktop)
+    - `'over'`: allChecked && hasOver → badge **"สินค้าเกินจำนวน"** (ส้ม) + รหัสหัวหน้างาน + **🔄 รีเช็ค** (ไม่ persist)
+    - `'fail'`: !allChecked → badge **"สินค้าไม่ถูกต้อง"** (แดง) + รหัสหัวหน้างาน + **🔄 รีเช็ค** (ไม่ persist)
   - ตาราง result: `count > needed` → row สีเหลือง + วงกลม `!` สีส้ม + แสดง `count +N` (ส่วนเกิน)
-  - `isViewingOther` = `false` เสมอใน phase `result` (ไม่ override ด้วย viewingId)
-  - การ์ด active ใน phase `result` แสดง watermark **"รออนุมัติ"** กระพริบ มุมขวาบน (ไม่หมุน)
-- **badge จำนวนลัง** แสดง `scannedBoxes.length` (ไม่ใช่ `receiveBoxIds.length`) เพื่อป้องกันตัวเลขเกินจริงกรณี stale IDs
-- **`viewingId`** = local state สำหรับดูสินค้าในลังใดก็ได้จากแผงซ้าย (ใช้ได้เฉพาะ phase `scan` และ `verify`)
-  - `isViewingOther = viewingId !== null && phase !== 'result' && (phase === 'scan' || viewingId !== activeBoxId)`
-  - ปุ่ม "× ปิด" ใน read-only view → `setViewingId(null)` → กลับ panel ปกติ
-- **Re-scan fix:** `setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id])` — ย้ายลังที่สแกนซ้ำไปท้าย array เสมอ
-- **`handleScanNext`** (ปุ่ม "+ สแกนลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'`
-- ปุ่ม "+ สแกนลังถัดไป" แสดงเฉพาะ `phase === 'verify'` หรือ `phase === 'result'`
-- **`pendingApprovalBoxId`** (App.jsx state) — เก็บ box ID ที่รอการอนุมัติ คงอยู่เมื่อสลับ tab เพราะ App.jsx ไม่ unmount
-  - ตั้งค่าใน `handleConfirm` → `setPendingApprovalBoxId(foundBox.id)`
-  - ล้างใน `handleApprove` และ `handleRecheck` → `setPendingApprovalBoxId(null)`
-  - ส่งผ่าน `screenProps` เป็น prop ให้ BranchReceive
-- **BoxCard `isPendingApproval`**: `pendingApprovalBoxId === box.id` — watermark "รออนุมัติ" + ปุ่ม **✓ อนุมัติรับสินค้า** บน card โดยตรง
+- **Desktop layout (approval-only):**
+  - แผงซ้าย: `approvalBoxes` = boxes ที่ `receivePending` หรืออยู่ใน `receiveBoxIds` (pending ขึ้นก่อน) → BoxCard
+  - badge header: `pendingCount` = จำนวน box ที่ `receivePending` → chip "N รออนุมัติ"
+  - แผงขวา: คลิก card → `isViewingOther` true → ตารางรายการสินค้า read-only (เลขที่ลัง / SKU / ชื่อ / หน่วย / จำนวน); ไม่คลิก → placeholder
+- **`viewingId`** = local state สำหรับดูสินค้าในลังใดก็ได้จากแผงซ้าย
+  - `isViewingOther = viewingId !== null && phase !== 'result'` (Desktop phase = `scan` เสมอ → คลิกแล้วโชว์ detail)
+  - ปุ่ม "× ปิด" ใน read-only view → `setViewingId(null)` → กลับ placeholder
+- **Re-scan fix:** `setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id])` — ย้ายลังที่สแกนซ้ำไปท้าย array เสมอ (`startReceive`)
+- **`handleScanNext`** (ปุ่ม "+ รับลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'`
+- **`pendingApprovalBoxId`** (App.jsx state) — local-only, ใช้ track result phase บน Android เท่านั้น (ไม่ sync ข้ามเครื่อง — การข้ามเครื่องใช้ `box.receivePending` แทน)
+- **BoxCard `isPendingApproval`**: `box.receivePending` — label "📥 พนักงานสแกนรับแล้ว · รออนุมัติเอกสาร", watermark "รออนุมัติเอกสาร", ปุ่มสีส้ม **✓ อนุมัติเอกสาร** บน card → `handleApprove(box.id)`
 - **BoxCard selected state** (isActive / isViewing / isPendingApproval): ใช้ raised button style เหมือน Topbar tab active
   - `box-shadow: 3px 3px 0 var(--line)`, `transform: translate(-1px,-1px)`, พื้นหลัง `var(--accent-soft)`
   - การ์ดที่ไม่ถูกเลือก → `opacity: 0.65`
