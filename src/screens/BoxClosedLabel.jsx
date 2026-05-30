@@ -14,12 +14,18 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const [globalSearch, setGlobalSearch] = useState('');
   const [docNumber, setDocNumber] = useState('');
   const [outboundFilter, setOutboundFilter] = useState('all'); // all | pending | approved
+  const [packerFilter, setPackerFilter] = useState('all');     // all | packer.code
 
   // อนุมัติแล้ว = exported/received, รออนุมัติ = closed (ยังไม่ส่ง POS)
   const isApproved = (b) => b.status === 'exported' || b.status === 'received';
-  const pendingN = closedBoxes.filter(b => !isApproved(b)).length;
-  const approvedN = closedBoxes.filter(isApproved).length;
-  const visibleBoxes = closedBoxes
+  // รายชื่อพนักงานแพ็คที่มีลังจริง (unique by code)
+  const packers = [...new Map(closedBoxes.filter(b => b.packer?.code).map(b => [b.packer.code, b.packer])).values()]
+    .sort((a, b) => a.code.localeCompare(b.code));
+  // กรองตามพนักงานก่อน → ใช้คำนวณ count ของ filter สถานะ
+  const packerBoxes = closedBoxes.filter(b => packerFilter === 'all' || b.packer?.code === packerFilter);
+  const pendingN = packerBoxes.filter(b => !isApproved(b)).length;
+  const approvedN = packerBoxes.filter(isApproved).length;
+  const visibleBoxes = packerBoxes
     .filter(b =>
       outboundFilter === 'approved' ? isApproved(b)
       : outboundFilter === 'pending' ? !isApproved(b)
@@ -183,7 +189,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
         }}>
           <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
             {[
-              { k: 'all', label: 'ทั้งหมด', n: closedBoxes.length },
+              { k: 'all', label: 'ทั้งหมด', n: packerBoxes.length },
               { k: 'pending', label: 'รออนุมัติ', n: pendingN },
               { k: 'approved', label: 'อนุมัติแล้ว', n: approvedN },
             ].map(f => {
@@ -203,6 +209,27 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               );
             })}
           </div>
+          {packers.length > 0 && (
+            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: 'var(--mute)' }}>แพ็คโดย:</span>
+              {[{ code: 'all', name: 'ทุกคน' }, ...packers].map(p => {
+                const on = packerFilter === p.code;
+                return (
+                  <button
+                    key={p.code}
+                    onClick={() => setPackerFilter(p.code)}
+                    style={{
+                      padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
+                      border: `1.5px solid ${on ? 'var(--accent)' : 'var(--line)'}`,
+                      background: on ? 'var(--accent)' : 'white',
+                      color: on ? 'white' : 'var(--ink)',
+                      fontFamily: 'Patrick Hand', fontSize: 11, fontWeight: on ? 700 : 400,
+                    }}
+                  >{p.name}</button>
+                );
+              })}
+            </div>
+          )}
           {visibleBoxes.length === 0 && (
             <div style={{ gridColumn: '1 / -1', fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', textAlign: 'center', marginTop: 20 }}>
               {closedBoxes.length === 0 ? 'ยังไม่มีลังที่ปิด' : 'ไม่มีลังในกลุ่มนี้'}
