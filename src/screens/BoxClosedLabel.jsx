@@ -301,7 +301,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 </div>
               </div>
 
-              {/* ปุ่ม: ส่งออกไฟล์ Text · พิมพ์ใบปิดลัง */}
+              {/* ปุ่ม: ส่งออกไฟล์ Text */}
               <div className="row" style={{ marginTop: 14, gap: 10, flexWrap: 'wrap' }}>
                 <button
                   className="btn"
@@ -311,11 +311,6 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                     cursor: (activeBox.status === 'closed' || activeBox.status === 'exported') ? 'pointer' : 'not-allowed',
                   }}
                 >⇩ ส่งออกไฟล์ Text</button>
-                <button
-                  className="btn primary"
-                  onClick={handlePrint}
-                  style={{ opacity: activeBox.status === 'exported' ? 1 : 0.45, cursor: activeBox.status === 'exported' ? 'pointer' : 'not-allowed' }}
-                >🖨 พิมพ์ใบปิดลัง</button>
               </div>
 
               {/* เลขที่เอกสาร + อนุมัติเอกสาร (แถวเดียวกัน) — แสดงเฉพาะยังไม่ exported */}
@@ -335,6 +330,15 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   >อนุมัติเอกสาร</button>
                 </div>
               )}
+
+              {/* พิมพ์ใบปิดลัง — ด้านล่างช่องเลขที่เอกสาร (active เฉพาะ exported) */}
+              <div className="row" style={{ marginTop: 10 }}>
+                <button
+                  className="btn primary"
+                  onClick={handlePrint}
+                  style={{ opacity: activeBox.status === 'exported' ? 1 : 0.45, cursor: activeBox.status === 'exported' ? 'pointer' : 'not-allowed' }}
+                >🖨 พิมพ์ใบปิดลัง</button>
+              </div>
             </div>
 
           </div>
