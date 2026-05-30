@@ -454,16 +454,18 @@ open → packing → closed → exported → received
     - `'fail'`: !allChecked → badge **"สินค้าไม่ถูกต้อง"** (แดง) + รหัสหัวหน้างาน + **🔄 รีเช็ค** (ไม่ persist)
   - ตาราง result: `count > needed` → row สีเหลือง + วงกลม `!` สีส้ม + แสดง `count +N` (ส่วนเกิน)
 - **Desktop layout (approval-only):**
-  - แผงซ้าย: `approvalBoxes` = boxes ที่ `receivePending` หรืออยู่ใน `receiveBoxIds` (pending ขึ้นก่อน) → BoxCard
-  - badge header: `pendingCount` = จำนวน box ที่ `receivePending` (เคารพตัวกรองพนักงาน) → chip "N รออนุมัติ"
-  - แผงขวา: คลิก card → `isViewingOther` true → ตารางรายการสินค้า read-only (เลขที่ลัง / SKU / ชื่อ / หน่วย / จำนวน); ไม่คลิก → placeholder
+  - แผงซ้าย: `approvalBoxes` = boxes ที่ `receivePending`/`problemReported` หรืออยู่ใน `receiveBoxIds` — **grid 2 คอลัมน์** (`repeat(2,1fr)`, คอลัมน์ซ้าย 420px); sortRank: problem(0) > pending(1) > อื่น(2)
+  - badge header: chip "N รออนุมัติ" (`pendingCount`) + chip แดง "🔴 N แจ้งปัญหา" (`problemCount`) — เคารพตัวกรองพนักงาน
+  - แผงขวา: คลิก card → `isViewingOther` → ตารางรายการสินค้า read-only (เลขที่ลัง / SKU / ชื่อ / หน่วย / จำนวน); ไม่คลิก → placeholder
+  - **BoxCard:** field labels "เลขที่เอกสาร / เลขที่ลัง / แพ็คโดย / ตรวจสอบโดย"; คลิก (viewing) = `filter: brightness(0.9)` (เข้มขึ้น ไม่เปลี่ยนสีพื้น) ไม่มี watermark
+  - **statusLabel (เฉพาะหน้านี้):** `closed`→"รอคลังอนุมัติเอกสาร", `exported`→"รอผู้ช่วยตรวจสอบสินค้า", received→"เภสัชอนุมัติเอกสารแล้ว ✓"
   - **frame-header date:** prefix "รอบเบิก {วันที่}"
   - **ปุ่มเลือกพนักงาน (dropdown 🔽):** = **filter** ลังตามผู้ตรวจรับ (`box.receivedBy.code`) ไม่ใช่เลือกผู้รับ — `staffFilter = !isControlled && branchStaff?.code`; มีตัวเลือก "ทุกพนักงาน" ล้างตัวกรอง
   - **ช่องค้นหา (`itemSearch`):** ค้น SKU/ชื่อ ว่าอยู่ลังไหน — ค้นข้ามทุกลัง status `closed`/`exported`/`received`/`receivePending` (ไม่ผูกตัวกรองพนักงาน) → แผงขวาแสดงตารางผล (อยู่ลังที่ / SKU/ชื่อ / หน่วย / จำนวน) แทน detail; คลิกแถว → `setViewingId(boxId)` + ล้างค้นหา
   - **`searchQ` มี priority สูงสุด** ในแผงขวา (override isViewingOther/placeholder)
 - **Tab badge (App.jsx):** badge สีส้ม `#e8692b` บนปุ่ม tab เมื่อ count > 0
-  - `receive` → `boxes.filter(b => b.receivePending).length` (ลังรออนุมัติรับเข้าสาขา, นับรวมทุกพนักงาน)
-  - `closed` (Outbound) → `boxes.filter(b => b.status === 'closed').length` (ลังที่ปิดแล้วรออนุมัติเอกสาร/กรอกเลขที่เอกสาร → exported)
+  - `receive` → `receivePending` + `problemReported && !problemResolved` (นับรวมทุกพนักงาน)
+  - `closed` (Outbound) → `status === 'closed'` + `problemReviewed && !problemResolved`
 - **`viewingId`** = local state สำหรับดูสินค้าในลังใดก็ได้จากแผงซ้าย
   - `isViewingOther = viewingId !== null && phase !== 'result'` (Desktop phase = `scan` เสมอ → คลิกแล้วโชว์ detail)
   - ปุ่ม "× ปิด" ใน read-only view → `setViewingId(null)` → กลับ placeholder
