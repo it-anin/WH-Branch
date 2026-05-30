@@ -126,7 +126,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
             className="btn sm"
             style={{ marginLeft: 8, opacity: closedBoxes.length > 0 ? 1 : 0.45, cursor: closedBoxes.length > 0 ? 'pointer' : 'not-allowed', background: 'var(--accent)', color: 'white', border: '1.5px solid black' }}
             onClick={handleExportItems}
-          >⇩ Export Excel</button>
+          >⇩ ส่งออกรายการลังทั้งหมด</button>
         </div>
       </div>
 
