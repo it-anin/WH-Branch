@@ -198,9 +198,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 ไม่พบสินค้าในลังที่ปิดแล้ว
               </div>
             ) : (
-              <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white' }}>
+              <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', maxHeight: 450, overflowY: 'auto', background: 'white' }}>
                 <table className="tbl" style={{ fontSize: 14 }}>
-                  <thead>
+                  <thead style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th>ลัง</th>
                       <th>SKU / ชื่อสินค้า</th>
