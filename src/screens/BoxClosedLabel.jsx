@@ -150,7 +150,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: 480 }}>
       <div className="frame-header">
         <div className="row">
-          <span className="title">🎉 ปิดลังสำเร็จ</span>
+          <span className="title">เลขที่ลัง</span>
           {activeBox && !isSearching && <span className="chip ok" style={{ marginLeft: 10 }}>✓ {activeBox.id}</span>}
           <div className="spacer" />
           <input

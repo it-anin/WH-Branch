@@ -391,7 +391,7 @@ open → packing → closed → exported → received
 - Props: `catalogByPacker, boxes, itemsByBox, PACKERS, scanProgress`
 
 ## Outbound (BoxClosedLabel) — Logic สำคัญ
-- Tab label: **Outbound** (เดิม: Box & Label) — frame title: **"🎉 ปิดลังสำเร็จ"**
+- Tab label: **Outbound** (เดิม: Box & Label) — screen-label "รายการส่งสินค้า", frame title: **"เลขที่ลัง"**
 - Global search ข้ามทุก closed box (frame-header) → แผงขวาแสดงตารางผล (maxHeight 450, sticky header)
 - **Layout:** grid `340px 1fr`
   - ซ้าย = การ์ดลัง **grid 3 คอลัมน์** (`repeat(3,1fr)`) + **ปุ่ม filter** ด้านบน: ทั้งหมด / รออนุมัติ (`status closed`) / อนุมัติแล้ว (`exported`/`received`) — state `outboundFilter`, list = `visibleBoxes`

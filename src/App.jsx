@@ -625,7 +625,7 @@ export default function App() {
         {(showAll || tab === 'closed') && (
           <>
             <div className="screen-label" style={{ marginTop: 40 }}>
-              <span className="num">03</span> ปิดลังสำเร็จ + สติกเกอร์
+              <span className="num">03</span> รายการส่งสินค้า
               <span className="desc">— ออกเลข POS + บาร์โค้ดปิดลัง พร้อมพิมพ์</span>
             </div>
             <BoxClosedLabel {...screenProps} />
