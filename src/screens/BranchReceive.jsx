@@ -45,19 +45,6 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
         transition: 'all 0.1s',
       }}
     >
-      {isPendingApproval && (
-        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 14, pointerEvents: 'none' }}>
-          <div style={{
-            position: 'absolute', top: 8, right: 10,
-            fontFamily: 'Caveat', fontSize: 13, fontWeight: 700,
-            color: 'var(--accent)',
-            animation: 'blink 1s step-start infinite',
-            letterSpacing: 1,
-          }}>
-            รออนุมัติเอกสาร
-          </div>
-        </div>
-      )}
       {(() => {
         const label = isViewing ? ''
           : isPendingApproval ? ''
