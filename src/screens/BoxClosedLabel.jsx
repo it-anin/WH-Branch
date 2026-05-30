@@ -63,6 +63,10 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
   function handleSendPOS() {
     if (!activeBox) return;
+    if (!activeBox.textExported) {
+      showToast('⚠ กรุณากดส่งออกไฟล์ Text ก่อน', 'error');
+      return;
+    }
     if (!docNumber.trim()) {
       showToast('⚠ กรุณากรอกเลขที่เอกสาร', 'error');
       return;
@@ -326,23 +330,29 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 })()}
               </div>
 
-              {/* เลขที่เอกสาร + อนุมัติเอกสาร (แถวเดียวกัน) — แสดงเฉพาะยังไม่ exported */}
-              {activeBox.status !== 'exported' && (
-                <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
-                  <input
-                    className="input"
-                    placeholder="เลขที่เอกสาร…"
-                    style={{ flex: 1, minWidth: 150 }}
-                    value={docNumber}
-                    onChange={e => setDocNumber(e.target.value)}
-                  />
-                  <button
-                    className="btn primary"
-                    onClick={handleSendPOS}
-                    style={{ opacity: docNumber.trim() ? 1 : 0.45, cursor: docNumber.trim() ? 'pointer' : 'not-allowed' }}
-                  >อนุมัติเอกสาร</button>
-                </div>
-              )}
+              {/* เลขที่เอกสาร + อนุมัติเอกสาร — กรอกได้ต่อเมื่อส่งออกไฟล์ Text แล้ว (แสดงเฉพาะยังไม่ exported) */}
+              {activeBox.status !== 'exported' && (() => {
+                const textDone = !!activeBox.textExported;
+                const canApprove = textDone && docNumber.trim();
+                return (
+                  <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: 'wrap' }}>
+                    <input
+                      className="input"
+                      placeholder={textDone ? 'เลขที่เอกสาร…' : 'กดส่งออกไฟล์ Text ก่อน'}
+                      style={{ flex: 1, minWidth: 150, opacity: textDone ? 1 : 0.5, cursor: textDone ? 'text' : 'not-allowed' }}
+                      value={docNumber}
+                      onChange={e => setDocNumber(e.target.value)}
+                      disabled={!textDone}
+                    />
+                    <button
+                      className="btn primary"
+                      onClick={handleSendPOS}
+                      disabled={!canApprove}
+                      style={{ opacity: canApprove ? 1 : 0.45, cursor: canApprove ? 'pointer' : 'not-allowed' }}
+                    >อนุมัติเอกสาร</button>
+                  </div>
+                );
+              })()}
 
               {/* พิมพ์ใบปิดลัง — ด้านล่างช่องเลขที่เอกสาร (active เฉพาะ exported) */}
               <div className="row" style={{ marginTop: 10 }}>

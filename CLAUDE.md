@@ -406,9 +406,9 @@ open → packing → closed → exported → received
 - **อนุมัติเอกสาร:** ต้องกรอก **เลขที่เอกสาร** ก่อน → บันทึก `box.pos` + status → `exported`
 - ปุ่ม 🔥 ล้าง Firestore ทั้งหมด → เรียก `clearFirestore()` จาก App.jsx
 - **Tab badge:** ปุ่ม tab Outbound แสดง badge ส้มนับ `boxes.filter(b => b.status === 'closed').length` (ลังรออนุมัติเอกสาร)
-- **Flow การอนุมัติลัง:**
-  1. ⇩ ส่งออกไฟล์ Text — active เมื่อ `closed`/`exported` (กดได้ครั้งเดียวต่อลัง)
-  2. กรอกเลขที่เอกสาร + กด "อนุมัติเอกสาร" → status `exported` (แสดงเฉพาะยังไม่ exported)
+- **Flow การอนุมัติลัง (บังคับลำดับ):**
+  1. ⇩ ส่งออกไฟล์ Text — active เมื่อ `closed`/`exported` (กดได้ครั้งเดียวต่อลัง → set `textExported`)
+  2. **ช่องเลขที่เอกสาร disable จนกว่า `textExported === true`** (placeholder "กดส่งออกไฟล์ Text ก่อน") → กรอก + กด "อนุมัติเอกสาร" (ปุ่ม active เมื่อ textExported && มีเลขเอกสาร) → status `exported`
   3. 🖨 พิมพ์ใบปิดลัง — active เฉพาะหลัง `exported`
 
 ## BoxList — Logic สำคัญ
