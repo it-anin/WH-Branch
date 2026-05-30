@@ -235,56 +235,12 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
             )}
           </div>
         ) : activeBox ? (
-          <div style={{ padding: 20 }}>
-            <div className="hand" style={{ fontSize: 20, marginBottom: 8 }}>ตัวอย่างสติกเกอร์ติดลัง (90×65 mm)</div>
-            <div className="print-label" style={{
-              background: 'white', border: '2px solid var(--line)', borderRadius: 8,
-              padding: '14px 16px', fontFamily: 'JetBrains Mono',
-              width: 340, height: 245, boxSizing: 'border-box',
-              display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px dashed var(--line)', paddingBottom: 8 }}>
-                <div>
-                  <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700 }}>คลังสินค้า · WH-01</div>
-                  <div style={{ fontSize: 10, color: 'var(--mute)' }}>packed {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700 }}>{activeBox.id}</div>
-                  {activeBox.status === 'exported' && activeBox.pos && activeBox.pos !== '—' && (
-                    <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700 }}>เลขที่: {activeBox.pos}</div>
-                  )}
-                </div>
-              </div>
-              <div style={{ textAlign: 'center', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <SketchyBarcode value={activeBox.id} width={280} height={56} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, fontSize: 11, borderTop: '1px dashed var(--line)', paddingTop: 8 }}>
-                <div>SKU: <b>{activeBox.skuCount ?? 0}</b></div>
-                <div>ชิ้น: <b>{activeBox.totalQty ?? 0}</b></div>
-                {activeBox.packer && <div>โดย: <b>{activeBox.packer.name}</b></div>}
-              </div>
-            </div>
+          <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24, alignItems: 'start' }}>
 
-            {/* Step 1: ส่งออก + พิมพ์ — ส่งออก active เมื่อ closed/exported, พิมพ์ active เฉพาะ exported */}
-            <div className="row" style={{ marginTop: 14, gap: 10 }}>
-              <button
-                className="btn"
-                onClick={handleExportBarcode}
-                style={{
-                  opacity: (activeBox.status === 'closed' || activeBox.status === 'exported') ? 1 : 0.45,
-                  cursor: (activeBox.status === 'closed' || activeBox.status === 'exported') ? 'pointer' : 'not-allowed',
-                }}
-              >⇩ ส่งออกไฟล์ Text</button>
-              <button
-                className="btn primary"
-                onClick={handlePrint}
-                style={{ opacity: activeBox.status === 'exported' ? 1 : 0.45, cursor: activeBox.status === 'exported' ? 'pointer' : 'not-allowed' }}
-              >🖨 พิมพ์ใบปิดลัง</button>
-            </div>
-
-            <div style={{ marginTop: 18 }}>
+            {/* LEFT: รายชื่อสินค้าในลัง + เลขที่เอกสาร */}
+            <div>
               <div className="hand" style={{ fontSize: 20, marginBottom: 6 }}>รายชื่อสินค้าในลัง</div>
-              <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'hidden', maxHeight: 220, overflowY: 'auto', background: 'white' }}>
+              <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'hidden', maxHeight: 360, overflowY: 'auto', background: 'white' }}>
                 {boxItems.length > 0 ? (
                   <table className="tbl" style={{ fontSize: 13 }}>
                     <thead>
@@ -312,27 +268,74 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', padding: 10 }}>ไม่มีข้อมูลรายการสินค้า</div>
                 )}
               </div>
-            </div>
 
-            {/* Step 2: อนุมัติเอกสาร — แสดงเฉพาะยังไม่ exported */}
-            {activeBox.status !== 'exported' && (
-              <div className="row" style={{ marginTop: 14, gap: 8, flexWrap: 'wrap' }}>
+              {/* เลขที่เอกสาร — แสดงเฉพาะยังไม่ exported */}
+              {activeBox.status !== 'exported' && (
                 <input
                   className="input"
                   placeholder="เลขที่เอกสาร…"
-                  style={{ flex: 1, minWidth: 160 }}
+                  style={{ marginTop: 14, width: '100%' }}
                   value={docNumber}
                   onChange={e => setDocNumber(e.target.value)}
                 />
+              )}
+            </div>
+
+            {/* RIGHT: สติกเกอร์ + ปุ่ม */}
+            <div>
+              <div className="hand" style={{ fontSize: 20, marginBottom: 8 }}>ตัวอย่างสติกเกอร์ติดลัง (90×65 mm)</div>
+              <div className="print-label" style={{
+                background: 'white', border: '2px solid var(--line)', borderRadius: 8,
+                padding: '14px 16px', fontFamily: 'JetBrains Mono',
+                width: 340, height: 245, boxSizing: 'border-box',
+                display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px dashed var(--line)', paddingBottom: 8 }}>
+                  <div>
+                    <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700 }}>คลังสินค้า · WH-01</div>
+                    <div style={{ fontSize: 10, color: 'var(--mute)' }}>packed {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700 }}>{activeBox.id}</div>
+                    {activeBox.status === 'exported' && activeBox.pos && activeBox.pos !== '—' && (
+                      <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700 }}>เลขที่: {activeBox.pos}</div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <SketchyBarcode value={activeBox.id} width={280} height={56} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, fontSize: 11, borderTop: '1px dashed var(--line)', paddingTop: 8 }}>
+                  <div>SKU: <b>{activeBox.skuCount ?? 0}</b></div>
+                  <div>ชิ้น: <b>{activeBox.totalQty ?? 0}</b></div>
+                  {activeBox.packer && <div>โดย: <b>{activeBox.packer.name}</b></div>}
+                </div>
+              </div>
+
+              {/* ปุ่ม: ส่งออกไฟล์ Text · พิมพ์ใบปิดลัง · อนุมัติเอกสาร */}
+              <div className="row" style={{ marginTop: 14, gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  className="btn"
+                  onClick={handleExportBarcode}
+                  style={{
+                    opacity: (activeBox.status === 'closed' || activeBox.status === 'exported') ? 1 : 0.45,
+                    cursor: (activeBox.status === 'closed' || activeBox.status === 'exported') ? 'pointer' : 'not-allowed',
+                  }}
+                >⇩ ส่งออกไฟล์ Text</button>
                 <button
                   className="btn primary"
-                  onClick={handleSendPOS}
-                  style={{ opacity: docNumber.trim() ? 1 : 0.45, cursor: docNumber.trim() ? 'pointer' : 'not-allowed' }}
-                >
-                  อนุมัติเอกสาร
-                </button>
+                  onClick={handlePrint}
+                  style={{ opacity: activeBox.status === 'exported' ? 1 : 0.45, cursor: activeBox.status === 'exported' ? 'pointer' : 'not-allowed' }}
+                >🖨 พิมพ์ใบปิดลัง</button>
+                {activeBox.status !== 'exported' && (
+                  <button
+                    className="btn primary"
+                    onClick={handleSendPOS}
+                    style={{ opacity: docNumber.trim() ? 1 : 0.45, cursor: docNumber.trim() ? 'pointer' : 'not-allowed' }}
+                  >อนุมัติเอกสาร</button>
+                )}
               </div>
-            )}
+            </div>
 
           </div>
         ) : (
