@@ -276,8 +276,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
   function saveProblemNote() {
     if (!viewingId) return;
-    setBoxes(prev => prev.map(b => b.id === viewingId ? { ...b, problemNote } : b));
-    showToast('บันทึกรายละเอียดปัญหาแล้ว ✓', 'success');
+    // บันทึกรายละเอียด + ส่งต่อให้ Outbound แก้ไข (problemReviewed = gate ให้ badge ขึ้นที่ Outbound)
+    setBoxes(prev => prev.map(b => b.id === viewingId ? { ...b, problemNote, problemReviewed: true } : b));
+    showToast('บันทึกแล้ว ✓ · ส่งให้ Outbound แก้ไขสินค้า', 'success');
   }
 
   function handleConfirm() {
@@ -651,7 +652,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 <button className="btn" onClick={saveProblemNote} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>💾 บันทึกรายละเอียด</button>
               </div>
               <div style={{ marginTop: 12, padding: '10px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
-                แก้ไขจำนวนสินค้าจริงได้ที่หน้า <b>Outbound</b> → ลังนี้มี badge "แจ้งปัญหา" → ตาราง "แก้ไขสินค้าที่มีปัญหา"
+                กด <b>"บันทึกรายละเอียด"</b> ก่อน → ลังจะไปขึ้น badge "แจ้งปัญหา" ที่หน้า <b>Outbound</b> เพื่อแก้ไขจำนวนสินค้าจริง
               </div>
             </div>
           ) : isViewingOther ? (

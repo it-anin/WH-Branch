@@ -178,7 +178,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           )}
           {closedBoxes.map(b => {
             const active = b.id === selectedId && !isSearching;
-            const hasProblem = b.problemReported && !b.problemResolved;
+            const hasProblem = b.problemReviewed && !b.problemResolved;
             return (
               <button
                 key={b.id}
@@ -265,7 +265,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               </div>
             )}
           </div>
-        ) : activeBox && activeBox.problemReported && !activeBox.problemResolved ? (
+        ) : activeBox && activeBox.problemReviewed && !activeBox.problemResolved ? (
           <div style={{ padding: 20 }}>
             <div className="row" style={{ marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
               <b className="hand" style={{ fontSize: 22, color: 'var(--red)' }}>🔴 แก้ไขสินค้าที่มีปัญหา · {activeBox.id}</b>

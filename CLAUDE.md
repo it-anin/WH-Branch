@@ -314,7 +314,8 @@ open → packing → closed → exported → received
 | `textExported` | กดส่งออกไฟล์ Text (Outbound) | disable ปุ่มส่งออก Text กันส่งซ้ำ | clearBoxes (ลบ box) |
 | `receivePending` | Android กดยืนยันรับ (ผล ok) | Desktop receive แสดง card รออนุมัติ + tab badge | handleApprove (→ received) |
 | `receivedBy` | Android กดยืนยันรับ | BoxCard "ตรวจสอบโดย:" + staff filter (desktop) | — (คงไว้) |
-| `problemReported` / `problemResolved` | Android ยืนยันแจ้งปัญหา / Outbound กดแก้ไข-อนุมัติ | card กรอบแดง + ปุ่ม ตรวจสอบ/แก้ไขแล้ว, badge แดง | — (คงไว้เป็นประวัติ) |
+| `problemReported` / `problemResolved` | Android ยืนยันแจ้งปัญหา / Outbound กดแก้ไข-อนุมัติ | Desktop รับสินค้า: card กรอบแดง + ปุ่ม ตรวจสอบ/แก้ไขแล้ว | — (คงไว้เป็นประวัติ) |
+| `problemReviewed` | เภสัชกด "บันทึกรายละเอียด" (Desktop รับสินค้า) | gate ให้ Outbound ขึ้น badge + ตารางแก้ไข (ไม่ขึ้นทันทีตอน Android แจ้ง) | — |
 | `problemImage` | Android แนบรูป (ย่อ base64 JPEG ~800px) | Desktop ตรวจสอบ/Outbound แสดงรูปหลักฐาน | — |
 | `problemBy` / `problemAt` / `problemScanCounts` / `problemNote` | Android แจ้งปัญหา (+ หัวหน้าบันทึก note) | หาว่าสินค้าตัวไหนขาด (ตัวแดง) + รายละเอียด | — |
 
@@ -480,11 +481,12 @@ open → packing → closed → exported → received
 1. **Android (รับสินค้า, verify phase):** กด "⚠ แจ้งปัญหา" → แนบรูป (`compressImage` → base64) → "ยืนยันแจ้งปัญหา" (`handleReportProblem`)
    → set บน box: `problemReported`, `problemImage`, `problemBy`, `problemScanCounts` (snapshot จำนวนที่สแกนได้), `problemAt`
 2. **Desktop รับสินค้า:** card กรอบแดง + label "🔴 พบปัญหา · รอตรวจสอบ" + ปุ่มแดง "🔍 ตรวจสอบ" (`onInspect` → setViewingId)
-   → แผงขวา: ตารางรายการ (สินค้าขาด = แถวแดง, เทียบ `problemScanCounts` กับ qty) + รูปหลักฐาน + textarea "รายละเอียดปัญหาที่พบ" (`saveProblemNote` → `box.problemNote`)
-3. **Desktop Outbound:** card กรอบแดง + badge "🔴 แจ้งปัญหา" → คลิก → ตาราง **"แก้ไขสินค้าที่มีปัญหา"** (+/- จำนวน ผ่าน `adjustQty` → setItemsByBox) + แสดง note/รูป
+   → แผงขวา: ตารางรายการ (สินค้าขาด = แถวแดง, เทียบ `problemScanCounts` กับ qty) + รูปหลักฐาน + textarea "รายละเอียดปัญหาที่พบ"
+   → **กด "บันทึกรายละเอียด"** (`saveProblemNote`) = set `problemNote` + **`problemReviewed=true`** ← gate ส่งต่อให้ Outbound (Outbound จะยังไม่ขึ้น badge จนกว่าจะกดอันนี้)
+3. **Desktop Outbound:** card กรอบแดง + badge "🔴 แจ้งปัญหา" **เมื่อ `problemReviewed && !problemResolved`** → คลิก → ตาราง **"แก้ไขสินค้าที่มีปัญหา"** (+/- จำนวน ผ่าน `adjustQty` → setItemsByBox) + แสดง note/รูป
    → ปุ่มแดง **"✓ แก้ไข/อนุมัติ"** ใต้ตาราง (`resolveProblem`) → `problemResolved=true` + recompute skuCount/totalQty (ไม่ต้องผ่าน flow Text/เลขเอกสาร/พิมพ์)
 4. **กลับ Desktop รับสินค้า:** card → "✓ แก้ไขปัญหาแล้ว" + ปุ่ม "✓ แก้ไขแล้ว" (เขียว disabled)
-- **Tab badge** (receive + closed) รวม `problemReported && !problemResolved`; header รับสินค้ามี chip "🔴 N แจ้งปัญหา"
+- **Tab badge:** receive รวม `problemReported && !problemResolved`, Outbound (closed) รวม `problemReviewed && !problemResolved`; header รับสินค้ามี chip "🔴 N แจ้งปัญหา"
 - **ปุ่ม/label priority ใน BoxCard:** hasProblem > pending > problemFixed > received
 
 ## Toast Types
