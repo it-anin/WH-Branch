@@ -191,9 +191,25 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
 }
 
 export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, packer, onScanProgress, catalogMeta }) {
-  const [items, setItems] = useState(() =>
-    catalog.map(c => ({ sku: c.sku, barcode: c.barcode, name: c.name, unit: c.unit, need: c.qty, got: 0, location: c.location || '' }))
-  );
+  const [items, setItems] = useState(() => {
+    // หักจำนวนที่พนักงานคนนี้แพ็คไปแล้ว (จากลังที่ปิด/ส่งออก/รับแล้ว) เพื่อให้สินค้าที่ลงลังครบไม่โผล่ซ้ำหลัง remount/reload
+    const packed = {};
+    boxes.forEach(b => {
+      if (b.packer?.code !== packer?.code) return;
+      if (!(b.status === 'closed' || b.status === 'exported' || b.status === 'received')) return;
+      (itemsByBox[b.id] || []).forEach(it => {
+        const key = `${it.sku}__${it.unit}`;
+        packed[key] = (packed[key] || 0) + (it.qty ?? it.got ?? 0);
+      });
+    });
+    return catalog
+      .map(c => ({
+        sku: c.sku, barcode: c.barcode, name: c.name, unit: c.unit,
+        need: c.qty - (packed[`${c.sku}__${c.unit}`] || 0),
+        got: 0, location: c.location || '',
+      }))
+      .filter(it => it.need > 0);
+  });
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false); // Android: toggle ค้นหา
