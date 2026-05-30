@@ -243,16 +243,6 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setReportImage({ url: dataUrl || URL.createObjectURL(file), name: file.name });
   }
 
-  function handleSkip() {
-    showToast('แจ้งปัญหาแล้ว · สแกนลังใหม่', 'error');
-    setScanCounts({});
-    setQuery('');
-    setNotFound(false);
-    setPhase('scan');
-    setReportOpen(false);
-    setReportImage(null);
-  }
-
   // Android: ยืนยันแจ้งปัญหา → persist ลง box (sync ให้หัวหน้าตรวจที่ Desktop)
   function handleReportProblem() {
     if (!foundBox) return;
@@ -382,9 +372,6 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
             </div>
             {(phase === 'verify' || phase === 'result') && (
               <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                {phase === 'verify' && !isReceived && (
-                  <button className="btn sm primary" style={{ flex: 1 }} onClick={handleSkip}>↩ ข้ามลัง</button>
-                )}
                 <button className="btn sm primary" style={{ flex: 1 }} onClick={handleScanNext}>+ ลังถัดไป</button>
               </div>
             )}
@@ -399,9 +386,6 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               <span className="chip" style={{ marginLeft: 8, background: '#fde8e8', borderColor: 'var(--red)', color: 'var(--red)', whiteSpace: 'nowrap', fontWeight: 700 }}>🔴 {problemCount} แจ้งปัญหา</span>
             )}
             <div className="spacer" />
-            {phase === 'verify' && !isReceived && (
-              <button className="btn primary" onClick={handleSkip}>↩ ข้ามลัง · เลือกลังใหม่</button>
-            )}
             {(phase === 'verify' || phase === 'result') && (
               <button className="btn primary" style={{ marginLeft: 8 }} onClick={handleScanNext}>+ รับลังถัดไป</button>
             )}
@@ -861,7 +845,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   <div style={{ fontSize: 36, marginBottom: 10 }}>⚠️</div>
                   <div>ลังนี้ยังไม่มีข้อมูลรายการสินค้า</div>
                   <div style={{ fontSize: 13, marginTop: 6 }}>อาจยังไม่ผ่านการสแกนจากฝ่ายแพ็คกิ้ง</div>
-                  <button className="btn ghost" style={{ marginTop: 14 }} onClick={handleSkip}>↩ ข้ามลัง · สแกนลังใหม่</button>
+                  <button className="btn ghost" style={{ marginTop: 14 }} onClick={handleScanNext}>+ สแกนลังถัดไป</button>
                 </div>
               ) : (
                 <>
