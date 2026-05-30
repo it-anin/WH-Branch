@@ -12,7 +12,7 @@ const statusLabel = {
   open:     'เปิด',
   packing:  'กำลังแพ็ค',
   closed:   'รอคลังอนุมัติเอกสาร',
-  exported: 'รอตรวจสอบสินค้า',
+  exported: 'รอผู้ช่วยตรวจสอบสินค้า',
   received: 'รับสินค้าแล้ว',
 };
 
@@ -48,7 +48,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onCli
       {(() => {
         const label = isViewing ? ''
           : isPendingApproval ? ''
-          : isReceived ? 'อนุมัติเอกสารแล้ว ✓'
+          : isReceived ? 'เภสัชอนุมัติเอกสารแล้ว ✓'
           : isActive ? 'ลังที่กำลังตรวจ'
           : statusLabel[box.status] || box.status;
         return label ? (
