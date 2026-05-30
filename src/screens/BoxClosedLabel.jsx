@@ -19,11 +19,13 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const isApproved = (b) => b.status === 'exported' || b.status === 'received';
   const pendingN = closedBoxes.filter(b => !isApproved(b)).length;
   const approvedN = closedBoxes.filter(isApproved).length;
-  const visibleBoxes = closedBoxes.filter(b =>
-    outboundFilter === 'approved' ? isApproved(b)
-    : outboundFilter === 'pending' ? !isApproved(b)
-    : true
-  );
+  const visibleBoxes = closedBoxes
+    .filter(b =>
+      outboundFilter === 'approved' ? isApproved(b)
+      : outboundFilter === 'pending' ? !isApproved(b)
+      : true
+    )
+    .sort((a, b) => a.id.localeCompare(b.id)); // เรียงเลขที่ลังน้อย→มาก
 
   const activeBox = boxes.find(b => b.id === selectedId) || null;
   const boxItems = selectedId ? (itemsByBox?.[selectedId] || []) : [];
