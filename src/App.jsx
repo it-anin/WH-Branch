@@ -477,17 +477,19 @@ export default function App() {
         <h1>Warehouse - Inbound &amp; Outbound</h1>
         <div className="tabs">
           {TABS.map((t) => {
-            const pendingReceive = t.k === 'receive' ? boxes.filter(b => b.receivePending).length : 0;
+            const badgeCount = t.k === 'receive' ? boxes.filter(b => b.receivePending).length
+              : t.k === 'closed' ? boxes.filter(b => b.status === 'closed').length
+              : 0;
             return (
               <button key={t.k} className={`tab ${tab === t.k ? 'active' : ''}`} onClick={() => setTab(t.k)} style={{ position: 'relative' }}>
                 {t.label}
-                {pendingReceive > 0 && (
+                {badgeCount > 0 && (
                   <span style={{
                     marginLeft: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999,
                     background: '#e8692b', color: 'white', fontSize: 11, fontWeight: 700,
                     fontFamily: 'JetBrains Mono', verticalAlign: 'middle',
-                  }}>{pendingReceive}</span>
+                  }}>{badgeCount}</span>
                 )}
               </button>
             );

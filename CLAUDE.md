@@ -443,7 +443,9 @@ open → packing → closed → exported → received
   - **ปุ่มเลือกพนักงาน (dropdown 🔽):** = **filter** ลังตามผู้ตรวจรับ (`box.receivedBy.code`) ไม่ใช่เลือกผู้รับ — `staffFilter = !isControlled && branchStaff?.code`; มีตัวเลือก "ทุกพนักงาน" ล้างตัวกรอง
   - **ช่องค้นหา (`itemSearch`):** ค้น SKU/ชื่อ ว่าอยู่ลังไหน — ค้นข้ามทุกลัง status `closed`/`exported`/`received`/`receivePending` (ไม่ผูกตัวกรองพนักงาน) → แผงขวาแสดงตารางผล (อยู่ลังที่ / SKU/ชื่อ / หน่วย / จำนวน) แทน detail; คลิกแถว → `setViewingId(boxId)` + ล้างค้นหา
   - **`searchQ` มี priority สูงสุด** ในแผงขวา (override isViewingOther/placeholder)
-- **Tab badge (App.jsx):** ปุ่ม tab `📥 รับสินค้า (สาขา)` แสดง badge สีส้มนับ `boxes.filter(b => b.receivePending).length` (นับรวมทุกพนักงาน) เมื่อ > 0
+- **Tab badge (App.jsx):** badge สีส้ม `#e8692b` บนปุ่ม tab เมื่อ count > 0
+  - `receive` → `boxes.filter(b => b.receivePending).length` (ลังรออนุมัติรับเข้าสาขา, นับรวมทุกพนักงาน)
+  - `closed` (Outbound) → `boxes.filter(b => b.status === 'closed').length` (ลังที่ปิดแล้วรออนุมัติเอกสาร/กรอกเลขที่เอกสาร → exported)
 - **`viewingId`** = local state สำหรับดูสินค้าในลังใดก็ได้จากแผงซ้าย
   - `isViewingOther = viewingId !== null && phase !== 'result'` (Desktop phase = `scan` เสมอ → คลิกแล้วโชว์ detail)
   - ปุ่ม "× ปิด" ใน read-only view → `setViewingId(null)` → กลับ placeholder
