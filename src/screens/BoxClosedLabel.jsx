@@ -236,7 +236,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 )}
                 {hasProblem ? (
                   <span className="chip" style={{ fontSize: 9, padding: '1px 6px', background: 'var(--red)', borderColor: 'var(--red)', color: 'white', fontWeight: 700 }}>🔴 แจ้งปัญหา</span>
-                ) : b.status === 'exported' && b.pos && b.pos !== '—'
+                ) : isApproved(b)
                   ? <span className="chip ok" style={{ fontSize: 9, padding: '1px 6px' }}>อนุมัติแล้ว</span>
                   : <span className="chip" style={{ fontSize: 9, padding: '1px 6px' }}>รออนุมัติ</span>
                 }
