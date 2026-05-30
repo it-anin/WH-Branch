@@ -171,14 +171,14 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', minHeight: 460 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '440px 1fr', minHeight: 460 }}>
 
-        {/* LEFT: box list — grid 3 คอลัมน์ เพื่อให้เห็นหลายลังพร้อมกัน ลด scroll */}
+        {/* LEFT: box list — grid 3 คอลัมน์ การ์ดใหญ่ขึ้น */}
         <div style={{
           borderRight: '1.5px solid var(--line)',
           padding: '14px 10px',
-          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, alignContent: 'start',
-          overflowY: 'auto', maxHeight: 560,
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, alignContent: 'start',
+          overflowY: 'auto', maxHeight: 600,
           background: 'var(--paper-dark)',
         }}>
           <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
@@ -217,33 +217,33 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 onClick={() => { setSelectedId(b.id); setGlobalSearch(''); }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  padding: '8px 4px', gap: 3,
+                  padding: '12px 8px', gap: 5,
                   border: `2px solid ${hasProblem ? 'var(--red)' : active ? 'var(--accent)' : 'var(--line)'}`,
-                  borderRadius: 10,
+                  borderRadius: 12,
                   background: hasProblem ? '#fde8e8' : active ? 'var(--accent-soft)' : 'white',
                   cursor: 'pointer', transition: 'all 0.1s',
                 }}
               >
-                <div style={{ fontSize: 22 }}>📦</div>
-                <div style={{ fontFamily: 'Caveat', fontSize: 13, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--ink)', textAlign: 'center', lineHeight: 1.1 }}>
+                <div style={{ fontSize: 30 }}>📦</div>
+                <div style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--ink)', textAlign: 'center', lineHeight: 1.1 }}>
                   {b.id}
                 </div>
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 10, color: 'var(--mute)', textAlign: 'center' }}>
+                <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', textAlign: 'center' }}>
                   {b.skuCount ?? 0} SKU · {b.totalQty ?? 0} ชิ้น
                 </div>
                 {b.packer && (
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 10, color: 'var(--mute)', textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', textAlign: 'center' }}>
                     {b.packer.name}
                   </div>
                 )}
                 {hasProblem ? (
-                  <span className="chip" style={{ fontSize: 9, padding: '1px 6px', background: 'var(--red)', borderColor: 'var(--red)', color: 'white', fontWeight: 700 }}>🔴 แจ้งปัญหา</span>
+                  <span className="chip" style={{ fontSize: 10, padding: '2px 8px', background: 'var(--red)', borderColor: 'var(--red)', color: 'white', fontWeight: 700 }}>🔴 แจ้งปัญหา</span>
                 ) : isApproved(b)
-                  ? <span className="chip ok" style={{ fontSize: 9, padding: '1px 6px' }}>อนุมัติแล้ว</span>
-                  : <span className="chip" style={{ fontSize: 9, padding: '1px 6px' }}>รออนุมัติ</span>
+                  ? <span className="chip ok" style={{ fontSize: 10, padding: '2px 8px' }}>อนุมัติแล้ว</span>
+                  : <span className="chip" style={{ fontSize: 10, padding: '2px 8px' }}>รออนุมัติ</span>
                 }
                 {!hasProblem && b.status === 'exported' && b.pos && b.pos !== '—' && (
-                  <div className="mono" style={{ fontSize: 9, color: 'var(--accent)', marginTop: 1, textAlign: 'center', wordBreak: 'break-all' }}>{b.pos}</div>
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', marginTop: 1, textAlign: 'center', wordBreak: 'break-all' }}>{b.pos}</div>
                 )}
               </button>
             );
@@ -372,7 +372,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
             {/* LEFT: รายชื่อสินค้าในลัง */}
             <div>
               <div className="hand" style={{ fontSize: 20, marginBottom: 6 }}>รายชื่อสินค้าในลัง</div>
-              <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'hidden', maxHeight: 450, overflowY: 'auto', background: 'white' }}>
+              <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'hidden', maxHeight: 320, overflowY: 'auto', background: 'white' }}>
                 {boxItems.length > 0 ? (
                   <table className="tbl" style={{ fontSize: 13 }}>
                     <thead>
