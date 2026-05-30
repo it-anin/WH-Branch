@@ -400,14 +400,15 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
       {/* ── body: 2-col ── */}
       <div style={isAndroid
         ? { padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }
-        : { padding: 20, display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20 }
+        : { padding: 20, display: 'grid', gridTemplateColumns: '420px 1fr', gap: 20 }
       }>
 
-        {/* LEFT: stacked box cards — desktop only */}
+        {/* LEFT: box cards — desktop only, grid 2 คอลัมน์ */}
         {!isAndroid && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', maxHeight: 520 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, alignContent: 'start', overflowY: 'auto', maxHeight: 520 }}>
             {approvalBoxes.length === 0 ? (
               <div style={{
+                gridColumn: '1 / -1',
                 padding: '18px 16px',
                 border: '2px dashed var(--line)', borderRadius: 14,
                 background: 'var(--paper-dark)', textAlign: 'center',
