@@ -347,7 +347,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                     <button
                       className="btn primary"
                       onClick={handleSendPOS}
-                      style={{ opacity: canApprove ? 1 : 0.6, cursor: 'pointer' }}
+                      style={{ opacity: canApprove ? 1 : 0.45, cursor: canApprove ? 'pointer' : 'not-allowed' }}
                     >อนุมัติเอกสาร</button>
                   </div>
                 );
