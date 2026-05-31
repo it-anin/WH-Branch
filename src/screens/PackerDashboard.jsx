@@ -12,12 +12,27 @@ const extractZone = (loc) => {
 const ZONES_ORDER = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
 const ZONE_AISLE = { A: 0, B: 0, C: 1, D: 1, E: 2, F: 2, G: 3, H: 3, I: 4, J: 4, K: 5 };
 const ZONE_LEVELS = { A: 5 }; // ที่เหลือ 7 ชั้น
+// โซนนอกอาคาร (พื้นที่กว้าง) — เดินออกประตูไปถึง
+const OUTSIDE_ZONES = ['L', 'M', 'N', 'S', 'COOL'];
+const OUTSIDE_SET = new Set(OUTSIDE_ZONES);
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
 
 function buildLayout(w, H, nPackers) {
   const pad = 14;
   const shelfTop = 24;
-  const mainAisleY = H - 28;
-  const shelfH = mainAisleY - 16 - shelfTop;
+  const roomBottom = Math.round(H * 0.6);   // ผนังล่างของห้องคลัง
+  const mainAisleY = roomBottom - 20;       // ทางเดินหลัก (ในห้อง)
+  const shelfH = mainAisleY - 14 - shelfTop;
+  const doorX = w / 2;
 
   const segs = [
     { t: 's', z: 'A' }, { t: 'a', id: 0 },
@@ -47,11 +62,46 @@ function buildLayout(w, H, nPackers) {
     standPos[z] = { x: ax + (r.x < ax ? -6 : 6), y: shelfTop + shelfH * 0.52 };
   });
 
+  // ── นอกอาคาร: โซน L, M, N, S, COOL (พื้นที่กว้าง) ──
+  const areaRects = {};
+  const oy = roomBottom + 18;
+  const oh = H - oy - 12;
+  const ogap = 12;
+  const ow = (avail - ogap * (OUTSIDE_ZONES.length - 1)) / OUTSIDE_ZONES.length;
+  OUTSIDE_ZONES.forEach((z, i) => {
+    const ox = pad + i * (ow + ogap);
+    areaRects[z] = { x: ox, y: oy, w: ow, h: oh };
+    standPos[z] = { x: ox + ow / 2, y: oy + oh * 0.58 };
+  });
+
   const home = [];
   for (let i = 0; i < nPackers; i++) {
     home.push({ x: pad + 40 + i * ((avail - 80) / Math.max(1, nPackers - 1)), y: mainAisleY });
   }
-  return { shelfRects, standPos, aisleX, mainAisleY, shelfTop, shelfH, home, door: w / 2 };
+  return { shelfRects, areaRects, standPos, aisleX, mainAisleY, shelfTop, shelfH, roomBottom, doorX, home };
+}
+
+function drawArea(ctx, z, r, active) {
+  const cold = z === 'COOL';
+  ctx.fillStyle = active ? (cold ? '#bcd6e2' : '#d2dcc0') : '#d2cdbd';
+  roundRect(ctx, r.x, r.y, r.w, r.h, 8); ctx.fill();
+  ctx.strokeStyle = active ? (cold ? '#6f9fb2' : '#93a974') : '#b3ab95';
+  ctx.lineWidth = 2; roundRect(ctx, r.x, r.y, r.w, r.h, 8); ctx.stroke();
+  // พาเลท/กล่องวางพื้น
+  const bw = 13, gap = 5;
+  const cols = Math.max(1, Math.floor((r.w - 16) / (bw + gap)));
+  for (let i = 0; i < cols * 2; i++) {
+    const cx = r.x + 10 + (i % cols) * (bw + gap);
+    const cy = r.y + r.h - 24 - Math.floor(i / cols) * (bw + gap);
+    ctx.fillStyle = cold ? '#9fc2d0' : '#c6b083';
+    ctx.fillRect(cx, cy, bw, bw);
+  }
+  // ป้ายโซน
+  ctx.fillStyle = '#2a3530';
+  ctx.font = 'bold 14px "JetBrains Mono", monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(z, r.x + r.w / 2, r.y + 15);
+  ctx.textBaseline = 'alphabetic';
 }
 
 function drawShelf(ctx, z, r, active) {
@@ -128,19 +178,28 @@ function drawChar(ctx, ch) {
 }
 
 function renderScene(ctx, L, chars, zonesInData, w, H) {
-  // พื้น
-  ctx.fillStyle = '#efe9dd'; ctx.fillRect(0, 0, w, H);
-  // ทางเดินหลัก (ล่าง)
-  ctx.fillStyle = '#e3dccb'; ctx.fillRect(0, L.mainAisleY - 16, w, H - (L.mainAisleY - 16));
+  const rb = L.roomBottom, dx = L.doorX;
+  // พื้นนอกอาคาร (ลานกว้าง)
+  ctx.fillStyle = '#d7d2c4'; ctx.fillRect(0, 0, w, H);
+  // ห้องคลัง
+  ctx.fillStyle = '#efe9dd'; ctx.fillRect(8, 8, w - 16, rb - 8);
+  // ทางเดินหลัก (ในห้อง)
+  ctx.fillStyle = '#e3dccb'; ctx.fillRect(10, L.mainAisleY - 14, w - 20, (rb - 10) - (L.mainAisleY - 14));
   ctx.fillStyle = 'rgba(120,100,70,0.45)';
-  ctx.font = '11px "Patrick Hand", sans-serif'; ctx.textAlign = 'right';
-  ctx.fillText('ทางเดินหลัก', w - 10, H - 8);
-  // ประตู (กลาง)
-  ctx.fillStyle = '#cdbf9e'; ctx.fillRect(L.door - 26, H - 6, 52, 6);
+  ctx.font = '11px "Patrick Hand", sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('ทางเดินหลัก', 16, L.mainAisleY - 17);
+  // ผนังห้อง
+  ctx.strokeStyle = '#b6ad97'; ctx.lineWidth = 4; ctx.strokeRect(8, 8, w - 16, rb - 8);
+  // ประตู (ช่องเปิดในผนังล่าง)
+  ctx.fillStyle = '#d7d2c4'; ctx.fillRect(dx - 26, rb - 10, 52, 16);
   ctx.strokeStyle = '#a89472'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(L.door - 26, H - 6, 30, -Math.PI / 2, 0); ctx.stroke();
-  // ชั้นวาง
+  ctx.beginPath(); ctx.arc(dx - 26, rb + 2, 30, -Math.PI / 2, 0); ctx.stroke();
+  // ชั้นวางในห้อง A–K
   Object.entries(L.shelfRects).forEach(([z, r]) => drawShelf(ctx, z, r, zonesInData.has(z)));
+  // โซนนอกอาคาร L, M, N, S, COOL
+  Object.entries(L.areaRects).forEach(([z, r]) => drawArea(ctx, z, r, zonesInData.has(z)));
+  ctx.fillStyle = 'rgba(70,70,60,0.5)'; ctx.font = '11px "Patrick Hand", sans-serif';
+  ctx.textAlign = 'right'; ctx.fillText('พื้นที่นอกอาคาร', w - 12, rb + 14);
   // ตัวละคร (เรียงตาม y)
   [...chars].sort((a, b) => a.y - b.y).forEach(ch => drawChar(ctx, ch));
 }
@@ -150,7 +209,7 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const [w, setW] = useState(900);
-  const H = 340;
+  const H = 430;
 
   const skuZone = {};
   Object.values(catalogByPacker).forEach(items => items.forEach(it => {
@@ -227,7 +286,7 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
     const loop = (t) => {
       const dt = Math.min(50, t - t0); t0 = t;
       const chars = charsRef.current;
-      const { standPos, mainAisleY, home } = layoutRef.current;
+        const { standPos, mainAisleY, home, roomBottom, doorX } = layoutRef.current;
 
       const now = performance.now();
       const pz = dataRef.current.packerZones || {};
@@ -240,8 +299,20 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
         if (want !== ch.cur) {
           ch.cur = want;
           const dest = want === 'home' ? { x: (home[i] || { x: w / 2 }).x, y: mainAisleY } : standPos[want];
-          // เดินตามทางเดิน: ลงทางเดินหลัก → แนวนอน → ขึ้นทางเดินย่อย
-          ch.wp = [{ x: ch.x, y: mainAisleY }, { x: dest.x, y: mainAisleY }, { x: dest.x, y: dest.y }];
+          const curOutside = ch.y > roomBottom;
+          const destOutside = want !== 'home' && OUTSIDE_SET.has(want);
+          const wp = [];
+          // ออกจากนอกอาคาร → กลับเข้าประตูก่อน
+          if (curOutside) { wp.push({ x: doorX, y: ch.y }, { x: doorX, y: mainAisleY }); }
+          else { wp.push({ x: ch.x, y: mainAisleY }); }
+          if (destOutside) {
+            // เดินไปประตู → ออกนอก → ถึงโซน
+            wp.push({ x: doorX, y: mainAisleY }, { x: doorX, y: roomBottom + 18 }, { x: dest.x, y: dest.y });
+          } else {
+            // ในห้อง: แนวนอนตามทางเดินหลัก → ขึ้นทางเดินย่อย
+            wp.push({ x: dest.x, y: mainAisleY }, { x: dest.x, y: dest.y });
+          }
+          ch.wp = wp;
         }
         if (ch.wp.length) {
           const tp = ch.wp[0];
