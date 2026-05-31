@@ -5,6 +5,11 @@
 
 **กฎสำคัญ:** เมื่อเพิ่มฟีเจอร์หรือแก้ไขโค้ด ต้องตรวจสอบให้ครอบคลุมกับโค้ดปัจจุบันทั้งหมด — ไม่ใช่แค่ไฟล์ที่แก้ไข แต่รวมถึง state, props, Firestore collections, และ screen ที่เกี่ยวข้องด้วย
 
+**🔒 กฎ Flow หลัก (สถานะ: พอใจแล้ว — ห้ามแก้โดยไม่แจ้ง):**
+Flow **สแกนลงลัง (PackScanC) → ส่งออก/อนุมัติเอกสาร (BoxClosedLabel/Outbound) → รับสินค้าเข้าสาขา (BranchReceive)** ถือว่าเสถียรและใช้งานจริงแล้ว
+- **ถ้าการแก้ไขใด ๆ จะกระทบ flow นี้** (เช่น `createNewBox`, `doClose`, box status flow, `handleScanProgress`, `receivePending`/`problemReported`/`textExported`, การยืนยันรับ/อนุมัติ) → **ต้องแจ้งผู้ใช้ก่อนเสมอ** อธิบายผลกระทบ แล้วรอยืนยันก่อนลงมือ
+- งาน UI/คอสเมติก หรือฟีเจอร์เสริม (เช่น Dashboard ตัวการ์ตูน) ที่ **ไม่แตะ** logic flow → แก้ได้ตามปกติ
+
 ## Project Overview
 Warehouse Management System สำหรับ Anin (anin.co.th)
 ใช้ระบบสแกนบาร์โค้ด → แพ็คสินค้าลงลัง → ปิดลัง → ส่งเข้า POS (manual)
@@ -391,6 +396,15 @@ open → packing → closed → exported → received
 - `totalGot` = closed boxes (จาก `itemsByBox`) + in-progress (จาก `scanProgress`) ต่อ packer
 - `scanProgress` ข้าม-reference กับ `boxes` เพื่อหา packer ของแต่ละ in-progress box
 - Props: `catalogByPacker, boxes, itemsByBox, PACKERS, scanProgress`
+
+### WarehouseScene — มุมมองคลังจำลอง 8-bit (prototype, อ่านอย่างเดียว ไม่แตะ flow)
+- **เป้าหมาย:** วิช่วลไลซ์เรียลไทม์ — ตัวการ์ตูน 8-bit ต่อพนักงาน เดินไปโซนที่ "เพิ่งสแกน" ตามผังคลังจริง วาดด้วย `<canvas>` ล้วน (ไม่ใช้ไฟล์อาร์ต) ใน `PackerDashboard.jsx`
+- **เป็นแค่การแสดงผล** อ่านจาก `scanProgress` + `catalogByPacker` (location) — **ไม่เขียน Firestore, ไม่แตะ flow สแกน/รับสินค้า**
+- **ผังจริง (hardcoded):** A ชิดผนังซ้าย (5 ชั้น) · คู่ B-C/D-E/F-G/H-I/J-K หลังชนกัน (7 ชั้น) · ทางเดินหลักล่าง · ประตูกลาง — `ZONE_AISLE` map โซน→ทางเดิน, `buildLayout()` คำนวณตำแหน่ง
+- **โซน = ตัวอักษรหน้า location** (`extractZone`, location ขึ้นต้น A–K) · ตัวที่เข้าซ้าย/ขวาของคู่ตามจริง
+- **เดิน L-path:** ลงทางเดินหลัก → แนวนอน → ขึ้นทางเดินย่อย (ไม่ทะลุชั้น); ไม่มีงาน 5 วิ → กลับบ้าน (ทางเดินหลัก)
+- **ตรวจจับการหยิบ:** เทียบ `scanProgress` กับ `prevProgRef` — **ลังที่เพิ่งโผล่ = ตั้ง baseline เงียบ ๆ ไม่อนิเมท** (กันบั๊กลังค้างทำให้เดินผิดคน), อนิเมทเฉพาะ `got` เพิ่มของลังที่ track อยู่แล้ว → match `box.packer.code` → ตัวละครคนนั้น
+- **ยังเป็น prototype:** ตัวละครวาดเอง, ตำแหน่งยืน = กลางชั้น (ยังไม่อิงแถว/ชั้นจริง) — เฟสต่อไป: sprite อาร์ต + ตำแหน่งตาม location ละเอียด
 
 ## Outbound (BoxClosedLabel) — Logic สำคัญ
 - Tab label: **Outbound** (เดิม: Box & Label) — screen-label "รายการส่งสินค้า", frame title: **"เลขที่ลัง"**
