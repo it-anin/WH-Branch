@@ -428,7 +428,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           </>
         ) : (
           <div className="row">
-            <span className="title" style={{ whiteSpace: 'nowrap' }}>📥 รับสินค้าเข้าสาขา</span>
+            <span className="title" style={{ whiteSpace: 'nowrap' }}>📥 รายการของเข้า</span>
             {pendingCount > 0 && (
               <span className="chip" style={{ marginLeft: 8, background: 'var(--accent-soft)', borderColor: 'var(--accent)', color: 'var(--accent)', whiteSpace: 'nowrap', fontWeight: 700 }}>{pendingCount} รออนุมัติ</span>
             )}
