@@ -5,18 +5,18 @@ import SketchyBarcode from '../components/SketchyBarcode.jsx';
 // สถานะลังฝั่งรับสินค้า (สาขา) — แสดงเป็น badge ใน card
 function receiveBadge(b) {
   if (b.status === 'received')
-    return { label: 'รับเข้าสาขาแล้ว', bg: '#ede0f7', border: '#b794e0', color: '#7a4fb0' };
+    return { label: 'สาขา: รับสินค้าแล้ว', bg: '#ede0f7', border: '#b794e0', color: '#7a4fb0' };
   if (b.problemReported && !b.problemResolved)
     return b.problemType === 'incomplete'
-      ? { label: 'รอรีเช็ค', bg: '#fff3cd', border: '#e67e22', color: '#b86000' }
-      : { label: 'รอตรวจสอบ', bg: '#fde8e8', border: 'var(--red)', color: '#c0392b' };
+      ? { label: 'สาขา: รอรีเช็ค', bg: '#fff3cd', border: '#e67e22', color: '#b86000' }
+      : { label: 'สาขา: รอตรวจสอบ', bg: '#fde8e8', border: 'var(--red)', color: '#c0392b' };
   if (b.problemReported && b.problemResolved)
-    return { label: 'แก้ไขแล้ว · รออนุมัติ', bg: '#e8f0d8', border: 'var(--green)', color: '#5a8a2a' };
+    return { label: 'สาขา: แก้ไขแล้ว · รออนุมัติ', bg: '#e8f0d8', border: 'var(--green)', color: '#5a8a2a' };
   if (b.receivePending)
-    return { label: 'รอเภสัชอนุมัติ', bg: 'var(--accent-soft)', border: 'var(--accent)', color: 'var(--accent)' };
+    return { label: 'สาขา: รอเภสัชอนุมัติ', bg: 'var(--accent-soft)', border: 'var(--accent)', color: 'var(--accent)' };
   if (b.receivingBy)
-    return { label: 'กำลังตรวจ', bg: '#fff3cd', border: '#e0a800', color: '#9a7a00' };
-  return { label: 'ยังไม่รับ', bg: '#f0ede8', border: 'var(--line)', color: 'var(--mute)' };
+    return { label: 'สาขา: กำลังตรวจ', bg: '#fff3cd', border: '#e0a800', color: '#9a7a00' };
+  return { label: 'สาขา: ยังไม่รับ', bg: '#f0ede8', border: 'var(--line)', color: 'var(--mute)' };
 }
 
 export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, costMap = {} }) {
@@ -272,6 +272,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 <div style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--ink)', textAlign: 'center', lineHeight: 1.1 }}>
                   {b.id}
                 </div>
+                {b.pos && b.pos !== '—' && (
+                  <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', textAlign: 'center', wordBreak: 'break-all' }}>{b.pos}</div>
+                )}
                 <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', textAlign: 'center' }}>
                   {b.skuCount ?? 0} SKU · {b.totalQty ?? 0} ชิ้น
                 </div>
@@ -281,14 +284,11 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   </div>
                 )}
                 {hasProblem ? (
-                  <span className="chip" style={{ fontSize: 10, padding: '2px 8px', background: 'var(--red)', borderColor: 'var(--red)', color: 'white', fontWeight: 700 }}>🔴 แจ้งปัญหา</span>
+                  <span className="chip" style={{ fontSize: 10, padding: '2px 8px', background: 'var(--red)', borderColor: 'var(--red)', color: 'white', fontWeight: 700 }}>คลัง: แจ้งปัญหา</span>
                 ) : isApproved(b)
-                  ? <span className="chip ok" style={{ fontSize: 10, padding: '2px 8px' }}>อนุมัติแล้ว</span>
-                  : <span className="chip" style={{ fontSize: 10, padding: '2px 8px' }}>รออนุมัติ</span>
+                  ? <span className="chip ok" style={{ fontSize: 10, padding: '2px 8px' }}>คลัง: อนุมัติแล้ว</span>
+                  : <span className="chip" style={{ fontSize: 10, padding: '2px 8px' }}>คลัง: รออนุมัติ</span>
                 }
-                {!hasProblem && b.status === 'exported' && b.pos && b.pos !== '—' && (
-                  <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', marginTop: 1, textAlign: 'center', wordBreak: 'break-all' }}>{b.pos}</div>
-                )}
                 {(() => {
                   const rb = receiveBadge(b);
                   return (
