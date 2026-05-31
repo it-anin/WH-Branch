@@ -129,52 +129,70 @@ function drawShelf(ctx, z, r, active) {
   ctx.textBaseline = 'alphabetic';
 }
 
+// ตัวการ์ตูนสไตล์ Gather.town (Classic) — pixel avatar หัวโต มีเส้นขอบ
+const GT_OUTLINE = '#2e2b3d', GT_SKIN = '#f4cfa6', GT_PANTS = '#3a4a63', GT_SHOE = '#5a4636', GT_HAIR = '#6b4a2a';
 function drawChar(ctx, ch) {
-  const s = 3, x = Math.round(ch.x), y = Math.round(ch.y);
-  const moving = ch.frame % 2 === 1;
-  const bob = moving ? -1 : 0;
-  const skin = '#f4cfa6', dark = '#33312e';
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.beginPath(); ctx.ellipse(x, y + 2, 11, 4, 0, 0, Math.PI * 2); ctx.fill();
-  const top = y - 13 * s + bob;
-  // ขา (สลับยาว/สั้นตอนเดิน)
-  ctx.fillStyle = dark;
-  const lo = moving ? 2 : 0;
-  ctx.fillRect(x - 2.2 * s, top + 9 * s, 2 * s, 4 * s - lo);
-  ctx.fillRect(x + 0.2 * s, top + 9 * s, 2 * s, 4 * s + lo - (moving ? 0 : 0));
-  // ลำตัว
-  ctx.fillStyle = ch.color;
-  ctx.fillRect(x - 3 * s, top + 4.5 * s, 6 * s, 5 * s);
+  const S = 2.4, x = Math.round(ch.x), y = Math.round(ch.y);
+  const step = ch.frame % 2 === 1;
+  const bob = step ? 0.4 : 0;
+  const liftL = ch.frame === 1 ? 0.9 : 0;
+  const liftR = ch.frame === 3 ? 0.9 : 0;
+  const headTop = -17 * S;
+
+  ctx.save();
+  ctx.translate(x, y - bob * S);
+
+  const blk = (bx, by, bw, bh, fill) => {
+    bx = Math.round(bx); by = Math.round(by); bw = Math.round(bw); bh = Math.round(bh);
+    ctx.fillStyle = GT_OUTLINE; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+    ctx.fillStyle = fill; ctx.fillRect(bx, by, bw, bh);
+  };
+  const ub = (xl, base, w, h, fill) => blk(xl * S, -(base + h) * S, w * S, h * S, fill);
+
+  // เงา
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.beginPath(); ctx.ellipse(0, bob * S + 2, 5 * S, 1.5 * S, 0, 0, Math.PI * 2); ctx.fill();
+  // ขา + รองเท้า (สลับก้าว)
+  ub(-3, 0 + liftL, 2, 1, GT_SHOE); ub(-3, 1 + liftL, 2, 3 - liftL, GT_PANTS);
+  ub(1, 0 + liftR, 2, 1, GT_SHOE); ub(1, 1 + liftR, 2, 3 - liftR, GT_PANTS);
+  // ลำตัว (เสื้อ = สีพนักงาน)
+  ub(-4, 4, 8, 6, ch.color);
   // แขน
-  ctx.fillStyle = skin;
-  ctx.fillRect(x - 4 * s, top + 5 * s, 1 * s, 4 * s);
-  ctx.fillRect(x + 3 * s, top + 5 * s, 1 * s, 4 * s);
+  ub(-5.4, 5, 1.6, 4.2, GT_SKIN); ub(3.8, 5, 1.6, 4.2, GT_SKIN);
   // หัว
-  ctx.fillStyle = skin;
-  ctx.fillRect(x - 2.5 * s, top, 5 * s, 4.5 * s);
-  // หมวก
-  ctx.fillStyle = ch.color;
-  ctx.fillRect(x - 2.8 * s, top - 0.6 * s, 5.6 * s, 1.8 * s);
-  // ตา
-  ctx.fillStyle = dark;
-  const eo = ch.facing > 0 ? 0.6 * s : -1.6 * s;
-  ctx.fillRect(x - 0.3 * s + eo, top + 2 * s, s, s);
-  ctx.fillRect(x + 1 * s + eo, top + 2 * s, s, s);
+  ub(-4.5, 10, 9, 7, GT_SKIN);
+  // ผม Classic
+  ub(-4.7, 15, 9.4, 2.2, GT_HAIR); ub(-4.7, 12, 1.4, 3.5, GT_HAIR); ub(3.3, 12, 1.4, 3.5, GT_HAIR); ub(-4.7, 14.5, 9.4, 1, GT_HAIR);
+  // ตา (นัดตามทิศเดิน)
+  const eo = ch.facing > 0 ? 0.3 : -0.3;
+  ub(-2.7 + eo, 13, 1.5, 1.7, GT_OUTLINE); ub(1.2 + eo, 13, 1.5, 1.7, GT_OUTLINE);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(Math.round((-2.4 + eo) * S), Math.round(-14.4 * S), Math.round(0.6 * S), Math.round(0.6 * S));
+  ctx.fillRect(Math.round((1.5 + eo) * S), Math.round(-14.4 * S), Math.round(0.6 * S), Math.round(0.6 * S));
+  // แก้มแดง
+  ctx.fillStyle = 'rgba(230,120,110,0.4)';
+  ctx.fillRect(Math.round(-3.6 * S), Math.round(-12.4 * S), Math.round(1.4 * S), Math.round(1 * S));
+  ctx.fillRect(Math.round(2.2 * S), Math.round(-12.4 * S), Math.round(1.4 * S), Math.round(1 * S));
+  // ปาก
+  ctx.fillStyle = GT_OUTLINE; ctx.fillRect(Math.round(-0.8 * S), Math.round(-12 * S), Math.round(1.6 * S), Math.round(0.5 * S));
+
   // ป๊อปตอนหยิบ
   if (ch.pop > 0) {
-    const py = top - 10 - (1 - ch.pop) * 14;
+    const py = headTop - 12 - (1 - ch.pop) * 14;
     ctx.globalAlpha = Math.min(1, ch.pop * 1.5);
-    ctx.fillStyle = '#caa472'; ctx.fillRect(x - 6, py - 6, 12, 12);
-    ctx.fillStyle = '#8a6a3f'; ctx.fillRect(x - 6, py - 6, 12, 3);
+    ctx.fillStyle = '#caa472'; ctx.fillRect(-6, py - 6, 12, 12);
+    ctx.fillStyle = '#8a6a3f'; ctx.fillRect(-6, py - 6, 12, 3);
     ctx.fillStyle = '#2e7d32'; ctx.font = 'bold 13px "JetBrains Mono"';
-    ctx.textAlign = 'left'; ctx.fillText('+1', x + 8, py + 4);
+    ctx.textAlign = 'left'; ctx.fillText('+1', 8, py + 4);
     ctx.globalAlpha = 1;
   }
   // ชื่อ
   ctx.fillStyle = '#3a2f1e';
   ctx.font = 'bold 12px "Patrick Hand", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(ch.name, x, top - 6);
+  ctx.fillText(ch.name, 0, headTop - 8);
+
+  ctx.restore();
 }
 
 function renderScene(ctx, L, chars, zonesInData, w, H) {
