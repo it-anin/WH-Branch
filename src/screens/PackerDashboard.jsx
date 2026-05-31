@@ -306,14 +306,12 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
       const chars = charsRef.current;
         const { standPos, mainAisleY, home, roomBottom, doorX } = layoutRef.current;
 
-      const now = performance.now();
       const pz = dataRef.current.packerZones || {};
       chars.forEach((ch, i) => {
-        const active = (now - ch.lastActive <= 5000) && ch.targetZone && standPos[ch.targetZone];
-        const baseZone = (pz[ch.code] || [])[0]; // โซนหลักของพนักงาน → ยืนนิ่งรอ/สแกน
-        const want = active
-          ? ch.targetZone                                       // สแกนข้ามโซน → เดินไปโซนนั้น
-          : (baseZone && standPos[baseZone] ? baseZone : 'home'); // ว่าง → ยืนที่โซนตัวเอง
+        const baseZone = (pz[ch.code] || [])[0];
+        // ยืนที่โซนของสินค้าที่หยิบล่าสุด ไม่กลับบ้าน — เปลี่ยนเมื่อหยิบสินค้าคนละ location เท่านั้น
+        const want = (ch.targetZone && standPos[ch.targetZone]) ? ch.targetZone
+          : (baseZone && standPos[baseZone] ? baseZone : 'home'); // ยังไม่เคยหยิบ → ยืนโซนหลัก
         if (want !== ch.cur) {
           ch.cur = want;
           const dest = want === 'home' ? { x: (home[i] || { x: w / 2 }).x, y: mainAisleY } : standPos[want];
