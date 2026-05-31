@@ -5,18 +5,18 @@ import SketchyBarcode from '../components/SketchyBarcode.jsx';
 // สถานะลังฝั่งรับสินค้า (สาขา) — แสดงเป็น badge ใน card
 function receiveBadge(b) {
   if (b.status === 'received')
-    return { label: '📥 รับเข้าสาขาแล้ว', bg: '#ede0f7', border: '#b794e0', color: '#7a4fb0' };
+    return { label: 'รับเข้าสาขาแล้ว', bg: '#ede0f7', border: '#b794e0', color: '#7a4fb0' };
   if (b.problemReported && !b.problemResolved)
     return b.problemType === 'incomplete'
-      ? { label: '📥 รอรีเช็ค', bg: '#fff3cd', border: '#e67e22', color: '#b86000' }
-      : { label: '📥 รอตรวจสอบ', bg: '#fde8e8', border: 'var(--red)', color: '#c0392b' };
+      ? { label: 'รอรีเช็ค', bg: '#fff3cd', border: '#e67e22', color: '#b86000' }
+      : { label: 'รอตรวจสอบ', bg: '#fde8e8', border: 'var(--red)', color: '#c0392b' };
   if (b.problemReported && b.problemResolved)
-    return { label: '📥 แก้ไขแล้ว · รออนุมัติ', bg: '#e8f0d8', border: 'var(--green)', color: '#5a8a2a' };
+    return { label: 'แก้ไขแล้ว · รออนุมัติ', bg: '#e8f0d8', border: 'var(--green)', color: '#5a8a2a' };
   if (b.receivePending)
-    return { label: '📥 รอเภสัชอนุมัติ', bg: 'var(--accent-soft)', border: 'var(--accent)', color: 'var(--accent)' };
+    return { label: 'รอเภสัชอนุมัติ', bg: 'var(--accent-soft)', border: 'var(--accent)', color: 'var(--accent)' };
   if (b.receivingBy)
-    return { label: '📥 กำลังตรวจ', bg: '#fff3cd', border: '#e0a800', color: '#9a7a00' };
-  return { label: '📥 ยังไม่รับ', bg: '#f0ede8', border: 'var(--line)', color: 'var(--mute)' };
+    return { label: 'กำลังตรวจ', bg: '#fff3cd', border: '#e0a800', color: '#9a7a00' };
+  return { label: 'ยังไม่รับ', bg: '#f0ede8', border: 'var(--line)', color: 'var(--mute)' };
 }
 
 export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, costMap = {} }) {
