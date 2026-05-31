@@ -182,8 +182,9 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
       cur[boxId] = {}; (items || []).forEach(it => { cur[boxId][it.sku] = it.got; });
     });
     Object.entries(cur).forEach(([boxId, m]) => {
+      if (!(boxId in prev)) return; // ลังที่เพิ่งโผล่/ข้อมูลค้าง → ตั้ง baseline เฉย ๆ ไม่อนิเมท
       const code = boxes.find(b => b.id === boxId)?.packer?.code; if (!code) return;
-      const pm = prev[boxId] || {};
+      const pm = prev[boxId];
       Object.entries(m).forEach(([sku, got]) => {
         if (got > (pm[sku] || 0)) {
           const zone = skuZone[sku];
