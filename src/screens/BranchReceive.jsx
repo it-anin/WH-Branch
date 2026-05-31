@@ -42,7 +42,7 @@ function compressImage(file, maxW = 800, quality = 0.7) {
 function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onInspect, onClick }) {
   const isReceived = box.status === 'received';
   const hasProblem = box.problemReported && !box.problemResolved;
-  const problemFixed = box.problemReported && box.problemResolved;
+  const problemFixed = box.problemReported && box.problemResolved && !isReceived; // แก้แล้ว แต่ยังไม่อนุมัติเอกสาร
   // สีพื้น/ขอบ ตามสถานะลังเอง (ไม่ใช่ตอนคลิก) — accentState = pending/active
   const accentState = isActive || isPendingApproval;
   const borderColor = hasProblem ? 'var(--red)' : accentState ? 'var(--accent)' : isReceived ? 'var(--green)' : 'var(--line)';
@@ -74,7 +74,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onIns
         const label = isViewing ? ''
           : hasProblem ? '🔴 พบปัญหา · รอตรวจสอบ'
           : isPendingApproval ? ''
-          : problemFixed ? '✓ แก้ไขปัญหาแล้ว'
+          : problemFixed ? '✓ แก้ไขปัญหาแล้ว · รออนุมัติ'
           : isReceived ? 'เภสัชอนุมัติเอกสารแล้ว ✓'
           : isActive ? 'ลังที่กำลังตรวจ'
           : statusLabel[box.status] || box.status;
@@ -122,10 +122,10 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onIns
       ) : problemFixed ? (
         <button
           className="btn"
-          disabled
-          style={{ marginTop: 10, width: '100%', background: '#edf5e0', borderColor: 'var(--green)', color: 'var(--green)', fontWeight: 700, cursor: 'default' }}
+          style={{ marginTop: 10, width: '100%', background: 'var(--green)', borderColor: 'var(--green)', color: 'white', fontWeight: 700 }}
+          onClick={(e) => { e.stopPropagation(); onApprove(); }}
         >
-          ✓ แก้ไขแล้ว
+          ✓ แก้ไขแล้ว/อนุมัติเอกสาร
         </button>
       ) : null}
     </div>

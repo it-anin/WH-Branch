@@ -491,7 +491,8 @@ open → packing → closed → exported → received
    → **กด "บันทึกรายละเอียด"** (`saveProblemNote`) = set `problemNote` + **`problemReviewed=true`** ← gate ส่งต่อให้ Outbound (Outbound จะยังไม่ขึ้น badge จนกว่าจะกดอันนี้)
 3. **Desktop Outbound:** card กรอบแดง + badge "🔴 แจ้งปัญหา" **เมื่อ `problemReviewed && !problemResolved`** → คลิก → ตาราง **"แก้ไขสินค้าที่มีปัญหา"** (+/- จำนวน ผ่าน `adjustQty` → setItemsByBox) + แสดง note/รูป
    → ปุ่มแดง **"✓ แก้ไข/อนุมัติ"** ใต้ตาราง (`resolveProblem`) → `problemResolved=true` + recompute skuCount/totalQty (ไม่ต้องผ่าน flow Text/เลขเอกสาร/พิมพ์)
-4. **กลับ Desktop รับสินค้า:** card → "✓ แก้ไขปัญหาแล้ว" + ปุ่ม "✓ แก้ไขแล้ว" (เขียว disabled)
+4. **กลับ Desktop รับสินค้า:** card → "✓ แก้ไขปัญหาแล้ว · รออนุมัติ" + ปุ่มเขียว **"✓ แก้ไขแล้ว/อนุมัติเอกสาร"** (กดได้ → `handleApprove` → status `received`) → จากนั้น card เป็น "เภสัชอนุมัติเอกสารแล้ว ✓"
+   - `problemFixed = problemReported && problemResolved && status !== 'received'` (priority ปุ่ม/label: hasProblem > pending > problemFixed > received)
 - **Tab badge:** receive รวม `problemReported && !problemResolved`, Outbound (closed) รวม `problemReviewed && !problemResolved`; header รับสินค้ามี chip "🔴 N แจ้งปัญหา"
 - **ปุ่ม/label priority ใน BoxCard:** hasProblem > pending > problemFixed > received
 
