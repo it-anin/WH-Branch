@@ -158,11 +158,22 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
   }));
   const zonesInData = new Set(Object.values(skuZone).filter(z => z !== '?'));
 
+  // โซนที่แต่ละพนักงานรับผิดชอบ → ใช้เดินวน (idle) อิสระจากกัน
+  const packerZones = {};
+  packers.forEach(p => {
+    const zs = [];
+    (catalogByPacker[p.code] || []).forEach(it => {
+      const z = extractZone(it.location);
+      if (z !== '?' && !zs.includes(z)) zs.push(z);
+    });
+    packerZones[p.code] = zs;
+  });
+
   const charsRef = useRef(null);
   const layoutRef = useRef(null);
   const prevProgRef = useRef({});
   const dataRef = useRef({});
-  dataRef.current = { boxes, skuZone };
+  dataRef.current = { boxes, skuZone, packerZones };
 
   useEffect(() => {
     const el = wrapRef.current; if (!el) return;
@@ -208,6 +219,7 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
         code: p.code, name: p.name, color: p.color,
         x: layoutRef.current.home[i].x, y: layoutRef.current.mainAisleY, facing: 1,
         frame: 0, frameT: 0, pop: 0, targetZone: null, lastActive: 0, cur: 'home', wp: [],
+        wanderZone: null, nextWander: 0,
       }));
     }
 
@@ -217,9 +229,21 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
       const chars = charsRef.current;
       const { standPos, mainAisleY, home } = layoutRef.current;
 
+      const now = performance.now();
+      const pz = dataRef.current.packerZones || {};
       chars.forEach((ch, i) => {
-        const idle = performance.now() - ch.lastActive > 5000;
-        const want = (!idle && ch.targetZone && standPos[ch.targetZone]) ? ch.targetZone : 'home';
+        const active = (now - ch.lastActive <= 5000) && ch.targetZone && standPos[ch.targetZone];
+        let want;
+        if (active) {
+          want = ch.targetZone;                 // กำลังสแกนจริง → ไปโซนนั้น
+        } else {
+          const zs = pz[ch.code] || [];          // ว่าง → เดินวนโซนตัวเอง (อิสระจากคนอื่น)
+          if (zs.length && now > ch.nextWander) {
+            ch.wanderZone = zs[(Math.random() * zs.length) | 0];
+            ch.nextWander = now + 3000 + Math.random() * 3500;
+          }
+          want = (ch.wanderZone && standPos[ch.wanderZone]) ? ch.wanderZone : 'home';
+        }
         if (want !== ch.cur) {
           ch.cur = want;
           const dest = want === 'home' ? { x: (home[i] || { x: w / 2 }).x, y: mainAisleY } : standPos[want];
