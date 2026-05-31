@@ -5,7 +5,7 @@ import SketchyBarcode from '../components/SketchyBarcode.jsx';
 // สถานะลังฝั่งรับสินค้า (สาขา) — แสดงเป็น badge ใน card
 function receiveBadge(b) {
   if (b.status === 'received')
-    return { label: 'สาขา: รับสินค้าแล้ว', bg: '#ede0f7', border: '#b794e0', color: '#7a4fb0' };
+    return { label: 'สาขา: รับสินค้าแล้ว', bg: '#d8e8c4', border: 'var(--green)', color: '#4a7a2a' };
   if (b.problemReported && !b.problemResolved)
     return b.problemType === 'incomplete'
       ? { label: 'สาขา: รอรีเช็ค', bg: '#fff3cd', border: '#e67e22', color: '#b86000' }
