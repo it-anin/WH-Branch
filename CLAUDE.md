@@ -406,7 +406,8 @@ open → packing → closed → exported → received
 - **เดิน L-path:** ลงทางเดินหลัก → แนวนอน → ขึ้นทางเดินย่อย (ไม่ทะลุชั้น) · โซนนอกอาคารเดินผ่านประตู
 - **ยืนค้างที่โซนของสินค้าที่หยิบล่าสุด** (ไม่กลับบ้าน) — ขยับเมื่อหยิบสินค้า location อื่นเท่านั้น; ยังไม่เคยหยิบ → ยืนโซนหลัก (`packerZones[code][0]`)
 - **ตรวจจับการหยิบ:** เทียบ `scanProgress` กับ `prevProgRef` — **ลังที่เพิ่งโผล่ = ตั้ง baseline เงียบ ๆ ไม่อนิเมท** (กันบั๊กลังค้างทำให้เดินผิดคน), อนิเมทเฉพาะ `got` เพิ่มของลังที่ track อยู่แล้ว → match `box.packer.code` → ตัวละครคนนั้น
-- **ยังเป็น prototype:** ตัวละครวาดเอง, ตำแหน่งยืน = กลางชั้น (ยังไม่อิงแถว/ชั้นจริง) — เฟสต่อไป: sprite อาร์ต + ตำแหน่งตาม location ละเอียด
+- **ตัวละคร:** สไตล์ **Gather.town (Classic)** วาดด้วย canvas (`drawChar`) — pixel avatar หัวโต มีเส้นขอบ ตามีประกาย แก้มแดง เดิน bob ขาสลับ, เสื้อ = สีพนักงาน
+- **ยังเป็น prototype:** ตำแหน่งยืน = กลางชั้น (ยังไม่อิงแถว/ชั้นจริง) — เฟสต่อไป: ตำแหน่งตาม location ละเอียด เช่น `B-03`
 
 ## Outbound (BoxClosedLabel) — Logic สำคัญ
 - Tab label: **Outbound** (เดิม: Box & Label) — screen-label "รายการส่งสินค้า", frame title: **"เลขที่ลัง"**
@@ -570,6 +571,8 @@ android/
 - **BroadcastReceiver** ลงทะเบียนใน `onResume` / ยกเลิกใน `onPause`
 - **File chooser (`<input type=file>`):** override `WebChromeClient.onShowFileChooser()` → เปิด chooser กล้อง (ACTION_IMAGE_CAPTURE ผ่าน FileProvider `${applicationId}.fileprovider` → `cacheDir/images`) + แกลเลอรี (`params.createIntent()`) — **ถ้าไม่ override ปุ่มเลือกรูปจะกดแล้วเงียบ** ใช้กับหน้าแจ้งปัญหา (แนบรูปหลักฐาน)
   - ต้องมี `<provider>` ใน AndroidManifest + `res/xml/file_paths.xml` (`<cache-path name="images" path="images/" />`)
+- **หน้าจอเปิดแอปพื้นขาว:** theme `@style/AppTheme` (`values/themes.xml` + `values-v31/themes.xml`) ตั้ง `windowBackground`/`windowSplashScreenBackground` = ขาว + `webView.setBackgroundColor(WHITE)` — กัน splash/flash ดำตอนเปิด
+- **App icon:** adaptive icon พื้นขาว (`mipmap-anydpi-v26/ic_launcher.xml` → foreground PNG 108–432px + `@color/ic_launcher_background` ขาว) + legacy fallback + web favicon (`public/`) — สร้างจากรูปเดียวด้วยสคริปต์ PIL (pad จัตุรัส → ย่อทุกขนาด)
 
 ### Scanner Broadcast Integration
 | ยี่ห้อ | Action | Extra key |
