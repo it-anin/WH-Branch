@@ -19,7 +19,7 @@ const TABS = [
   { k: 'flow',   label: 'Dashboard' },
   { k: 'list',   label: 'รายการเบิกสินค้า' },
   { k: 'scan',   label: 'แพ็คกิ้ง' },
-  { k: 'closed', label: 'Outbound' },
+  { k: 'closed', label: 'คลังสินค้าส่งออก' },
   { k: 'receive', label: '📥 รับสินค้า (สาขา)' },
 ];
 
