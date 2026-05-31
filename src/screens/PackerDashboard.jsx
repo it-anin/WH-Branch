@@ -233,17 +233,10 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
       const pz = dataRef.current.packerZones || {};
       chars.forEach((ch, i) => {
         const active = (now - ch.lastActive <= 5000) && ch.targetZone && standPos[ch.targetZone];
-        let want;
-        if (active) {
-          want = ch.targetZone;                 // กำลังสแกนจริง → ไปโซนนั้น
-        } else {
-          const zs = pz[ch.code] || [];          // ว่าง → เดินวนโซนตัวเอง (อิสระจากคนอื่น)
-          if (zs.length && now > ch.nextWander) {
-            ch.wanderZone = zs[(Math.random() * zs.length) | 0];
-            ch.nextWander = now + 3000 + Math.random() * 3500;
-          }
-          want = (ch.wanderZone && standPos[ch.wanderZone]) ? ch.wanderZone : 'home';
-        }
+        const baseZone = (pz[ch.code] || [])[0]; // โซนหลักของพนักงาน → ยืนนิ่งรอ/สแกน
+        const want = active
+          ? ch.targetZone                                       // สแกนข้ามโซน → เดินไปโซนนั้น
+          : (baseZone && standPos[baseZone] ? baseZone : 'home'); // ว่าง → ยืนที่โซนตัวเอง
         if (want !== ch.cur) {
           ch.cur = want;
           const dest = want === 'home' ? { x: (home[i] || { x: w / 2 }).x, y: mainAisleY } : standPos[want];
