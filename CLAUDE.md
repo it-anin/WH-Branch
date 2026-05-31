@@ -473,6 +473,7 @@ open → packing → closed → exported → received
   - `isViewingOther = viewingId !== null && phase !== 'result'` (Desktop phase = `scan` เสมอ → คลิกแล้วโชว์ detail)
   - ปุ่ม "× ปิด" ใน read-only view → `setViewingId(null)` → กลับ placeholder
 - **Re-scan fix:** `setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id])` — ย้ายลังที่สแกนซ้ำไปท้าย array เสมอ (`startReceive`)
+- **กันสแกนลังซ้ำ (Android, `handleScan`):** บล็อก + toast แดง ไม่เข้า verify ถ้าลังอยู่ในสถานะที่จัดการแล้ว — `status === 'received'` / `receivePending` / `problemReported && !problemResolved` (ลังที่สแกนค้างยังไม่ commit ยังสแกนซ้ำเพื่อ retry ได้)
 - **`handleScanNext`** (ปุ่ม "+ รับลังถัดไป" / Android "+ ลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'`
 - **ไม่มีปุ่ม "ข้ามลัง" แล้ว** (ลบ `handleSkip` ออก — ซ้ำซ้อนกับ "ลังถัดไป" + toast เดิม "แจ้งปัญหาแล้ว" ทำให้สับสน); การแจ้งปัญหาจริงใช้ `handleReportProblem` เท่านั้น
 - **`pendingApprovalBoxId`** (App.jsx state) — local-only, ใช้ track result phase บน Android เท่านั้น (ไม่ sync ข้ามเครื่อง — การข้ามเครื่องใช้ `box.receivePending` แทน)

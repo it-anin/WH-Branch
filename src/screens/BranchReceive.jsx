@@ -229,11 +229,25 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       b.pos.replace(/\s/g, '').toLowerCase().includes(q.replace(/\s/g, ''))
     );
 
-    if (box) {
-      startReceive(box);
-    } else {
-      setNotFound(true);
+    if (!box) { setNotFound(true); return; }
+
+    // กันสแกนลังซ้ำที่จัดการไปแล้ว — บล็อก ไม่เข้า verify
+    setNotFound(false);
+    setQuery('');
+    if (box.status === 'received') {
+      showToast(`⚠ ลัง ${box.id} รับเข้าสาขาแล้ว`, 'error');
+      return;
     }
+    if (box.receivePending) {
+      showToast(`⚠ ลัง ${box.id} สแกนรับแล้ว · รออนุมัติเอกสาร`, 'error');
+      return;
+    }
+    if (box.problemReported && !box.problemResolved) {
+      showToast(`⚠ ลัง ${box.id} แจ้งปัญหาแล้ว · รอหัวหน้าตรวจสอบ`, 'error');
+      return;
+    }
+
+    startReceive(box);
   }
 
   async function handleImageChange(e) {
@@ -756,10 +770,10 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   background: 'var(--accent-soft)', textAlign: 'center',
                 }}>
                   <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>
-                    ✓ ส่งให้หัวหน้าอนุมัติเอกสารแล้ว
+                    ✓ ส่งให้เภสัชอนุมัติเอกสารแล้ว
                   </div>
                   <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', marginTop: 4 }}>
-                    รออนุมัติเอกสารที่หน้าจอหัวหน้างาน · กด "+ รับลังถัดไป" เพื่อสแกนลังต่อไป
+                    กดปุ่ม [+ ลังถัดไป] เพื่อสแกนลังต่อ
                   </div>
                 </div>
               ) : (
