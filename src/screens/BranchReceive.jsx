@@ -209,6 +209,12 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
   function startReceive(box) {
     setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id]);
+    // ล็อกลังนี้ให้พนักงานคนนี้ + ปลดล็อกลังเก่าที่ตัวเองถืออยู่ (ถือได้ทีละลัง)
+    setBoxes(prev => prev.map(b => {
+      if (b.id === box.id) return { ...b, receivingBy: branchStaff || null };
+      if (b.receivingBy?.code && b.receivingBy.code === branchStaff?.code) return { ...b, receivingBy: null };
+      return b;
+    }));
     setNotFound(false);
     setScanCounts({});
     setItemScan('');
@@ -246,6 +252,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       showToast(`⚠ ลัง ${box.id} แจ้งปัญหาแล้ว · รอหัวหน้าตรวจสอบ`, 'error');
       return;
     }
+    // ล็อกลัง: ถ้าพนักงานคนอื่นกำลังตรวจอยู่ → บล็อก (ปลดล็อกเมื่อคนนั้นยืนยันรับ/แจ้งปัญหา/ไปลังถัดไป)
+    if (box.receivingBy && box.receivingBy.code !== branchStaff?.code) {
+      showToast(`⚠ พนักงาน ${box.receivingBy.name} กำลังตรวจลังนี้อยู่`, 'error');
+      return;
+    }
 
     startReceive(box);
   }
@@ -269,6 +280,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       problemScanCounts: { ...scanCounts },
       problemNote: '',
       problemAt: new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      receivingBy: null, // ปลดล็อก
       updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     } : b));
     showToast('แจ้งปัญหาแล้ว · ส่งให้หัวหน้าตรวจสอบ', 'error');
@@ -297,6 +309,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         ...b,
         receivePending: true,
         receivedBy: branchStaff || null,
+        receivingBy: null, // ปลดล็อก
         updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
       } : b));
     }
@@ -339,6 +352,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   }
 
   function handleScanNext() {
+    // ปลดล็อกลังที่กำลังถืออยู่ (ออกจากลังนี้ไปลังถัดไป)
+    if (foundBox?.receivingBy?.code && foundBox.receivingBy.code === branchStaff?.code) {
+      setBoxes(prev => prev.map(b => b.id === foundBox.id ? { ...b, receivingBy: null } : b));
+    }
     setScanCounts({});
     setQuery('');
     setNotFound(false);

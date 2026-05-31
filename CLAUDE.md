@@ -314,6 +314,7 @@ open → packing → closed → exported → received
 | `textExported` | กดส่งออกไฟล์ Text (Outbound) | disable ปุ่มส่งออก Text กันส่งซ้ำ | clearBoxes (ลบ box) |
 | `receivePending` | Android กดยืนยันรับ (ผล ok) | Desktop receive แสดง card รออนุมัติ + tab badge | handleApprove (→ received) |
 | `receivedBy` | Android กดยืนยันรับ | BoxCard "ตรวจสอบโดย:" + staff filter (desktop) | — (คงไว้) |
+| `receivingBy` | Android `startReceive` (กำลังตรวจ) | ล็อกลัง — กันพนักงานอื่นสแกนซ้ำขณะตรวจ (ไม่มี timeout) | confirm/report/scanNext |
 | `problemReported` / `problemResolved` | Android ยืนยันแจ้งปัญหา / Outbound กดแก้ไข-อนุมัติ | Desktop รับสินค้า: card กรอบแดง + ปุ่ม ตรวจสอบ/แก้ไขแล้ว | — (คงไว้เป็นประวัติ) |
 | `problemReviewed` | เภสัชกด "บันทึกรายละเอียด" (Desktop รับสินค้า) | gate ให้ Outbound ขึ้น badge + ตารางแก้ไข (ไม่ขึ้นทันทีตอน Android แจ้ง) | — |
 | `problemImage` | Android แนบรูป (ย่อ base64 JPEG ~800px) | Desktop ตรวจสอบ/Outbound แสดงรูปหลักฐาน | — |
@@ -473,7 +474,10 @@ open → packing → closed → exported → received
   - `isViewingOther = viewingId !== null && phase !== 'result'` (Desktop phase = `scan` เสมอ → คลิกแล้วโชว์ detail)
   - ปุ่ม "× ปิด" ใน read-only view → `setViewingId(null)` → กลับ placeholder
 - **Re-scan fix:** `setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id])` — ย้ายลังที่สแกนซ้ำไปท้าย array เสมอ (`startReceive`)
-- **กันสแกนลังซ้ำ (Android, `handleScan`):** บล็อก + toast แดง ไม่เข้า verify ถ้าลังอยู่ในสถานะที่จัดการแล้ว — `status === 'received'` / `receivePending` / `problemReported && !problemResolved` (ลังที่สแกนค้างยังไม่ commit ยังสแกนซ้ำเพื่อ retry ได้)
+- **กันสแกนลังซ้ำ (Android, `handleScan`):** บล็อก + toast แดง ไม่เข้า verify ถ้าลังอยู่ในสถานะที่จัดการแล้ว — `status === 'received'` / `receivePending` / `problemReported && !problemResolved`
+- **ล็อกลัง (`receivingBy`):** ตอน `startReceive` set `box.receivingBy = branchStaff` (sync Firestore) + ปลดล็อกลังเก่าของตัวเอง (ถือทีละลัง) — พนักงานอื่นสแกนลังนี้ → บล็อก "⚠ พนักงาน {ชื่อ} กำลังตรวจลังนี้อยู่" (เจ้าของล็อกสแกนซ้ำได้)
+  - **ไม่มี timeout** — ปลดล็อกเฉพาะเมื่อ: ยืนยันรับ (`handleConfirm` ผล ok) / แจ้งปัญหา (`handleReportProblem`) / ไปลังถัดไป (`handleScanNext`)
+  - กรณีปิดแอปกลางคัน → ล็อกค้าง (เจ้าของสแกนใหม่ได้, clearBoxes ล้างได้)
 - **`handleScanNext`** (ปุ่ม "+ รับลังถัดไป" / Android "+ ลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'`
 - **ไม่มีปุ่ม "ข้ามลัง" แล้ว** (ลบ `handleSkip` ออก — ซ้ำซ้อนกับ "ลังถัดไป" + toast เดิม "แจ้งปัญหาแล้ว" ทำให้สับสน); การแจ้งปัญหาจริงใช้ `handleReportProblem` เท่านั้น
 - **`pendingApprovalBoxId`** (App.jsx state) — local-only, ใช้ track result phase บน Android เท่านั้น (ไม่ sync ข้ามเครื่อง — การข้ามเครื่องใช้ `box.receivePending` แทน)
