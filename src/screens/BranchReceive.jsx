@@ -42,11 +42,13 @@ function compressImage(file, maxW = 800, quality = 0.7) {
 function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onInspect, onClick }) {
   const isReceived = box.status === 'received';
   const hasProblem = box.problemReported && !box.problemResolved;
+  const isIncomplete = hasProblem && box.problemType === 'incomplete'; // ไม่ครบ → รีเช็ค (ส้ม), อื่น → ตรวจสอบ (แดง)
+  const problemColor = isIncomplete ? '#e67e22' : 'var(--red)';
   const problemFixed = box.problemReported && box.problemResolved && !isReceived; // แก้แล้ว แต่ยังไม่อนุมัติเอกสาร
   // สีพื้น/ขอบ ตามสถานะลังเอง (ไม่ใช่ตอนคลิก) — accentState = pending/active
   const accentState = isActive || isPendingApproval;
-  const borderColor = hasProblem ? 'var(--red)' : accentState ? 'var(--accent)' : isReceived ? 'var(--green)' : 'var(--line)';
-  const bg = hasProblem ? '#fde8e8' : isReceived ? '#edf5e0' : accentState ? 'var(--accent-soft)' : 'white';
+  const borderColor = hasProblem ? problemColor : accentState ? 'var(--accent)' : isReceived ? 'var(--green)' : 'var(--line)';
+  const bg = hasProblem ? (isIncomplete ? '#fff3cd' : '#fde8e8') : isReceived ? '#edf5e0' : accentState ? 'var(--accent-soft)' : 'white';
   // คลิก (viewing) = เข้มขึ้น + ยกขึ้น โดยไม่เปลี่ยนสีพื้น
   const shadow = (isViewing || accentState || hasProblem)
     ? '3px 3px 0 var(--line)'
@@ -72,14 +74,14 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onIns
     >
       {(() => {
         const label = isViewing ? ''
-          : hasProblem ? '🔴 พบปัญหา · รอตรวจสอบ'
+          : hasProblem ? (isIncomplete ? '🔁 สินค้าไม่ครบ · รอรีเช็ค' : '🔴 พบปัญหา · รอตรวจสอบ')
           : isPendingApproval ? ''
           : problemFixed ? '✓ แก้ไขปัญหาแล้ว · รออนุมัติ'
           : isReceived ? 'เภสัชอนุมัติเอกสารแล้ว ✓'
           : isActive ? 'ลังที่กำลังตรวจ'
           : statusLabel[box.status] || box.status;
         return label ? (
-          <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: hasProblem ? 'var(--red)' : isReceived ? '#6a9a3a' : 'var(--mute)', marginBottom: 2 }}>
+          <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: hasProblem ? problemColor : isReceived ? '#6a9a3a' : 'var(--mute)', marginBottom: 2 }}>
             {label}
           </div>
         ) : null;
@@ -106,10 +108,10 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onIns
       {hasProblem ? (
         <button
           className="btn"
-          style={{ marginTop: 10, width: '100%', background: 'var(--red)', borderColor: 'var(--red)', color: 'white', fontWeight: 700 }}
+          style={{ marginTop: 10, width: '100%', background: problemColor, borderColor: problemColor, color: 'white', fontWeight: 700 }}
           onClick={(e) => { e.stopPropagation(); onInspect(); }}
         >
-          🔍 ตรวจสอบ
+          {isIncomplete ? '🔁 รีเช็คสินค้า' : '🔍 ตรวจสอบ'}
         </button>
       ) : isPendingApproval ? (
         <button
@@ -275,6 +277,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       ...b,
       problemReported: true,
       problemResolved: false,
+      problemType: 'damaged',
       problemImage: reportImage?.url || null,
       problemBy: branchStaff || null,
       problemScanCounts: { ...scanCounts },
@@ -303,14 +306,30 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     const result = !allChecked ? 'fail' : hasOver ? 'over' : 'ok';
     setVerifyResult(result);
     setViewingId(null);
-    // ผลถูกต้อง → ส่งให้หัวหน้าอนุมัติเอกสารที่ Desktop (persist บน box เพื่อ sync ข้ามเครื่อง)
+    const time = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
     if (result === 'ok') {
+      // ครบ → ส่งให้เภสัชอนุมัติเอกสารที่ Desktop
       setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
         ...b,
         receivePending: true,
         receivedBy: branchStaff || null,
         receivingBy: null, // ปลดล็อก
-        updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+        updated: time,
+      } : b));
+    } else {
+      // ไม่ครบ/เกิน + กดยืนยัน → ส่งให้หัวหน้ารีเช็คที่ Desktop (ปุ่ม card = "รีเช็คสินค้า")
+      setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
+        ...b,
+        problemReported: true,
+        problemResolved: false,
+        problemType: 'incomplete',
+        problemImage: null,
+        problemBy: branchStaff || null,
+        problemScanCounts: { ...scanCounts },
+        problemNote: '',
+        problemAt: new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        receivingBy: null, // ปลดล็อก
+        updated: time,
       } : b));
     }
     setPendingApprovalBoxId(foundBox.id);
@@ -596,7 +615,9 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           ) : (!isAndroid && viewingBox?.problemReported && !viewingBox?.problemResolved) ? (
             <div>
               <div className="row" style={{ marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
-                <b style={{ fontFamily: 'Caveat', fontSize: 22, color: 'var(--red)' }}>🔴 ตรวจสอบปัญหา · {viewingBox.id}</b>
+                <b style={{ fontFamily: 'Caveat', fontSize: 22, color: viewingBox.problemType === 'incomplete' ? '#e67e22' : 'var(--red)' }}>
+                  {viewingBox.problemType === 'incomplete' ? `🔁 รีเช็คสินค้า · ${viewingBox.id}` : `🔴 ตรวจสอบปัญหา · ${viewingBox.id}`}
+                </b>
                 {viewingBox.problemBy && (
                   <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
                     แจ้งโดย: {viewingBox.problemBy.name}{viewingBox.problemAt ? ` · ${viewingBox.problemAt}` : ''}
@@ -664,10 +685,10 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 style={{ width: '100%', minHeight: 70, resize: 'vertical' }}
               />
               <div className="row" style={{ marginTop: 10, gap: 10, justifyContent: 'flex-end' }}>
-                <button className="btn" onClick={saveProblemNote} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>💾 บันทึกรายละเอียด</button>
+                <button className="btn" onClick={saveProblemNote} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>📦 แจ้งคลังสินค้า</button>
               </div>
               <div style={{ marginTop: 12, padding: '10px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
-                กด <b>"บันทึกรายละเอียด"</b> ก่อน → ลังจะไปขึ้น badge "แจ้งปัญหา" ที่หน้า <b>Outbound</b> เพื่อแก้ไขจำนวนสินค้าจริง
+                กด <b>"แจ้งคลังสินค้า"</b> ก่อน → ลังจะไปขึ้น badge "แจ้งปัญหา" ที่หน้า <b>Outbound</b> เพื่อแก้ไขจำนวนสินค้าจริง
               </div>
             </div>
           ) : isViewingOther ? (
@@ -794,33 +815,12 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   </div>
                 </div>
               ) : (
-                <div style={{ border: `1.5px solid ${verifyResult === 'over' ? '#e67e22' : '#c0392b'}`, borderRadius: 10, padding: '14px 16px', background: verifyResult === 'over' ? '#fff3cd' : '#fde8e8' }}>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: verifyResult === 'over' ? '#b86000' : '#c0392b', marginBottom: 10 }}>
-                    {verifyResult === 'over' ? '⚠ พบสินค้าเกินจำนวน — ต้องใช้รหัสหัวหน้างานเพื่อรีเช็ค' : '⚠ พบสินค้าไม่ครบ — ต้องใช้รหัสหัวหน้างานเพื่อรีเช็ค'}
+                <div style={{ border: '2px solid #e67e22', borderRadius: 12, padding: '14px 16px', background: '#fff3cd', textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: '#b86000' }}>
+                    ✓ ส่งให้หัวหน้ารีเช็คสินค้าแล้ว
                   </div>
-                  <div className="row" style={{ gap: 10 }}>
-                    <input
-                      className="input"
-                      placeholder="รหัสหัวหน้างาน…"
-                      style={{ flex: 1 }}
-                      value={supervisorCode}
-                      onChange={e => setSupervisorCode(e.target.value)}
-                    />
-                    <button
-                      className="btn"
-                      style={{
-                        borderColor: supervisorCode.trim() ? 'var(--accent)' : 'var(--line)',
-                        color: supervisorCode.trim() ? 'var(--accent)' : 'var(--mute)',
-                        opacity: supervisorCode.trim() ? 1 : 0.5,
-                        cursor: supervisorCode.trim() ? 'pointer' : 'not-allowed',
-                      }}
-                      onClick={() => {
-                        if (!supervisorCode.trim()) { showToast('⚠ กรุณาใส่รหัสหัวหน้างาน', 'error'); return; }
-                        handleRecheck();
-                      }}
-                    >
-                      🔄 รีเช็คสินค้า
-                    </button>
+                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: '#b86000', marginTop: 4 }}>
+                    {verifyResult === 'over' ? 'พบสินค้าเกินจำนวน' : 'พบสินค้าไม่ครบ'} · กดปุ่ม [+ ลังถัดไป] เพื่อสแกนลังต่อ
                   </div>
                 </div>
               )}

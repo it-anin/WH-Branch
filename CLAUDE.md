@@ -318,7 +318,8 @@ open → packing → closed → exported → received
 | `problemReported` / `problemResolved` | Android ยืนยันแจ้งปัญหา / Outbound กดแก้ไข-อนุมัติ | Desktop รับสินค้า: card กรอบแดง + ปุ่ม ตรวจสอบ/แก้ไขแล้ว | — (คงไว้เป็นประวัติ) |
 | `problemReviewed` | เภสัชกด "บันทึกรายละเอียด" (Desktop รับสินค้า) | gate ให้ Outbound ขึ้น badge + ตารางแก้ไข (ไม่ขึ้นทันทีตอน Android แจ้ง) | — |
 | `problemImage` | Android แนบรูป (ย่อ base64 JPEG ~800px) | Desktop ตรวจสอบ/Outbound แสดงรูปหลักฐาน | — |
-| `problemBy` / `problemAt` / `problemScanCounts` / `problemNote` | Android แจ้งปัญหา (+ หัวหน้าบันทึก note) | หาว่าสินค้าตัวไหนขาด (ตัวแดง) + รายละเอียด | — |
+| `problemType` | `'incomplete'` (สแกนไม่ครบ+ยืนยัน) / `'damaged'` (แจ้งปัญหา+รูป) | ปุ่ม card: incomplete→"🔁 รีเช็คสินค้า" (ส้ม), damaged→"🔍 ตรวจสอบ" (แดง) | — |
+| `problemBy` / `problemAt` / `problemScanCounts` / `problemNote` | Android แจ้งปัญหา/ยืนยันไม่ครบ (+ หัวหน้าบันทึก note) | หาว่าสินค้าตัวไหนขาด (ตัวแดง) + รายละเอียด | — |
 
 **สำคัญ:** fields เหล่านี้ sync ผ่าน `setBoxes` (เขียนทั้ง box object → Firestore `boxes/{id}`) — ข้ามเครื่องได้ (Android ↔ Desktop)
 
@@ -489,11 +490,13 @@ open → packing → closed → exported → received
 ---
 
 ## Problem Report Flow (แจ้งปัญหาลัง) — ข้าม 3 หน้าจอ
-1. **Android (รับสินค้า, verify phase):** กด "⚠ แจ้งปัญหา" → แนบรูป (`compressImage` → base64) → "ยืนยันแจ้งปัญหา" (`handleReportProblem`)
-   → set บน box: `problemReported`, `problemImage`, `problemBy`, `problemScanCounts` (snapshot จำนวนที่สแกนได้), `problemAt`
+- **2 ทางเข้า (`problemType`):**
+  - **`'incomplete'`:** สแกนสินค้าไม่ครบ/เกิน แล้วกด **"✓ ยืนยันรับสินค้า"** → `handleConfirm` (result ≠ ok) persist เป็นปัญหา → Android แสดง "✓ ส่งให้หัวหน้ารีเช็คสินค้าแล้ว"; ปุ่ม card desktop = **"🔁 รีเช็คสินค้า"** (ส้ม) — *ไม่มีรหัสหัวหน้างาน/recheck บน Android แล้ว*
+  - **`'damaged'`:** กด **"⚠ แจ้งปัญหา"** → แนบรูป (`compressImage` → base64) → "ยืนยันแจ้งปัญหา" (`handleReportProblem`); ปุ่ม card desktop = **"🔍 ตรวจสอบ"** (แดง)
+1. ทั้งสองทาง → set บน box: `problemReported`, `problemType`, `problemBy`, `problemScanCounts` (snapshot), `problemAt` (+ `problemImage` เฉพาะ damaged)
 2. **Desktop รับสินค้า:** card กรอบแดง + label "🔴 พบปัญหา · รอตรวจสอบ" + ปุ่มแดง "🔍 ตรวจสอบ" (`onInspect` → setViewingId)
    → แผงขวา: ตารางรายการ (สินค้าขาด = แถวแดง, เทียบ `problemScanCounts` กับ qty) + รูปหลักฐาน + textarea "รายละเอียดปัญหาที่พบ"
-   → **กด "บันทึกรายละเอียด"** (`saveProblemNote`) = set `problemNote` + **`problemReviewed=true`** ← gate ส่งต่อให้ Outbound (Outbound จะยังไม่ขึ้น badge จนกว่าจะกดอันนี้)
+   → **กด "📦 แจ้งคลังสินค้า"** (`saveProblemNote`, เดิมชื่อ "บันทึกรายละเอียด") = set `problemNote` + **`problemReviewed=true`** ← gate ส่งต่อให้ Outbound (Outbound จะยังไม่ขึ้น badge จนกว่าจะกดอันนี้)
 3. **Desktop Outbound:** card กรอบแดง + badge "🔴 แจ้งปัญหา" **เมื่อ `problemReviewed && !problemResolved`** → คลิก → ตาราง **"แก้ไขสินค้าที่มีปัญหา"** (+/- จำนวน ผ่าน `adjustQty` → setItemsByBox) + แสดง note/รูป
    → ปุ่มแดง **"✓ แก้ไข/อนุมัติ"** ใต้ตาราง (`resolveProblem`) → `problemResolved=true` + recompute skuCount/totalQty (ไม่ต้องผ่าน flow Text/เลขเอกสาร/พิมพ์)
 4. **กลับ Desktop รับสินค้า:** card → "✓ แก้ไขปัญหาแล้ว · รออนุมัติ" + ปุ่มเขียว **"✓ แก้ไขแล้ว/อนุมัติเอกสาร"** (กดได้ → `handleApprove` → status `received`) → จากนั้น card เป็น "เภสัชอนุมัติเอกสารแล้ว ✓"
