@@ -96,9 +96,9 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onIns
           แพ็คโดย: {box.packer.name}
         </div>
       )}
-      {box.receivedBy && (
-        <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
-          ตรวจสอบโดย: {box.receivedBy.name}
+      {(box.receivedBy || box.problemBy) && (
+        <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: hasProblem ? problemColor : isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
+          ตรวจสอบโดย: {(box.receivedBy || box.problemBy).name}
         </div>
       )}
       <div className="row" style={{ marginTop: 10, gap: 6 }}>
