@@ -73,8 +73,8 @@ const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, ite
 ```js
 [
   { code: 'EMP-01', name: 'มุก' },
-  { code: 'EMP-02', name: 'เก้า' },
-  { code: 'EMP-03', name: 'เต้' },
+  { code: 'EMP-02', name: 'แล็ค' },
+  { code: 'EMP-03', name: 'N/A' },   // เต้ ออกแล้ว
   { code: 'EMP-04', name: 'ตั๋ง' },
 ]
 ```
