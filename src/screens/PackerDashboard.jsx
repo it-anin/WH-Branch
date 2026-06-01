@@ -59,7 +59,8 @@ function buildLayout(w, H, nPackers) {
   ZONES_ORDER.forEach(z => {
     const r = shelfRects[z]; if (!r) return;
     const ax = aisleX[ZONE_AISLE[z]];
-    standPos[z] = { x: ax + (r.x < ax ? -6 : 6), y: shelfTop + shelfH * 0.52 };
+    // ยืนกลางทางเดินพอดี (ไม่ offset ไปทับชั้น) — ป้องกัน sprite ทับชั้นข้างเคียง
+    standPos[z] = { x: ax, y: shelfTop + shelfH * 0.52 };
   });
 
   // ── นอกอาคาร: โซน L, M, N, S, COOL (พื้นที่กว้าง) ──
@@ -134,8 +135,8 @@ function drawShelf(ctx, z, r, active) {
 //   public/characters/{empCode}/{DIR}.png            — idle pose (8 ทิศ)
 //   public/characters/{empCode}/walking/{DIR}/frame_000..003.png — walk cycle 4 frames × 8 ทิศ
 const SPRITE_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-const SPRITE_SIZE = 68;
-const SPRITE_FOOT_PAD = 14; // padding ว่างใต้ฝ่าเท้าใน canvas 68×68 ของ PixelLab → ใช้ดันลงให้ติดเงา
+const SPRITE_SIZE = 48;     // ขนาดที่วาด (ย่อจาก source 68×68 ของ PixelLab) — ให้พอดีทางเดินระหว่างชั้น
+const SPRITE_FOOT_PAD = 10; // padding ว่างใต้ฝ่าเท้า — ปรับตามอัตราส่วน 14×(48/68)
 const WALK_FRAMES = 4;
 const PACKER_SPRITE_DIRS = {
   'EMP-01': '/characters/emp-01',
@@ -186,9 +187,10 @@ function drawSpriteChar(ctx, ch, img) {
 
   // เงา
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.beginPath(); ctx.ellipse(x, y + 2, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
-  // ตัวการ์ตูน — ดันลง SPRITE_FOOT_PAD เพื่อให้ฝ่าเท้าจริงติดเงา (PixelLab canvas มี padding ว่างด้านล่าง)
-  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + SPRITE_FOOT_PAD);
+  ctx.beginPath(); ctx.ellipse(x, y + 2, 11, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+  // ตัวการ์ตูน — scale source 68→SPRITE_SIZE, ดันลง SPRITE_FOOT_PAD ให้ฝ่าเท้าติดเงา
+  ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight,
+    x - SPRITE_SIZE / 2, y - SPRITE_SIZE + SPRITE_FOOT_PAD, SPRITE_SIZE, SPRITE_SIZE);
   // ป๊อปอัพ +1
   if (ch.pop > 0) {
     const py = headTop - 12 - (1 - ch.pop) * 14;
