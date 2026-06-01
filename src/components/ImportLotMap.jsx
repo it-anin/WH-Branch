@@ -8,7 +8,6 @@ function rowsToMap(rows) {
     const lot = String(vals[0] ?? '').trim();
     const sku = String(vals[1] ?? '').trim();
     const qty = parseFloat(String(vals[5] ?? '').replace(/,/g, ''));
-    if (sku === '400263') console.log('400263 LOT row:', JSON.stringify(vals));
     if (!sku || !lot) return;
     if (!isNaN(qty) && qty <= 0) return; // ติดลบ/ศูนย์ → ข้าม
     if (!map[sku]) map[sku] = [];
