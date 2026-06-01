@@ -162,7 +162,12 @@ export default function App() {
     const unsubLotMap = onSnapshot(doc(db, 'config', 'lotMap'), snap => {
       if (snap.exists()) {
         const entries = snap.data().entries || [];
-        setLotMap(Object.fromEntries(entries.map(e => [e.key, e.lots || (e.lot ? [e.lot] : [])])));
+        // รูปแบบใหม่: lots = [{lot, qty}], รูปแบบเก่า (backward-compat): lots = [string] หรือ lot=string
+        setLotMap(Object.fromEntries(entries.map(e => {
+          const raw = e.lots || (e.lot ? [e.lot] : []);
+          const normalized = raw.map(l => typeof l === 'string' ? { lot: l, qty: Infinity } : l);
+          return [e.key, normalized];
+        })));
         setLotMapMeta(snap.data()._meta || null);
       } else {
         setLotMapMeta(null);
@@ -398,7 +403,8 @@ export default function App() {
         const entry = lotMap[s];
         console.log('lotMap[' + s + ']:', entry);
         console.log('lotMap total SKUs:', Object.keys(lotMap).length);
-        if (!entry) {
+        if (entry) console.table(entry);
+        else {
           const found = Object.keys(lotMap).filter(k => k.includes(s));
           console.log('SKU ที่ใกล้เคียง:', found.length ? found : '(ไม่มี)');
         }
@@ -447,6 +453,7 @@ export default function App() {
 
   function handleLotMapImport(map, meta) {
     setLotMap(map);
+    // map = { [sku]: [{lot, qty}, ...] }
     const entries = Object.entries(map).map(([key, lots]) => ({ key, lots }));
     setDoc(doc(db, 'config', 'lotMap'), { entries, ...(meta ? { _meta: meta } : {}) })
       .catch(err => console.error('lotMap write failed:', err.code));

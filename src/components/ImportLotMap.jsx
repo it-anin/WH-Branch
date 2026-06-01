@@ -15,13 +15,13 @@ function rowsToMap(rows) {
     totals[sku][lot] = (totals[sku][lot] || 0) + qty;
   });
 
-  // Pass 2: เก็บเฉพาะ LOT ที่ sum > 0
+  // Pass 2: เก็บเฉพาะ LOT ที่ sum > 0 พร้อม qty คงเหลือเริ่มต้น
   const map = {};
   Object.entries(totals).forEach(([sku, lots]) => {
-    Object.entries(lots).forEach(([lot, total]) => {
-      if (total > 0) {
+    Object.entries(lots).forEach(([lot, qty]) => {
+      if (qty > 0) {
         if (!map[sku]) map[sku] = [];
-        map[sku].push(lot);
+        map[sku].push({ lot, qty });
       }
     });
   });
