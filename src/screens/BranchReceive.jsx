@@ -251,7 +251,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       return;
     }
     if (box.problemReported && !box.problemResolved) {
-      showToast(`⚠ ลัง ${box.id} แจ้งปัญหาแล้ว · รอหัวหน้าตรวจสอบ`, 'error');
+      showToast(`⚠ ลัง ${box.id} แจ้งปัญหาแล้ว · รอเภสัชตรวจสอบ`, 'error');
       return;
     }
     // ล็อกลัง: ถ้าพนักงานคนอื่นกำลังตรวจอยู่ → บล็อก (ปลดล็อกเมื่อคนนั้นยืนยันรับ/แจ้งปัญหา/ไปลังถัดไป)
