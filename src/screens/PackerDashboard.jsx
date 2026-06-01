@@ -129,7 +129,75 @@ function drawShelf(ctx, z, r, active) {
   ctx.textBaseline = 'alphabetic';
 }
 
-// ตัวการ์ตูนสไตล์ Gather.town — pixel avatar หัวโต hoodie + ผมสไปคี้ ใส่ลุคต่างกันแต่ละพนักงาน
+// ─── Sprite-based avatars (PixelLab generated, 8-direction, 68×68) ───
+// ไฟล์อยู่ที่ public/characters/{empCode}/{DIR}.png — มี 8 ทิศ: N, NE, E, SE, S, SW, W, NW
+const SPRITE_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const SPRITE_SIZE = 68;
+const PACKER_SPRITE_DIRS = {
+  'EMP-01': '/characters/emp-01',
+  // 'EMP-02': '/characters/emp-02',  // เมื่อ gen เสร็จแล้วเปิดบรรทัดนี้
+  // 'EMP-03': '/characters/emp-03',
+  // 'EMP-04': '/characters/emp-04',
+};
+const spriteCache = {}; // { [empCode]: { [dir]: HTMLImageElement } }
+Object.entries(PACKER_SPRITE_DIRS).forEach(([code, path]) => {
+  spriteCache[code] = {};
+  SPRITE_DIRS.forEach(d => {
+    const img = new Image();
+    img.src = `${path}/${d}.png`;
+    spriteCache[code][d] = img;
+  });
+});
+
+// คำนวณทิศ 8 ช่องจากเวกเตอร์การเคลื่อนที่ (dx, dy ในระบบ canvas: dy+ = ลง)
+function dirFromVec(dx, dy) {
+  const deg = Math.atan2(dy, dx) * 180 / Math.PI; // -180..180  (0=E, 90=S, -90=N)
+  if (deg >= -22.5 && deg < 22.5) return 'E';
+  if (deg >= 22.5 && deg < 67.5) return 'SE';
+  if (deg >= 67.5 && deg < 112.5) return 'S';
+  if (deg >= 112.5 && deg < 157.5) return 'SW';
+  if (deg >= 157.5 || deg < -157.5) return 'W';
+  if (deg >= -157.5 && deg < -112.5) return 'NW';
+  if (deg >= -112.5 && deg < -67.5) return 'N';
+  return 'NE'; // -67.5..-22.5
+}
+
+function getSprite(ch) {
+  const set = spriteCache[ch.code];
+  if (!set) return null;
+  const img = set[ch.dir || 'S'];
+  return (img && img.complete && img.naturalWidth > 0) ? img : null;
+}
+
+function drawSpriteChar(ctx, ch, img) {
+  const x = Math.round(ch.x), y = Math.round(ch.y);
+  const step = ch.frame % 2 === 1;
+  const bob = step ? -1 : 0;
+  const headTop = y - SPRITE_SIZE + 4;
+
+  // เงา
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath(); ctx.ellipse(x, y + 2, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
+  // ตัวการ์ตูน (anchor ที่ฝ่าเท้า)
+  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + 6 + bob);
+  // ป๊อปอัพ +1
+  if (ch.pop > 0) {
+    const py = headTop - 12 - (1 - ch.pop) * 14;
+    ctx.globalAlpha = Math.min(1, ch.pop * 1.5);
+    ctx.fillStyle = '#caa472'; ctx.fillRect(x - 6, py - 6, 12, 12);
+    ctx.fillStyle = '#8a6a3f'; ctx.fillRect(x - 6, py - 6, 12, 3);
+    ctx.fillStyle = '#2e7d32'; ctx.font = 'bold 13px "JetBrains Mono"';
+    ctx.textAlign = 'left'; ctx.fillText('+1', x + 8, py + 4);
+    ctx.globalAlpha = 1;
+  }
+  // ชื่อ
+  ctx.fillStyle = '#3a2f1e';
+  ctx.font = 'bold 12px "Patrick Hand", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(ch.name, x, headTop - 4);
+}
+
+// ตัวการ์ตูนสไตล์ Gather.town (fallback) — pixel avatar หัวโต hoodie + ผมสไปคี้
 const GT_OUTLINE = '#2e2b3d', GT_SKIN = '#f4cfa6', GT_PANTS = '#2a3548', GT_SHOE = '#3a3025';
 
 // ลุคต่อพนักงาน — hair (ผม), hood (เสื้อฮู้ดดี้), hat (หมวกแก๊ป), glasses (แว่น)
@@ -141,6 +209,10 @@ const PACKER_STYLES = {
 };
 
 function drawChar(ctx, ch) {
+  // ถ้ามี sprite ของพนักงานคนนี้ — ใช้ sprite (overrides pixel-art ด้านล่าง)
+  const sprite = getSprite(ch);
+  if (sprite) { drawSpriteChar(ctx, ch, sprite); return; }
+
   const S = 2.4, x = Math.round(ch.x), y = Math.round(ch.y);
   const step = ch.frame % 2 === 1;
   const bob = step ? 0.4 : 0;
@@ -356,7 +428,7 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
       charsRef.current = packers.map((p, i) => ({
         code: p.code, name: p.name, color: p.color,
         style: PACKER_STYLES[p.code] || {},
-        x: layoutRef.current.home[i].x, y: layoutRef.current.mainAisleY, facing: 1,
+        x: layoutRef.current.home[i].x, y: layoutRef.current.mainAisleY, facing: 1, dir: 'S',
         frame: 0, frameT: 0, pop: 0, targetZone: null, lastActive: 0, cur: 'home', wp: [],
         wanderZone: null, nextWander: 0,
       }));
@@ -400,6 +472,7 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
           else {
             ch.x += dx / dist * sp; ch.y += dy / dist * sp;
             if (Math.abs(dx) > Math.abs(dy)) ch.facing = dx > 0 ? 1 : -1;
+            ch.dir = dirFromVec(dx, dy); // 8 ทิศสำหรับ sprite
             ch.frameT += dt; if (ch.frameT > 120) { ch.frame = (ch.frame + 1) % 4; ch.frameT = 0; }
           }
         } else ch.frame = 0;
