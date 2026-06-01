@@ -45,8 +45,9 @@ function buildLayout(w, H, nPackers) {
   const nShelf = segs.filter(s => s.t === 's').length; // 11
   const nAisle = segs.filter(s => s.t === 'a').length; // 6
   const avail = w - pad * 2;
-  const SW = avail / (nShelf + nAisle * 0.8);
-  const AW = SW * 0.8;
+  // ทางเดินกว้างขึ้น (1.4x ของชั้น) เพื่อให้ sprite 68px ยืนได้ไม่ทับชั้น
+  const SW = avail / (nShelf + nAisle * 1.4);
+  const AW = SW * 1.4;
 
   let x = pad;
   const shelfRects = {}, aisleX = {};
@@ -135,12 +136,12 @@ function drawShelf(ctx, z, r, active) {
 //   public/characters/{empCode}/{DIR}.png            — idle pose (8 ทิศ)
 //   public/characters/{empCode}/walking/{DIR}/frame_000..003.png — walk cycle 4 frames × 8 ทิศ
 const SPRITE_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-const SPRITE_SIZE = 48;     // ขนาดที่วาด (ย่อจาก source 68×68 ของ PixelLab) — ให้พอดีทางเดินระหว่างชั้น
-const SPRITE_FOOT_PAD = 10; // padding ว่างใต้ฝ่าเท้า — ปรับตามอัตราส่วน 14×(48/68)
+const SPRITE_SIZE = 68;     // ขนาดที่วาด (ตรงกับ source ของ PixelLab — ไม่ scale, ภาพคมสุด)
+const SPRITE_FOOT_PAD = 14; // padding ว่างใต้ฝ่าเท้าใน sprite
 const WALK_FRAMES = 4;
 const PACKER_SPRITE_DIRS = {
-  'EMP-01': '/characters/emp-01',
-  // 'EMP-02': '/characters/emp-02',
+  'EMP-01': '/characters/emp-02',   // มุก ใช้ตัวการ์ตูนจาก emp-02
+  'EMP-02': '/characters/emp-01',   // แล็ค ใช้ตัวการ์ตูนจาก emp-01 (ผมบลอนด์ + แว่น)
   // 'EMP-03': '/characters/emp-03',
   // 'EMP-04': '/characters/emp-04',
 };
@@ -187,10 +188,9 @@ function drawSpriteChar(ctx, ch, img) {
 
   // เงา
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.beginPath(); ctx.ellipse(x, y + 2, 11, 3.5, 0, 0, Math.PI * 2); ctx.fill();
-  // ตัวการ์ตูน — scale source 68→SPRITE_SIZE, ดันลง SPRITE_FOOT_PAD ให้ฝ่าเท้าติดเงา
-  ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight,
-    x - SPRITE_SIZE / 2, y - SPRITE_SIZE + SPRITE_FOOT_PAD, SPRITE_SIZE, SPRITE_SIZE);
+  ctx.beginPath(); ctx.ellipse(x, y + 2, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
+  // ตัวการ์ตูน — ดันลง SPRITE_FOOT_PAD ให้ฝ่าเท้าจริงติดเงา
+  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + SPRITE_FOOT_PAD);
   // ป๊อปอัพ +1
   if (ch.pop > 0) {
     const py = headTop - 12 - (1 - ch.pop) * 14;
