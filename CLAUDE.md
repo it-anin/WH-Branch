@@ -81,15 +81,17 @@ const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, ite
 ]
 ```
 
-### BRANCH_STAFF (hardcoded ใน BranchReceive.jsx)
+### BRANCH_STAFF (hardcoded ใน BranchReceive.jsx + AndroidApp.jsx — ต้อง sync 2 ไฟล์)
 ```js
 [
   { code: 'BR-01', name: 'ก้า' },
   { code: 'BR-02', name: 'กิ๊ฟ' },
   { code: 'BR-03', name: 'นิคกี้' },
   { code: 'BR-04', name: 'สุ่ย' },
+  { code: 'BR-05', name: 'อ๊อฟ', role: 'pharmacist' },   // เภสัช — มีสิทธิ์ recheck ลังที่แจ้งปัญหา
 ]
 ```
+**`role: 'pharmacist'`** = สิทธิ์เดียวที่มีตอนนี้ — ตรวจสอบใน `handleScan` เพื่อตัดสินใจว่าให้เข้า recheck mode หรือบล็อก
 
 ---
 
@@ -354,10 +356,12 @@ open → packing → closed → exported → received
 | `receivedBy` | Android กดยืนยันรับ | BoxCard "ตรวจสอบโดย:" + staff filter (desktop) | — (คงไว้) |
 | `receivingBy` | Android `startReceive` (กำลังตรวจ) | ล็อกลัง — กันพนักงานอื่นสแกนซ้ำขณะตรวจ (ไม่มี timeout) | confirm/report/scanNext |
 | `problemReported` / `problemResolved` | Android ยืนยันแจ้งปัญหา / Outbound กดแก้ไข-อนุมัติ | Desktop รับสินค้า: card กรอบแดง + ปุ่ม ตรวจสอบ/แก้ไขแล้ว | — (คงไว้เป็นประวัติ) |
-| `problemReviewed` | เภสัชกด "บันทึกรายละเอียด" (Desktop รับสินค้า) | gate ให้ Outbound ขึ้น badge + ตารางแก้ไข (ไม่ขึ้นทันทีตอน Android แจ้ง) | — |
+| `problemReviewed` | (1) เภสัชกด "บันทึกรายละเอียด" Desktop, (2) **auto-set** เมื่อ pharmacist recheck-fail (Android) | gate ให้ Outbound ขึ้น badge + ตารางแก้ไข (ไม่ขึ้นทันทีตอน Android แจ้ง) | — |
 | `problemImage` | Android แนบรูป (ย่อ base64 JPEG ~800px) | Desktop ตรวจสอบ/Outbound แสดงรูปหลักฐาน | — |
 | `problemType` | `'incomplete'` (สแกนไม่ครบ+ยืนยัน) / `'damaged'` (แจ้งปัญหา+รูป) | ปุ่ม card: incomplete→"🔁 รีเช็คสินค้า" (ส้ม), damaged→"🔍 ตรวจสอบ" (แดง) | — |
-| `problemBy` / `problemAt` / `problemScanCounts` / `problemNote` | Android แจ้งปัญหา/ยืนยันไม่ครบ (+ หัวหน้าบันทึก note) | หาว่าสินค้าตัวไหนขาด (ตัวแดง) + รายละเอียด | — |
+| `problemBy` / `problemAt` / `problemScanCounts` / `problemNote` | Android แจ้งปัญหา/ยืนยันไม่ครบ (+ หัวหน้าบันทึก note หรือ auto-gen note จาก pharmacist recheck) | หาว่าสินค้าตัวไหนขาด (ตัวแดง) + รายละเอียด | — |
+| `problemConfirmedBy` / `problemConfirmedAt` | pharmacist กด ยืนยัน recheck-fail (Android) | audit trail — เภสัชยืนยันสินค้าขาดจริง (ไม่ใช่ staff error) | — |
+| `problemResolvedBy` / `problemResolvedAt` | pharmacist กด ยืนยัน recheck-ok (Android) | audit trail — สินค้าครบหลังคลังแก้ไข | — |
 
 **สำคัญ:** fields เหล่านี้ sync ผ่าน `setBoxes` (เขียนทั้ง box object → Firestore `boxes/{id}`) — ข้ามเครื่องได้ (Android ↔ Desktop)
 
@@ -605,11 +609,13 @@ const PACKER_SPRITE_DIRS = {
 - **Controlled mode (Android):** รับ `branchStaff` / `setBranchStaff` เป็น optional props จาก AndroidApp
   - ถ้ามี props → ใช้ external state, ซ่อน staff dropdown ใน header (`!isControlled`)
   - ถ้าไม่มี props (Desktop) → ใช้ internal state + ปุ่ม dropdown ใน header
-- **`BRANCH_STAFF`** (hardcoded ใน BranchReceive.jsx และ AndroidApp.jsx) — label selector: `"พนักงาน:"`:
+- **`BRANCH_STAFF`** (hardcoded ใน BranchReceive.jsx และ AndroidApp.jsx — ต้อง sync 2 ไฟล์) — label selector: `"พนักงาน:"`:
   ```js
   [{ code: 'BR-01', name: 'ก้า' }, { code: 'BR-02', name: 'กิ๊ฟ' },
-   { code: 'BR-03', name: 'นิคกี้' }, { code: 'BR-04', name: 'สุ่ย' }]
+   { code: 'BR-03', name: 'นิคกี้' }, { code: 'BR-04', name: 'สุ่ย' },
+   { code: 'BR-05', name: 'อ๊อฟ', role: 'pharmacist' }]
   ```
+  - **`role: 'pharmacist'`** ปลดล็อก **recheck mode** บน Android — สแกนซ้ำลัง `problemType='incomplete'` ได้ (รายละเอียดดู section *Pharmacist Recheck Flow*)
 - Phase: `scan` → `verify` → `result` (3 phases) — **ใช้บน Android เท่านั้น** (Desktop เป็น approval-only ไม่เข้า phase verify/result)
 - **`scanCounts`** = `{[sku]: number}` นับจำนวนชิ้นที่สแกนจริงต่อ SKU (ไม่ใช่ binary Set)
   - สแกน 1 ครั้ง = +1 ชิ้น
@@ -673,6 +679,35 @@ const PACKER_SPRITE_DIRS = {
    - `problemFixed = problemReported && problemResolved && status !== 'received'` (priority ปุ่ม/label: hasProblem > pending > problemFixed > received)
 - **Tab badge:** receive รวม `problemReported && !problemResolved`, Outbound (closed) รวม `problemReviewed && !problemResolved`; header รับสินค้ามี chip "🔴 N แจ้งปัญหา"
 - **ปุ่ม/label priority ใน BoxCard:** hasProblem > pending > problemFixed > received
+
+## Pharmacist Recheck Flow (Android) — เภสัชสแกนซ้ำลังที่แจ้งปัญหา
+
+**Permission:** เฉพาะ staff ที่มี `role: 'pharmacist'` ใน BRANCH_STAFF (ตอนนี้คือ **BR-05 อ๊อฟ**) — staff อื่นยังบล็อกตามเดิม (`⚠ แจ้งปัญหาแล้ว · รอเภสัชตรวจสอบ`)
+
+### State + Derived
+- **`recheckMode`** (useState): true เมื่อ pharmacist สแกนซ้ำลัง `problemType='incomplete'` → reset เป็น false ใน `handleScanNext` / `handleApprove` / `handleRecheck`
+- **`verifyItems`** (derived): filter boxItems ให้เหลือเฉพาะ SKU ที่ `problemScanCounts[sku] < qty` (เฉพาะที่ไม่ครบในรอบแรก) — `allChecked` / `doneCount` / `scannedSkuCount` ใช้ `verifyItems` แทน `boxItems` ใน recheck mode
+
+### Flow
+1. **handleScan:** เจอลัง `problemReported && !problemResolved && problemType='incomplete'` + `branchStaff?.role === 'pharmacist'` → `setRecheckMode(true)` + `startReceive(box)` + toast `🔁 รีเช็คลัง {id}` (success)
+2. **handleItemScan:** ใน recheck mode ถ้าสแกน SKU ที่ `problemScanCounts[sku] >= needed` (ครบในรอบแรก) → reject + `scanError = "SKU นี้สแกนครบแล้วในรอบแรก"` (กันสแกนนอก verifyItems)
+3. **handleConfirm 3-way split:**
+   - **recheck + ok:** `problemResolved=true`, `problemResolvedBy/At=pharmacist`, `receivePending=true` → รอเภสัชอนุมัติเอกสาร (เหมือนรับปกติ)
+   - **recheck + fail/over (Option B auto-notify):** keep `problemReported=true`, **`problemReviewed=true`** (auto — Outbound badge ขึ้นทันที), `problemNote = auto-generated` ลิสต์ SKU ที่ขาด/เกินพร้อมชื่อ + จำนวน, `problemConfirmedBy/At=pharmacist`, merge `problemScanCounts` รอบใหม่; toast `⚠ เภสัชยืนยันสินค้าขาด · แจ้งคลังสินค้าแล้ว` (error)
+   - **non-pharmacist + fail/over:** flow เดิม — `problemReported=true` รอเภสัชตรวจ (ไม่ trigger `problemReviewed`)
+
+### Auto-generated `problemNote` format
+```
+🧪 เภสัชยืนยันสินค้าขาด:
+• {SKU1} {name1} ขาด {N} ชิ้น
+• {SKU2} {name2} ขาด {M} ชิ้น
+• {SKU3} {name3} เกิน {K} ชิ้น    ← กรณีเกิน (over)
+```
+
+### ผลกระทบกับ Desktop view (`saveProblemNote`)
+- Desktop ที่หัวหน้าพิมพ์ note + กด `📦 แจ้งคลังสินค้า` **ยังใช้งานได้เหมือนเดิม** — เก็บไว้สำหรับ damaged box (มีรูป) หรือ incomplete ที่ไม่ได้ผ่าน pharmacist recheck
+- ถ้า pharmacist recheck-fail ก่อน → Outbound badge ขึ้นทันที + note auto-fill — หัวหน้า Desktop อาจไม่ต้องทำซ้ำ
+- Desktop "🔁 รีเช็คสินค้า" view (blind: SKU/ชื่อ/หน่วย/สแกนแล้ว) **เก็บไว้ดูประวัติเท่านั้น** ไม่ใช่หน้าสแกน
 
 ## Toast Types
 `showToast(message, type?)` รองรับ 3 type — นิยามสีใน `Toast.jsx`:
