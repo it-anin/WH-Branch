@@ -354,7 +354,7 @@ export default function App() {
   const PACKERS = [
     { code: 'EMP-01', name: 'มุก' },
     { code: 'EMP-02', name: 'แล็ค' },
-    { code: 'EMP-03', name: 'N/A' },
+    // { code: 'EMP-03', name: 'N/A' },   // ปิดชั่วคราว — เปิดกลับเมื่อมีพนักงานคนใหม่ + sprite พร้อม
     { code: 'EMP-04', name: 'ตั๋ง' },
   ];
 

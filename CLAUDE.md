@@ -76,7 +76,7 @@ const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, ite
 [
   { code: 'EMP-01', name: 'มุก' },
   { code: 'EMP-02', name: 'แล็ค' },
-  { code: 'EMP-03', name: 'N/A' },   // เต้ ออกแล้ว
+  // { code: 'EMP-03', name: 'N/A' },   // ปิดชั่วคราว — เต้ ออกแล้ว, เปิดกลับเมื่อมีคนใหม่
   { code: 'EMP-04', name: 'ตั๋ง' },
 ]
 ```
