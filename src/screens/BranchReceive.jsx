@@ -242,16 +242,18 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     // กันสแกนลังซ้ำที่จัดการไปแล้ว — บล็อก ไม่เข้า verify
     setNotFound(false);
     setQuery('');
+    // Android ไม่แสดงเลขลัง (จอเล็ก) — Desktop แสดงเลขลังเพื่อแยกง่าย
+    const boxLabel = isAndroid ? '' : `ลัง ${box.id} `;
     if (box.status === 'received') {
-      showToast(`⚠ ลัง ${box.id} รับเข้าสาขาแล้ว`, 'error');
+      showToast(`⚠ ${boxLabel}รับเข้าสาขาแล้ว`, 'error');
       return;
     }
     if (box.receivePending) {
-      showToast(`⚠ ลัง ${box.id} สแกนรับแล้ว · รออนุมัติเอกสาร`, 'error');
+      showToast(`⚠ ${boxLabel}สแกนรับแล้ว · รออนุมัติเอกสาร`, 'error');
       return;
     }
     if (box.problemReported && !box.problemResolved) {
-      showToast(`⚠ ลัง ${box.id} แจ้งปัญหาแล้ว · รอเภสัชตรวจสอบ`, 'error');
+      showToast(`⚠ ${boxLabel}แจ้งปัญหาแล้ว · รอเภสัชตรวจสอบ`, 'error');
       return;
     }
     // ล็อกลัง: ถ้าพนักงานคนอื่นกำลังตรวจอยู่ → บล็อก (ปลดล็อกเมื่อคนนั้นยืนยันรับ/แจ้งปัญหา/ไปลังถัดไป)
