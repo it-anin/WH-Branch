@@ -106,27 +106,19 @@ function drawArea(ctx, z, r, active) {
 
 function drawShelf(ctx, z, r, active) {
   const levels = ZONE_LEVELS[z] || 7;
-  const tilesReady = typeof tilemapImg !== 'undefined' && tilemapImg.complete && tilemapImg.naturalWidth > 0;
-
-  if (tilesReady) {
-    // วาดด้วย tile ลังไม้ (crate) เป็น grid
-    fillTiles(ctx, TILES.crate, r.x, r.y, r.w, r.h);
-    if (!active) { ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(r.x, r.y, r.w, r.h); }
-  } else {
-    // Fallback (flat colors)
-    ctx.fillStyle = active ? '#d8b988' : '#cdc2ac';
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = active ? '#b3905c' : '#ada085';
-    ctx.fillRect(r.x, r.y, r.w, 5);
-    ctx.fillStyle = '#7c6038';
-    ctx.fillRect(r.x, r.y + r.h - 4, r.w, 4);
-    ctx.strokeStyle = 'rgba(90,70,40,0.35)'; ctx.lineWidth = 1;
-    for (let i = 1; i < levels; i++) {
-      const yy = r.y + (r.h / levels) * i;
-      ctx.beginPath(); ctx.moveTo(r.x, yy); ctx.lineTo(r.x + r.w, yy); ctx.stroke();
-    }
+  ctx.fillStyle = active ? '#d8b988' : '#cdc2ac';
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.fillStyle = active ? '#b3905c' : '#ada085';
+  ctx.fillRect(r.x, r.y, r.w, 5);
+  ctx.fillStyle = '#7c6038';
+  ctx.fillRect(r.x, r.y + r.h - 4, r.w, 4);
+  // เส้นแบ่งชั้น
+  ctx.strokeStyle = 'rgba(90,70,40,0.35)'; ctx.lineWidth = 1;
+  for (let i = 1; i < levels; i++) {
+    const yy = r.y + (r.h / levels) * i;
+    ctx.beginPath(); ctx.moveTo(r.x, yy); ctx.lineTo(r.x + r.w, yy); ctx.stroke();
   }
-  // ป้ายโซน (วงกลมน้ำเงิน) บนหัวชั้น — แสดงทั้ง 2 mode
+  // ป้ายโซน (วงกลมน้ำเงิน) บนหัวชั้น
   const cx = r.x + r.w / 2, cy = r.y + 14, rad = 11;
   ctx.fillStyle = '#1f4e8c';
   ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fill();
@@ -345,64 +337,21 @@ function drawChar(ctx, ch) {
   ctx.restore();
 }
 
-// ─── Tile system: Kenney Tiny Town (16×16 tiles, 12×11 grid) ───
-const TILE_SRC = 16;        // ขนาด tile ในไฟล์ต้นฉบับ
-const TILE_DRAW = 32;       // ขนาดที่วาดบน canvas (scale 2x)
-// Tile coords (col, row) — ปรับได้ถ้าเลือก tile ผิด
-const TILES = {
-  grass:   { col: 5, row: 0 },   // หญ้านอกอาคาร
-  floor:   { col: 1, row: 2 },   // พื้นห้องคลัง (ดิน/ทราย)
-  aisle:   { col: 2, row: 2 },   // ทางเดินหลัก
-  wall:    { col: 0, row: 8 },   // ผนัง (อิฐสีเทา)
-  crate:   { col: 8, row: 7 },   // ลังไม้ (ชั้นวาง)
-};
-const tilemapImg = new Image();
-tilemapImg.src = '/tiles/tilemap_packed.png';
-function drawTile(ctx, t, dx, dy, dw = TILE_DRAW, dh = TILE_DRAW) {
-  if (!tilemapImg.complete || !tilemapImg.naturalWidth) return false;
-  ctx.drawImage(tilemapImg, t.col * TILE_SRC, t.row * TILE_SRC, TILE_SRC, TILE_SRC, dx, dy, dw, dh);
-  return true;
-}
-function fillTiles(ctx, t, x, y, w, h) {
-  if (!tilemapImg.complete || !tilemapImg.naturalWidth) return false;
-  for (let py = y; py < y + h; py += TILE_DRAW)
-    for (let px = x; px < x + w; px += TILE_DRAW)
-      drawTile(ctx, t, px, py);
-  return true;
-}
-
 function renderScene(ctx, L, chars, zonesInData, w, H) {
   const rb = L.roomBottom, dx = L.doorX;
-  const tilesReady = tilemapImg.complete && tilemapImg.naturalWidth > 0;
-
-  if (tilesReady) {
-    // พื้นนอกอาคาร (หญ้า)
-    fillTiles(ctx, TILES.grass, 0, 0, w, H);
-    // ห้องคลัง (พื้นดิน/ทราย)
-    fillTiles(ctx, TILES.floor, 8, 8, w - 16, rb - 8);
-    // ทางเดินหลัก
-    fillTiles(ctx, TILES.aisle, 10, L.mainAisleY - 14, w - 20, (rb - 10) - (L.mainAisleY - 14));
-  } else {
-    // Fallback: flat colors เดิม (ระหว่างรอ image load)
-    ctx.fillStyle = '#d7d2c4'; ctx.fillRect(0, 0, w, H);
-    ctx.fillStyle = '#efe9dd'; ctx.fillRect(8, 8, w - 16, rb - 8);
-    ctx.fillStyle = '#e3dccb'; ctx.fillRect(10, L.mainAisleY - 14, w - 20, (rb - 10) - (L.mainAisleY - 14));
-  }
-
-  // ป้ายทางเดิน
-  ctx.fillStyle = 'rgba(60,40,20,0.7)';
+  // พื้นนอกอาคาร (ลานกว้าง)
+  ctx.fillStyle = '#d7d2c4'; ctx.fillRect(0, 0, w, H);
+  // ห้องคลัง
+  ctx.fillStyle = '#efe9dd'; ctx.fillRect(8, 8, w - 16, rb - 8);
+  // ทางเดินหลัก (ในห้อง)
+  ctx.fillStyle = '#e3dccb'; ctx.fillRect(10, L.mainAisleY - 14, w - 20, (rb - 10) - (L.mainAisleY - 14));
+  ctx.fillStyle = 'rgba(120,100,70,0.45)';
   ctx.font = '11px "Patrick Hand", sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('ทางเดินหลัก', 16, L.mainAisleY - 17);
-
-  // ผนังห้อง (ขอบ)
-  ctx.strokeStyle = '#5a4530'; ctx.lineWidth = 4; ctx.strokeRect(8, 8, w - 16, rb - 8);
-
+  // ผนังห้อง
+  ctx.strokeStyle = '#b6ad97'; ctx.lineWidth = 4; ctx.strokeRect(8, 8, w - 16, rb - 8);
   // ประตู (ช่องเปิดในผนังล่าง)
-  if (tilesReady) {
-    fillTiles(ctx, TILES.grass, dx - 26, rb - 10, 52, 18);
-  } else {
-    ctx.fillStyle = '#d7d2c4'; ctx.fillRect(dx - 26, rb - 10, 52, 16);
-  }
+  ctx.fillStyle = '#d7d2c4'; ctx.fillRect(dx - 26, rb - 10, 52, 16);
   ctx.strokeStyle = '#a89472'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(dx - 26, rb + 2, 30, -Math.PI / 2, 0); ctx.stroke();
   // ชั้นวางในห้อง A–K
