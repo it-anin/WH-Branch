@@ -1,17 +1,29 @@
 import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 
-// ColA(0)=LOT  ColB(1)=SKU  ColF(5)=qty  → key by SKU, value=array ของ LOT, skip ถ้า ColF ≤ 0
+// ColA(0)=LOT  ColB(1)=SKU  ColF(5)=qty
+// รวม qty ของแต่ละ (SKU, LOT) ทั้งหมด → เก็บเฉพาะ LOT ที่ยอดรวม > 0 (ของจริงเหลือ)
 function rowsToMap(rows) {
-  const map = {};
+  // Pass 1: รวม qty ต่อ (sku, lot)
+  const totals = {}; // { [sku]: { [lot]: sumQty } }
   rows.slice(1).forEach(vals => {
     const lot = String(vals[0] ?? '').trim();
     const sku = String(vals[1] ?? '').trim();
-    const qty = parseFloat(String(vals[5] ?? '').replace(/,/g, ''));
+    const qty = parseFloat(String(vals[5] ?? '').replace(/,/g, '')) || 0;
     if (!sku || !lot) return;
-    if (!isNaN(qty) && qty <= 0) return; // ติดลบ/ศูนย์ → ข้าม
-    if (!map[sku]) map[sku] = [];
-    if (!map[sku].includes(lot)) map[sku].push(lot);
+    if (!totals[sku]) totals[sku] = {};
+    totals[sku][lot] = (totals[sku][lot] || 0) + qty;
+  });
+
+  // Pass 2: เก็บเฉพาะ LOT ที่ sum > 0
+  const map = {};
+  Object.entries(totals).forEach(([sku, lots]) => {
+    Object.entries(lots).forEach(([lot, total]) => {
+      if (total > 0) {
+        if (!map[sku]) map[sku] = [];
+        map[sku].push(lot);
+      }
+    });
   });
   return map;
 }
