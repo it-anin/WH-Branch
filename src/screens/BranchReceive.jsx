@@ -627,7 +627,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 <button className="btn sm ghost" onClick={() => setViewingId(null)}>× ปิด</button>
               </div>
 
-              {/* รายการสินค้า — ตัวแดง = ขาด (จาก problemScanCounts) */}
+              {/* รายการสินค้า — Blind recheck: ไม่แสดงต้องมี/ขาด เพื่อให้ scan ใหม่โดยไม่รู้จำนวน */}
               {(() => {
                 const psc = viewingBox.problemScanCounts || {};
                 return (
@@ -637,27 +637,20 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                         <tr>
                           <th>SKU / ชื่อ</th>
                           <th style={{ width: 60 }}>หน่วย</th>
-                          <th style={{ width: 56, textAlign: 'center' }}>ต้องมี</th>
-                          <th style={{ width: 64, textAlign: 'center' }}>สแกนได้</th>
-                          <th style={{ width: 56, textAlign: 'center' }}>ขาด</th>
+                          <th style={{ width: 80, textAlign: 'center' }}>สแกนแล้ว</th>
                         </tr>
                       </thead>
                       <tbody>
                         {viewingItems.map(l => {
-                          const need = l.qty ?? l.got ?? 0;
                           const got = psc[l.sku] || 0;
-                          const short = need - got;
-                          const isShort = short > 0;
                           return (
-                            <tr key={l.sku} style={{ background: isShort ? '#fde8e8' : 'white' }}>
+                            <tr key={l.sku}>
                               <td>
                                 <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                                <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: isShort ? 'var(--red)' : 'var(--ink)', fontWeight: isShort ? 700 : 400 }}>{l.name}</div>
+                                <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
                               </td>
                               <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
-                              <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700 }}>{need}</td>
-                              <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, color: isShort ? 'var(--red)' : 'var(--green)' }}>{got}</td>
-                              <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, color: 'var(--red)' }}>{isShort ? short : '-'}</td>
+                              <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 22, fontWeight: 700 }}>{got}</td>
                             </tr>
                           );
                         })}
