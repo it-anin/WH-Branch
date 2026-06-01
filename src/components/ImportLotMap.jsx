@@ -8,6 +8,7 @@ function rowsToMap(rows) {
     const lot = String(vals[0] ?? '').trim();
     const sku = String(vals[1] ?? '').trim();
     const qty = parseFloat(String(vals[5] ?? '').replace(/,/g, ''));
+    if (sku === '400263') console.log('400263 LOT row:', JSON.stringify(vals));
     if (!sku || !lot) return;
     if (!isNaN(qty) && qty <= 0) return; // ติดลบ/ศูนย์ → ข้าม
     if (!map[sku]) map[sku] = [];
@@ -17,9 +18,10 @@ function rowsToMap(rows) {
 }
 
 function parseXLSX(buffer) {
-  const wb = XLSX.read(buffer, { type: 'array' });
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  // raw: false → ใช้ formatted text แทนเลขดิบ (เช่น date serial → "01/01/2026")
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
   return rowsToMap(rows);
 }
 
