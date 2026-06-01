@@ -129,15 +129,28 @@ function drawShelf(ctx, z, r, active) {
   ctx.textBaseline = 'alphabetic';
 }
 
-// ตัวการ์ตูนสไตล์ Gather.town (Classic) — pixel avatar หัวโต มีเส้นขอบ
-const GT_OUTLINE = '#2e2b3d', GT_SKIN = '#f4cfa6', GT_PANTS = '#3a4a63', GT_SHOE = '#5a4636', GT_HAIR = '#6b4a2a';
+// ตัวการ์ตูนสไตล์ Gather.town — pixel avatar หัวโต hoodie + ผมสไปคี้ ใส่ลุคต่างกันแต่ละพนักงาน
+const GT_OUTLINE = '#2e2b3d', GT_SKIN = '#f4cfa6', GT_PANTS = '#2a3548', GT_SHOE = '#3a3025';
+
+// ลุคต่อพนักงาน — hair (ผม), hood (เสื้อฮู้ดดี้), hat (หมวกแก๊ป), glasses (แว่น)
+const PACKER_STYLES = {
+  'EMP-01': { hair: '#caa056', hood: '#1c2a4a', glasses: true },   // มุก — ผมบลอนด์ + แว่น + ฮู้ดน้ำเงิน
+  'EMP-02': { hair: '#1a1a1a', hood: '#1f1f1f', hat: '#a92020' },  // แล็ค — ผมดำ + แก๊ปแดง + ฮู้ดดำ
+  'EMP-03': { hair: '#3a2a1f', hood: '#2c4a2a' },                  // N/A — ผมน้ำตาลเข้ม + ฮู้ดเขียว
+  'EMP-04': { hair: '#5b3a22', hood: '#1e5aa0' },                  // ตั๋ง — ผมน้ำตาล + ฮู้ดฟ้า
+};
+
 function drawChar(ctx, ch) {
   const S = 2.4, x = Math.round(ch.x), y = Math.round(ch.y);
   const step = ch.frame % 2 === 1;
   const bob = step ? 0.4 : 0;
   const liftL = ch.frame === 1 ? 0.9 : 0;
   const liftR = ch.frame === 3 ? 0.9 : 0;
-  const headTop = -17 * S;
+  const headTop = -18 * S;
+
+  const st = ch.style || {};
+  const HAIR = st.hair || '#5b3a22';
+  const HOOD = st.hood || ch.color || '#1e5aa0';
 
   ctx.save();
   ctx.translate(x, y - bob * S);
@@ -148,33 +161,81 @@ function drawChar(ctx, ch) {
     ctx.fillStyle = fill; ctx.fillRect(bx, by, bw, bh);
   };
   const ub = (xl, base, w, h, fill) => blk(xl * S, -(base + h) * S, w * S, h * S, fill);
+  // ไม่มีขอบ (สำหรับ accent เล็กๆ)
+  const ubNoBorder = (xl, base, w, h, fill) => {
+    ctx.fillStyle = fill;
+    ctx.fillRect(Math.round(xl * S), Math.round(-(base + h) * S), Math.round(w * S), Math.round(h * S));
+  };
 
   // เงา
-  ctx.fillStyle = 'rgba(0,0,0,0.16)';
-  ctx.beginPath(); ctx.ellipse(0, bob * S + 2, 5 * S, 1.5 * S, 0, 0, Math.PI * 2); ctx.fill();
-  // ขา + รองเท้า (สลับก้าว)
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath(); ctx.ellipse(0, bob * S + 2, 5.5 * S, 1.6 * S, 0, 0, Math.PI * 2); ctx.fill();
+
+  // ขา + รองเท้า
   ub(-3, 0 + liftL, 2, 1, GT_SHOE); ub(-3, 1 + liftL, 2, 3 - liftL, GT_PANTS);
   ub(1, 0 + liftR, 2, 1, GT_SHOE); ub(1, 1 + liftR, 2, 3 - liftR, GT_PANTS);
-  // ลำตัว (เสื้อ = สีพนักงาน)
-  ub(-4, 4, 8, 6, ch.color);
-  // แขน
-  ub(-5.4, 5, 1.6, 4.2, GT_SKIN); ub(3.8, 5, 1.6, 4.2, GT_SKIN);
-  // หัว
-  ub(-4.5, 10, 9, 7, GT_SKIN);
-  // ผม Classic
-  ub(-4.7, 15, 9.4, 2.2, GT_HAIR); ub(-4.7, 12, 1.4, 3.5, GT_HAIR); ub(3.3, 12, 1.4, 3.5, GT_HAIR); ub(-4.7, 14.5, 9.4, 1, GT_HAIR);
-  // ตา (นัดตามทิศเดิน)
+
+  // ลำตัว (Hoodie) — กว้างขึ้นเล็กน้อย ดูเป็นเสื้อหนา
+  ub(-4.5, 4, 9, 6.5, HOOD);
+  // ลายซิป/เชือกฮู้ด (เส้นกลางแนวตั้ง)
+  ubNoBorder(-0.25, 5, 0.5, 4, '#2a2230');
+  // แขน (สีเดียวกับ hoodie)
+  ub(-5.8, 5, 1.6, 4.5, HOOD); ub(4.2, 5, 1.6, 4.5, HOOD);
+  // มือ (skin)
+  ub(-5.8, 4.4, 1.6, 0.8, GT_SKIN); ub(4.2, 4.4, 1.6, 0.8, GT_SKIN);
+
+  // ฮู้ด (ผ้าคลุมไหล่ด้านหลังคอ) — แถบสีเข้มกว่า hoodie นิดหน่อย
+  ub(-4.8, 9.6, 9.6, 1.4, HOOD);
+
+  // หัว (ใหญ่ขึ้น — chibi style)
+  ub(-4.7, 11, 9.4, 7, GT_SKIN);
+
+  // ผม — base + ข้างสองข้าง + ทรงสไปคี้บน
+  ub(-5, 16.5, 10, 1.8, HAIR);     // ด้านบนของหัว
+  ub(-4.9, 13, 1.4, 4, HAIR);      // ข้างซ้าย (จอน)
+  ub(3.5, 13, 1.4, 4, HAIR);       // ข้างขวา (จอน)
+  // Spikes (ฟันปลาเล็กๆ ด้านบน)
+  ub(-3.8, 17.8, 1.4, 1.2, HAIR);
+  ub(-2.0, 18.2, 1.4, 1.4, HAIR);
+  ub(-0.2, 17.9, 1.4, 1.3, HAIR);
+  ub(1.6, 18.2, 1.4, 1.4, HAIR);
+  ub(3.0, 17.8, 1.2, 1.1, HAIR);
+
+  // หมวกแก๊ป (option) — วาดทับผมด้านบน
+  if (st.hat) {
+    ub(-5, 17.5, 10, 2, st.hat);
+    ub(-5, 19.2, 5.5, 0.9, st.hat);
+    // โลโก้กลางหมวก
+    ubNoBorder(-1, 18.2, 2, 1, '#fff');
+  }
+
+  // ตา
   const eo = ch.facing > 0 ? 0.3 : -0.3;
-  ub(-2.7 + eo, 13, 1.5, 1.7, GT_OUTLINE); ub(1.2 + eo, 13, 1.5, 1.7, GT_OUTLINE);
+  ub(-2.9 + eo, 13.8, 1.5, 1.7, GT_OUTLINE); ub(1.4 + eo, 13.8, 1.5, 1.7, GT_OUTLINE);
   ctx.fillStyle = '#fff';
-  ctx.fillRect(Math.round((-2.4 + eo) * S), Math.round(-14.4 * S), Math.round(0.6 * S), Math.round(0.6 * S));
-  ctx.fillRect(Math.round((1.5 + eo) * S), Math.round(-14.4 * S), Math.round(0.6 * S), Math.round(0.6 * S));
+  ctx.fillRect(Math.round((-2.6 + eo) * S), Math.round(-15.2 * S), Math.round(0.6 * S), Math.round(0.6 * S));
+  ctx.fillRect(Math.round((1.7 + eo) * S), Math.round(-15.2 * S), Math.round(0.6 * S), Math.round(0.6 * S));
+
+  // แว่นตา (option)
+  if (st.glasses) {
+    ctx.strokeStyle = GT_OUTLINE;
+    ctx.lineWidth = Math.max(1.2, S * 0.4);
+    const gy = -15.5 * S, gh = 2.4 * S;
+    ctx.strokeRect((-3.2 + eo) * S, gy, 2.6 * S, gh);
+    ctx.strokeRect((1.1 + eo) * S, gy, 2.6 * S, gh);
+    ctx.beginPath();
+    ctx.moveTo((-0.6 + eo) * S, gy + gh / 2); ctx.lineTo((1.1 + eo) * S, gy + gh / 2);
+    ctx.stroke();
+  }
+
   // แก้มแดง
-  ctx.fillStyle = 'rgba(230,120,110,0.4)';
-  ctx.fillRect(Math.round(-3.6 * S), Math.round(-12.4 * S), Math.round(1.4 * S), Math.round(1 * S));
-  ctx.fillRect(Math.round(2.2 * S), Math.round(-12.4 * S), Math.round(1.4 * S), Math.round(1 * S));
+  ctx.fillStyle = 'rgba(230,120,110,0.45)';
+  ctx.fillRect(Math.round(-3.8 * S), Math.round(-13 * S), Math.round(1.4 * S), Math.round(1 * S));
+  ctx.fillRect(Math.round(2.4 * S), Math.round(-13 * S), Math.round(1.4 * S), Math.round(1 * S));
+
   // ปาก
-  ctx.fillStyle = GT_OUTLINE; ctx.fillRect(Math.round(-0.8 * S), Math.round(-12 * S), Math.round(1.6 * S), Math.round(0.5 * S));
+  ctx.fillStyle = GT_OUTLINE;
+  ctx.fillRect(Math.round(-0.8 * S), Math.round(-12.5 * S), Math.round(1.6 * S), Math.round(0.5 * S));
 
   // ป๊อปตอนหยิบ
   if (ch.pop > 0) {
@@ -294,6 +355,7 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
     if (!charsRef.current) {
       charsRef.current = packers.map((p, i) => ({
         code: p.code, name: p.name, color: p.color,
+        style: PACKER_STYLES[p.code] || {},
         x: layoutRef.current.home[i].x, y: layoutRef.current.mainAisleY, facing: 1,
         frame: 0, frameT: 0, pop: 0, targetZone: null, lastActive: 0, cur: 'home', wp: [],
         wanderZone: null, nextWander: 0,
