@@ -354,7 +354,7 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
   return (
     <div ref={wrapRef} style={{ marginBottom: 24 }}>
       <div style={{ fontFamily: 'Caveat', fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
-        🎮 มุมมองคลังจำลอง <span style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>(ผังจริง · ตัวละครเดินไปโซนที่กำลังหยิบแบบเรียลไทม์)</span>
+        👤 มุมมองพนักงาน<span style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}></span>
       </div>
       <div style={{ border: '2px solid var(--line)', borderRadius: 14, overflow: 'hidden', boxShadow: '3px 3px 0 var(--line)', lineHeight: 0 }}>
         <canvas ref={canvasRef} style={{ width: '100%', height: H, display: 'block', imageRendering: 'pixelated' }} />
