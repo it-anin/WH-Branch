@@ -38,7 +38,9 @@ function splitCSVLine(line) {
     const ch = line[i];
     if (ch === '"') {
       if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
-      else inQuote = !inQuote;
+      else if (inQuote) inQuote = false;
+      else if (cur === '') inQuote = true;
+      else cur += ch; // " กลางฟิลด์ที่ไม่มี quote (เช่น นิ้ว 18G x 1") → literal
     } else if (ch === ',' && !inQuote) {
       result.push(cur.trim()); cur = '';
     } else {
@@ -78,13 +80,10 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
   function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const isXLSX = /\.xlsx?$/i.test(file.name);
     const reader = new FileReader();
 
     reader.onload = (ev) => {
-      const items = isXLSX
-        ? parseXLSX(ev.target.result)
-        : parseCSV(ev.target.result);
+      const items = parseXLSX(ev.target.result);
 
       if (items.length === 0) {
         alert('ไม่พบรายการสินค้าในไฟล์ กรุณาตรวจสอบรูปแบบ');
@@ -98,8 +97,7 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
       onImport(items, { branch: b, fileDate: fd });
     };
 
-    if (isXLSX) reader.readAsArrayBuffer(file);
-    else reader.readAsText(file, 'utf-8');
+    reader.readAsArrayBuffer(file);
 
     e.target.value = '';
   }

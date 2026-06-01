@@ -190,7 +190,7 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
   );
 }
 
-export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, packer, onScanProgress, catalogMeta }) {
+export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, packer, onScanProgress, catalogMeta, lotMap = {} }) {
   const [items, setItems] = useState(() => {
     // หักจำนวนที่พนักงานคนนี้แพ็คไปแล้ว (จากลังที่ปิด/ส่งออก/รับแล้ว) เพื่อให้สินค้าที่ลงลังครบไม่โผล่ซ้ำหลัง remount/reload
     const packed = {};
@@ -216,6 +216,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const [showHistory, setShowHistory] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [pendingLot, setPendingLot] = useState(null); // { match, lots } — รอเลือก LOT
   const barcodeRef = useRef(null);
 
   // Android: คืน focus กลับ barcode input หลัง render — ยกเว้นตอนที่ช่องค้นหาเปิดอยู่
@@ -235,13 +236,30 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
 
   // Logic กลาง — ใช้ทั้ง HID keyboard (handleBarcode) และ Broadcast wh-scan (useEffect)
   async function processBarcode(val) {
-    if (!val?.trim() || isClosing) return;
+    if (!val?.trim() || isClosing || pendingLot) return;
     const barcode = val.trim();
     const catMatch = catalog.find(it => matchBarcode(it, barcode));
     if (!catMatch) { showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
     const match = items.find(it => it.sku === catMatch.sku && it.unit === catMatch.unit);
     if (!match || match.got >= match.need) { showToast('⚠ ครบแล้ว', 'error'); return; }
-    const newItems = items.map(it => it.sku === match.sku ? { ...it, got: it.got + 1 } : it);
+
+    // เช็ค LOT (Android only): ถ้ายังไม่เลือก และมี LOT > 1 ตัว → popup ให้เลือกก่อน
+    const lots = lotMap[match.sku] || [];
+    if (isAndroid && !match.lot && lots.length > 1) {
+      setPendingLot({ match, lots });
+      return;
+    }
+    // ถ้ามี LOT เดียว auto-set, ไม่มี LOT เลย → lot=null
+    const autoLot = match.lot || (lots.length === 1 ? lots[0] : null);
+    await applyScan(match, autoLot);
+  }
+
+  async function applyScan(match, lot) {
+    const newItems = items.map(it =>
+      it.sku === match.sku && it.unit === match.unit
+        ? { ...it, got: it.got + 1, ...(lot && !it.lot ? { lot } : {}) }
+        : it
+    );
     setItems(newItems);
     let boxId = activeBoxId;
     if (!activeBoxId) {
@@ -249,6 +267,13 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
       showToast('เปิดลังใหม่อัตโนมัติ', 'success');
     }
     if (onScanProgress && boxId) onScanProgress(boxId, newItems);
+  }
+
+  async function handleLotSelect(lot) {
+    if (!pendingLot) return;
+    const { match } = pendingLot;
+    setPendingLot(null);
+    await applyScan(match, lot);
   }
 
   // ref pattern — ให้ wh-scan listener เสมอเห็น processBarcode ล่าสุด (ไม่ stale)
@@ -312,6 +337,45 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
 
   return (
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 580, ...(isAndroid ? { boxShadow: 'none', border: 'none', borderRadius: 0 } : {}) }}>
+      {pendingLot && createPortal(
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.55)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 16,
+        }}>
+          <div style={{
+            background: 'white', borderRadius: 14, padding: '20px 22px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            width: '100%', maxWidth: 360, maxHeight: '85vh',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>เลือก LOT</div>
+            <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
+              SKU: <span className="mono">{pendingLot.match.sku}</span>
+            </div>
+            <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginBottom: 14, color: '#333' }}>
+              {pendingLot.match.name}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+              {pendingLot.lots.map(lot => (
+                <button
+                  key={lot}
+                  className="btn primary"
+                  style={{ fontSize: 18, padding: '14px 18px', fontFamily: 'JetBrains Mono' }}
+                  onClick={() => handleLotSelect(lot)}
+                >{lot}</button>
+              ))}
+            </div>
+            <button
+              className="btn sm ghost"
+              style={{ marginTop: 12 }}
+              onClick={() => setPendingLot(null)}
+            >ยกเลิก</button>
+          </div>
+        </div>,
+        document.body
+      )}
       {confirmClose && createPortal(
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,

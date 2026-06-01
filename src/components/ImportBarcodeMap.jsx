@@ -8,7 +8,9 @@ function splitCSVLine(line) {
     const ch = line[i];
     if (ch === '"') {
       if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
-      else inQuote = !inQuote;
+      else if (inQuote) inQuote = false;
+      else if (cur === '') inQuote = true;
+      else cur += ch; // " กลางฟิลด์ที่ไม่มี quote (เช่น นิ้ว 18G x 1") → literal
     } else if (ch === ',' && !inQuote) {
       result.push(cur.trim()); cur = '';
     } else {
@@ -33,7 +35,7 @@ function rowsToMap(rows) {
   rows.slice(1).forEach(vals => {
     const barcode = toStr(vals[0]);
     const sku     = toStr(vals[4]);
-    const unit    = String(vals[6] ?? '').trim();
+const unit    = String(vals[6] ?? '').trim();
     if (barcode && sku) {
       const key = `${sku}__${unit}`;
       if (!map[key]) map[key] = [];
@@ -66,10 +68,9 @@ export default function ImportBarcodeMap({ matchCount, meta, onImport }) {
   function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const isXLSX = /\.xlsx?$/i.test(file.name);
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const map = isXLSX ? parseXLSX(ev.target.result) : parseCSV(ev.target.result);
+      const map = parseXLSX(ev.target.result);
       if (Object.keys(map).length === 0) {
         alert('ไม่พบข้อมูล Barcode กรุณาตรวจสอบรูปแบบไฟล์');
         return;
@@ -81,8 +82,7 @@ export default function ImportBarcodeMap({ matchCount, meta, onImport }) {
       setUploadedAt(fd);
       onImport(map, { fileName: name, fileDate: fd });
     };
-    if (isXLSX) reader.readAsArrayBuffer(file);
-    else reader.readAsText(file, 'utf-8');
+    reader.readAsArrayBuffer(file);
     e.target.value = '';
   }
 

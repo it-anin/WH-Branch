@@ -13,6 +13,7 @@ import Toast from './components/Toast.jsx';
 import ImportCatalog from './components/ImportCatalog.jsx';
 import ImportBarcodeMap from './components/ImportBarcodeMap.jsx';
 import ImportCostMap from './components/ImportCostMap.jsx';
+import ImportLotMap from './components/ImportLotMap.jsx';
 import ZoneAssign from './components/ZoneAssign.jsx';
 
 const TABS = [
@@ -158,10 +159,19 @@ export default function App() {
         setCostMapMeta(null);
       }
     }, onErr('costMap'));
+    const unsubLotMap = onSnapshot(doc(db, 'config', 'lotMap'), snap => {
+      if (snap.exists()) {
+        const entries = snap.data().entries || [];
+        setLotMap(Object.fromEntries(entries.map(e => [e.key, e.lots || (e.lot ? [e.lot] : [])])));
+        setLotMapMeta(snap.data()._meta || null);
+      } else {
+        setLotMapMeta(null);
+      }
+    }, onErr('lotMap'));
     const unsubZone = onSnapshot(doc(db, 'config', 'zoneAssignments'), snap => {
       if (snap.exists()) setZoneAssignments(snap.data().assignments || {});
     }, onErr('zoneAssignments'));
-    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); unsubZone(); };
+    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); unsubLotMap(); unsubZone(); };
   }, []);
 
   function setBoxes(updater) {
@@ -290,6 +300,7 @@ export default function App() {
       batch.delete(doc(db, 'config', 'catalogByPacker'));
       batch.delete(doc(db, 'config', 'receive'));
       batch.delete(doc(db, 'config', 'costMap'));
+      batch.delete(doc(db, 'config', 'lotMap'));
       await batch.commit();
       boxesRef.current = [];
       itemsByBoxRef.current = {};
@@ -301,9 +312,11 @@ export default function App() {
       setCatalogByPacker({});
       setBarcodeMap({});
       setCostMap({});
+      setLotMap({});
       setCatalogMeta(null);
       setBarcodeMapMeta(null);
       setCostMapMeta(null);
+      setLotMapMeta(null);
       showToast('ล้าง Firestore ทั้งหมดแล้ว ✓');
     } catch (err) {
       console.error('clearFirestore failed:', err);
@@ -343,9 +356,11 @@ export default function App() {
   const [catalogByPacker, setCatalogByPacker] = useState({});
   const [barcodeMap, setBarcodeMap] = useState({});
   const [costMap, setCostMap] = useState({});
+  const [lotMap, setLotMap] = useState({});
   const [catalogMeta, setCatalogMeta] = useState(null);
   const [barcodeMapMeta, setBarcodeMapMeta] = useState(null);
   const [costMapMeta, setCostMapMeta] = useState(null);
+  const [lotMapMeta, setLotMapMeta] = useState(null);
   const [zoneAssignments, setZoneAssignments] = useState({});
   const [showZoneAssign, setShowZoneAssign] = useState(false);
 
@@ -421,6 +436,15 @@ export default function App() {
     showToast(`Cost map: ${entries.length} รายการ ✓`);
   }
 
+  function handleLotMapImport(map, meta) {
+    setLotMap(map);
+    const entries = Object.entries(map).map(([key, lots]) => ({ key, lots }));
+    setDoc(doc(db, 'config', 'lotMap'), { entries, ...(meta ? { _meta: meta } : {}) })
+      .catch(err => console.error('lotMap write failed:', err.code));
+    const total = entries.reduce((s, e) => s + (e.lots?.length || 0), 0);
+    showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓`);
+  }
+
   function distributeCatalog(items) {
     const shuffled = [...items].sort(() => Math.random() - 0.5);
     const result = Object.fromEntries(PACKERS.map(p => [p.code, []]));
@@ -452,7 +476,7 @@ export default function App() {
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
-  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   if (isAndroidMode) {
     return (
@@ -547,6 +571,11 @@ export default function App() {
                 matchCount={Object.keys(costMap).length}
                 meta={costMapMeta}
                 onImport={handleCostMapImport}
+              />
+              <ImportLotMap
+                matchCount={Object.keys(lotMap).length}
+                meta={lotMapMeta}
+                onImport={handleLotMapImport}
               />
             </div>
             <BoxList {...screenProps} />

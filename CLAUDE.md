@@ -214,6 +214,11 @@ Logic 3 ระดับ (key = `sku__unit`):
 
 **สำคัญ:** unit ใน barcode map (ColG) **ต้องตรงกับ unit ในรายการเบิก (ColE)** ทุกตัวอักษร เช่น `กล่อง`, `ชิ้น`, `10ชิ้น` — ถ้า ColG ว่างเปล่า key จะเป็น `sku__` ซึ่งไม่ match กับ catalog → barcode ว่าง
 
+**⚠ CSV Parser + เครื่องหมายนิ้ว `"`:** ไฟล์ R05.106 มี extension `.106` → ระบบใช้ **CSV parser** (ไม่ใช่ XLSX) — ชื่อสินค้าที่มีเครื่องหมาย `"` (นิ้ว/inch) เช่น `NIPRO 18G x 1"` จะทำให้ CSV parser เดิมดูด column ที่เหลือทั้งหมดเข้าเป็น field เดียว ทำให้ unit และ barcode หาย
+- **แก้แล้วใน `splitCSVLine`** (ทั้ง `ImportBarcodeMap.jsx` และ `ImportCatalog.jsx`): `"` ที่ปรากฏ **กลางฟิลด์** (ไม่ใช่ตอนเริ่มฟิลด์) จะถูก treat เป็น literal character แทนการเริ่ม quoted field
+- ปัญหานี้เกิดเฉพาะไฟล์ที่ใช้ CSV parser เท่านั้น — ไฟล์ `.xlsx` / `.xls` ไม่มีปัญหานี้เพราะ SheetJS อ่าน cell value โดยตรงจาก binary
+- **อาการ:** barcode ไม่ขึ้นในหน้าแพ็คกิ้ง, debug `__wh.sku('SKU')` จะเห็น key = `sku__` (unit ว่าง), `barcode: ''` ใน catalog
+
 ### `handleBarcodeMapImport(map)`
 - อัพเดท `catalog`, `catalogByPacker`, `barcodeMap` พร้อมกัน
 - Sync ทั้ง 3 ไปยัง Firestore (`config/catalog`, `config/catalogByPacker`, `config/barcodeMap`)

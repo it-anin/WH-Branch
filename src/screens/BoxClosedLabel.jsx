@@ -19,7 +19,7 @@ function receiveBadge(b) {
   return { label: 'สาขา: ยังไม่รับ', bg: '#f0ede8', border: 'var(--line)', color: 'var(--mute)' };
 }
 
-export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, costMap = {} }) {
+export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, costMap = {}, lotMap = {} }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
@@ -80,7 +80,11 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     if (boxItems.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังนี้'); return; }
     const lines = boxItems.map(l => {
       const cost = costMap[`${l.sku}__${l.unit}`] ?? 0;
-      return `${l.barcode || ''}\t${l.qty ?? l.got ?? 0}\t${cost}`;
+      // l.lot = LOT ที่พนักงานเลือกตอนสแกน (Android), fallback → LOT ตัวแรกจาก lotMap
+      const lots = lotMap[l.sku] || [];
+      const lot = l.lot || lots[0] || '';
+      // โครงสร้าง POS: barcode TAB qty TAB cost + 6 TAB + lot
+      return `${l.barcode || ''}\t${l.qty ?? l.got ?? 0}\t${cost}\t\t\t\t\t\t${lot}`;
     });
     triggerDownload(lines.join('\n'), `${activeBox.id}.txt`, 'text/plain');
     // mark ว่าลังนี้ส่งออก Text แล้ว — disable ปุ่มจนกว่าจะกด Clear (clearBoxes ลบ box → flag หาย)
