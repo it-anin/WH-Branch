@@ -129,24 +129,29 @@ function drawShelf(ctx, z, r, active) {
   ctx.textBaseline = 'alphabetic';
 }
 
-// ─── Sprite-based avatars (PixelLab generated, 8-direction, 68×68) ───
-// ไฟล์อยู่ที่ public/characters/{empCode}/{DIR}.png — มี 8 ทิศ: N, NE, E, SE, S, SW, W, NW
+// ─── Sprite-based avatars (PixelLab generated, 8-direction, 68×68, 4-frame walk) ───
+// โครงสร้าง:
+//   public/characters/{empCode}/{DIR}.png            — idle pose (8 ทิศ)
+//   public/characters/{empCode}/walking/{DIR}/frame_000..003.png — walk cycle 4 frames × 8 ทิศ
 const SPRITE_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const SPRITE_SIZE = 68;
+const WALK_FRAMES = 4;
 const PACKER_SPRITE_DIRS = {
   'EMP-01': '/characters/emp-01',
-  // 'EMP-02': '/characters/emp-02',  // เมื่อ gen เสร็จแล้วเปิดบรรทัดนี้
+  // 'EMP-02': '/characters/emp-02',
   // 'EMP-03': '/characters/emp-03',
   // 'EMP-04': '/characters/emp-04',
 };
-const spriteCache = {}; // { [empCode]: { [dir]: HTMLImageElement } }
+const spriteCache = {};      // { [empCode]: { idle: { [dir]: Image }, walk: { [dir]: [Image x 4] } } }
 Object.entries(PACKER_SPRITE_DIRS).forEach(([code, path]) => {
-  spriteCache[code] = {};
+  const idle = {}, walk = {};
   SPRITE_DIRS.forEach(d => {
-    const img = new Image();
-    img.src = `${path}/${d}.png`;
-    spriteCache[code][d] = img;
+    const img = new Image(); img.src = `${path}/${d}.png`; idle[d] = img;
+    walk[d] = Array.from({ length: WALK_FRAMES }, (_, i) => {
+      const w = new Image(); w.src = `${path}/walking/${d}/frame_${String(i).padStart(3, '0')}.png`; return w;
+    });
   });
+  spriteCache[code] = { idle, walk };
 });
 
 // คำนวณทิศ 8 ช่องจากเวกเตอร์การเคลื่อนที่ (dx, dy ในระบบ canvas: dy+ = ลง)
@@ -165,21 +170,24 @@ function dirFromVec(dx, dy) {
 function getSprite(ch) {
   const set = spriteCache[ch.code];
   if (!set) return null;
-  const img = set[ch.dir || 'S'];
+  const dir = ch.dir || 'S';
+  // กำลังเดิน (มี waypoint) → ใช้ walk frame, ไม่งั้นใช้ idle
+  const walking = ch.wp && ch.wp.length > 0;
+  const img = walking
+    ? set.walk[dir][ch.frame % WALK_FRAMES]
+    : set.idle[dir];
   return (img && img.complete && img.naturalWidth > 0) ? img : null;
 }
 
 function drawSpriteChar(ctx, ch, img) {
   const x = Math.round(ch.x), y = Math.round(ch.y);
-  const step = ch.frame % 2 === 1;
-  const bob = step ? -1 : 0;
   const headTop = y - SPRITE_SIZE + 4;
 
   // เงา
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.beginPath(); ctx.ellipse(x, y + 2, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
-  // ตัวการ์ตูน (anchor ที่ฝ่าเท้า)
-  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + 6 + bob);
+  // ตัวการ์ตูน (anchor ที่ฝ่าเท้า — ไม่ต้อง bob เพราะ walk frame มี animation อยู่ในตัวแล้ว)
+  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + 6);
   // ป๊อปอัพ +1
   if (ch.pop > 0) {
     const py = headTop - 12 - (1 - ch.pop) * 14;
