@@ -6,6 +6,7 @@ const BRANCH_STAFF = [
   { code: 'BR-02', name: 'กิ๊ฟ' },
   { code: 'BR-03', name: 'นิคกี้' },
   { code: 'BR-04', name: 'สุ่ย' },
+  { code: 'BR-05', name: 'อ๊อฟ', role: 'pharmacist' },  // เภสัช — มีสิทธิ์ recheck ลังที่แจ้งปัญหา
 ];
 
 const statusLabel = {
@@ -151,6 +152,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [supervisorCode, setSupervisorCode] = useState('');
   const [reportOpen, setReportOpen]   = useState(false);
   const [reportImage, setReportImage] = useState(null);
+  // recheckMode = เภสัชสแกนซ้ำลังที่มีปัญหา 'incomplete' — แสดงเฉพาะ SKU ที่ไม่ครบ
+  const [recheckMode, setRecheckMode] = useState(false);
   const [staffMenuOpen, setStaffMenuOpen] = useState(false);
   const [itemSearch, setItemSearch] = useState('');
   const [problemNote, setProblemNote] = useState('');
@@ -253,6 +256,13 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       return;
     }
     if (box.problemReported && !box.problemResolved) {
+      // เภสัช (role: pharmacist) สแกนซ้ำได้ → เข้า recheck mode
+      if (branchStaff?.role === 'pharmacist' && box.problemType === 'incomplete') {
+        setRecheckMode(true);
+        startReceive(box);
+        showToast(`🔁 รีเช็คลัง ${box.id}`, 'success');
+        return;
+      }
       showToast(`⚠ ${boxLabel}แจ้งปัญหาแล้ว · รอเภสัชตรวจสอบ`, 'error');
       return;
     }
@@ -304,33 +314,47 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
   function handleConfirm() {
     if (!foundBox) return;
-    const hasOver = boxItems.some(l => (scanCounts[l.sku] || 0) > (l.qty ?? l.got ?? 0));
+    // recheck: เช็คเฉพาะ verifyItems (เฉพาะ SKU ที่ขาด), normal: เช็คทุก SKU
+    const hasOver = verifyItems.some(l => (scanCounts[l.sku] || 0) > (l.qty ?? l.got ?? 0));
     const result = !allChecked ? 'fail' : hasOver ? 'over' : 'ok';
     setVerifyResult(result);
     setViewingId(null);
     const time = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-    if (result === 'ok') {
-      // ครบ → ส่งให้เภสัชอนุมัติเอกสารที่ Desktop
+
+    if (recheckMode && result === 'ok') {
+      // เภสัช recheck สำเร็จ → ปลดปัญหา + รออนุมัติเอกสาร
+      setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
+        ...b,
+        problemResolved: true,
+        problemResolvedBy: branchStaff || null,
+        problemResolvedAt: new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        receivePending: true,
+        receivedBy: branchStaff || null,
+        receivingBy: null,
+        updated: time,
+      } : b));
+    } else if (result === 'ok') {
+      // ครบ (รอบแรก) → ส่งให้เภสัชอนุมัติเอกสาร
       setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
         ...b,
         receivePending: true,
         receivedBy: branchStaff || null,
-        receivingBy: null, // ปลดล็อก
+        receivingBy: null,
         updated: time,
       } : b));
     } else {
-      // ไม่ครบ/เกิน + กดยืนยัน → ส่งให้หัวหน้ารีเช็คที่ Desktop (ปุ่ม card = "รีเช็คสินค้า")
+      // ไม่ครบ/เกิน → ส่งให้รีเช็ค (recheck mode = อัพเดท problemScanCounts ของรอบใหม่)
       setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
         ...b,
         problemReported: true,
         problemResolved: false,
         problemType: 'incomplete',
-        problemImage: null,
-        problemBy: branchStaff || null,
-        problemScanCounts: { ...scanCounts },
-        problemNote: '',
-        problemAt: new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-        receivingBy: null, // ปลดล็อก
+        problemImage: b.problemImage || null,
+        problemBy: b.problemBy || branchStaff || null,
+        problemScanCounts: recheckMode ? { ...b.problemScanCounts, ...scanCounts } : { ...scanCounts },
+        problemNote: b.problemNote || '',
+        problemAt: b.problemAt || new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        receivingBy: null,
         updated: time,
       } : b));
     }
@@ -355,6 +379,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       setViewingId(null);
       setVerifyResult(null);
       setSupervisorCode('');
+      setRecheckMode(false);
       setPhase('scan');
     }
     showToast(`อนุมัติเอกสาร ${targetBoxId} แล้ว ✓ · รับเข้าสาขาเรียบร้อย`, 'success');
@@ -368,6 +393,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setScanError('');
     setSupervisorCode('');
     setVerifyResult(null);
+    setRecheckMode(false);
     setPhase('verify');
     showToast('รีเช็คสินค้า · สแกนสินค้าใหม่อีกครั้ง');
   }
@@ -383,6 +409,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setViewingId(null);
     setVerifyResult(null);
     setSupervisorCode('');
+    setRecheckMode(false);
     setPhase('scan');
   }
 
@@ -399,9 +426,18 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       return;
     }
 
-    const needed = match.qty ?? match.got ?? 0;
-    const current = scanCounts[match.sku] || 0;
+    // recheck mode: บล็อก SKU ที่เคยสแกนครบแล้ว — ตรวจซ้ำเฉพาะที่ขาด
+    if (recheckMode && foundBox?.problemScanCounts) {
+      const prevCount = foundBox.problemScanCounts[match.sku] || 0;
+      const needed = match.qty ?? match.got ?? 0;
+      if (prevCount >= needed) {
+        setScanError(`SKU นี้สแกนครบแล้วในรอบแรก — ตรวจซ้ำเฉพาะที่ขาด`);
+        setLastScannedSku(null);
+        return;
+      }
+    }
 
+    const current = scanCounts[match.sku] || 0;
     setScanError('');
     setLastScannedSku(match.sku);
     setScanCounts(prev => ({ ...prev, [match.sku]: current + 1 }));
@@ -409,9 +445,13 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
 const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
   const fullyChecked     = (item) => (scanCounts[item.sku] || 0) >= (item.qty ?? item.got ?? 0);
-  const allChecked       = boxItems.length > 0 && boxItems.every(fullyChecked);
-  const doneCount        = boxItems.filter(fullyChecked).length;
-  const scannedSkuCount  = boxItems.filter(l => (scanCounts[l.sku] || 0) >= 1).length;
+  // recheck: ตรวจเฉพาะ SKU ที่เคยสแกนไม่ครบ (จาก problemScanCounts) — ส่วน normal: ทุก SKU ในลัง
+  const verifyItems      = (recheckMode && foundBox?.problemScanCounts)
+    ? boxItems.filter(l => (foundBox.problemScanCounts[l.sku] || 0) < (l.qty ?? l.got ?? 0))
+    : boxItems;
+  const allChecked       = verifyItems.length > 0 && verifyItems.every(fullyChecked);
+  const doneCount        = verifyItems.filter(fullyChecked).length;
+  const scannedSkuCount  = verifyItems.filter(l => (scanCounts[l.sku] || 0) >= 1).length;
 
   return (
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 560 }}>

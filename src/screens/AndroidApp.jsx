@@ -7,6 +7,7 @@ const BRANCH_STAFF = [
   { code: 'BR-02', name: 'กิ๊ฟ' },
   { code: 'BR-03', name: 'นิคกี้' },
   { code: 'BR-04', name: 'สุ่ย' },
+  { code: 'BR-05', name: 'อ๊อฟ', role: 'pharmacist' },  // เภสัช — มีสิทธิ์ recheck ลังที่แจ้งปัญหา
 ];
 
 export default function AndroidApp({
