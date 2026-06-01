@@ -394,8 +394,17 @@ export default function App() {
         const combined = [...r, ...allPacker];
         console.table(combined.length ? combined : [{ note: `ไม่พบ SKU ที่มี "${s}" ในทั้ง catalog และ catalogByPacker` }]);
       },
+      lot: (s) => {
+        const entry = lotMap[s];
+        console.log('lotMap[' + s + ']:', entry);
+        console.log('lotMap total SKUs:', Object.keys(lotMap).length);
+        if (!entry) {
+          const found = Object.keys(lotMap).filter(k => k.includes(s));
+          console.log('SKU ที่ใกล้เคียง:', found.length ? found : '(ไม่มี)');
+        }
+      },
     };
-  }, [catalog, barcodeMap, catalogByPacker]);
+  }, [catalog, barcodeMap, catalogByPacker, lotMap]);
 
   function applyBarcodeMap(items, map) {
     const skusInMap = new Set(Object.keys(map).map(k => k.split('__')[0]));
