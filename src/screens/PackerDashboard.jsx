@@ -135,6 +135,7 @@ function drawShelf(ctx, z, r, active) {
 //   public/characters/{empCode}/walking/{DIR}/frame_000..003.png — walk cycle 4 frames × 8 ทิศ
 const SPRITE_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const SPRITE_SIZE = 68;
+const SPRITE_FOOT_PAD = 14; // padding ว่างใต้ฝ่าเท้าใน canvas 68×68 ของ PixelLab → ใช้ดันลงให้ติดเงา
 const WALK_FRAMES = 4;
 const PACKER_SPRITE_DIRS = {
   'EMP-01': '/characters/emp-01',
@@ -181,13 +182,13 @@ function getSprite(ch) {
 
 function drawSpriteChar(ctx, ch, img) {
   const x = Math.round(ch.x), y = Math.round(ch.y);
-  const headTop = y - SPRITE_SIZE + 4;
+  const headTop = y - SPRITE_SIZE + SPRITE_FOOT_PAD + 4;
 
   // เงา
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.beginPath(); ctx.ellipse(x, y + 2, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
-  // ตัวการ์ตูน (anchor ที่ฝ่าเท้า — ไม่ต้อง bob เพราะ walk frame มี animation อยู่ในตัวแล้ว)
-  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + 6);
+  // ตัวการ์ตูน — ดันลง SPRITE_FOOT_PAD เพื่อให้ฝ่าเท้าจริงติดเงา (PixelLab canvas มี padding ว่างด้านล่าง)
+  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + SPRITE_FOOT_PAD);
   // ป๊อปอัพ +1
   if (ch.pop > 0) {
     const py = headTop - 12 - (1 - ch.pop) * 14;
