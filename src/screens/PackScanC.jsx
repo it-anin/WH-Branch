@@ -231,8 +231,12 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
         it.sku.toLowerCase().includes(search.toLowerCase())
       )
     : items;
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const pageItems = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  // Android: ยกสินค้าที่ครบแล้ว (got >= need) ไปท้าย — sort stable เก็บลำดับเดิมในแต่ละกลุ่ม
+  const sorted = isAndroid
+    ? [...filtered].sort((a, b) => (a.got >= a.need ? 1 : 0) - (b.got >= b.need ? 1 : 0))
+    : filtered;
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+  const pageItems = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   // คำนวณยอด LOT ที่ถูกใช้ไปแล้ว (key = sku__lot) จากทุกลังที่ปิด + ลังปัจจุบัน
   function calcLotUsage() {
