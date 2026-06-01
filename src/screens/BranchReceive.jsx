@@ -342,18 +342,50 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         receivingBy: null,
         updated: time,
       } : b));
+    } else if (recheckMode) {
+      // เภสัช recheck แล้วยังขาด/เกิน → ยืนยันสินค้าขาด → auto-แจ้งคลัง + auto-generate note
+      const mergedCounts = { ...foundBox.problemScanCounts, ...scanCounts };
+      const shortList = boxItems
+        .map(l => {
+          const need = l.qty ?? l.got ?? 0;
+          const got = mergedCounts[l.sku] || 0;
+          const diff = need - got;
+          return diff !== 0 ? { sku: l.sku, name: l.name, diff } : null;
+        })
+        .filter(Boolean);
+      const autoNote = '🧪 เภสัชยืนยันสินค้าขาด:\n' + shortList
+        .map(x => x.diff > 0 ? `• ${x.sku} ${x.name} ขาด ${x.diff} ชิ้น` : `• ${x.sku} ${x.name} เกิน ${-x.diff} ชิ้น`)
+        .join('\n');
+      const nowStr = new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
+        ...b,
+        problemReported: true,
+        problemResolved: false,
+        problemReviewed: true,                  // ⭐ auto-แจ้งคลัง — Outbound badge ขึ้นทันที
+        problemType: 'incomplete',
+        problemImage: b.problemImage || null,
+        problemBy: b.problemBy || branchStaff || null,
+        problemScanCounts: mergedCounts,
+        problemNote: autoNote,
+        problemAt: b.problemAt || nowStr,
+        problemConfirmedBy: branchStaff || null,
+        problemConfirmedAt: nowStr,
+        receivingBy: null,
+        updated: time,
+      } : b));
+      showToast('⚠ เภสัชยืนยันสินค้าขาด · แจ้งคลังสินค้าแล้ว', 'error');
     } else {
-      // ไม่ครบ/เกิน → ส่งให้รีเช็ค (recheck mode = อัพเดท problemScanCounts ของรอบใหม่)
+      // พนักงานทั่วไป: ไม่ครบ/เกิน → ส่งให้รีเช็ค (รอเภสัช)
       setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
         ...b,
         problemReported: true,
         problemResolved: false,
         problemType: 'incomplete',
-        problemImage: b.problemImage || null,
-        problemBy: b.problemBy || branchStaff || null,
-        problemScanCounts: recheckMode ? { ...b.problemScanCounts, ...scanCounts } : { ...scanCounts },
-        problemNote: b.problemNote || '',
-        problemAt: b.problemAt || new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        problemImage: null,
+        problemBy: branchStaff || null,
+        problemScanCounts: { ...scanCounts },
+        problemNote: '',
+        problemAt: new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
         receivingBy: null,
         updated: time,
       } : b));
