@@ -459,8 +459,105 @@ open → packing → closed → exported → received
 - **เดิน L-path:** ลงทางเดินหลัก → แนวนอน → ขึ้นทางเดินย่อย (ไม่ทะลุชั้น) · โซนนอกอาคารเดินผ่านประตู
 - **ยืนค้างที่โซนของสินค้าที่หยิบล่าสุด** (ไม่กลับบ้าน) — ขยับเมื่อหยิบสินค้า location อื่นเท่านั้น; ยังไม่เคยหยิบ → ยืนโซนหลัก (`packerZones[code][0]`)
 - **ตรวจจับการหยิบ:** เทียบ `scanProgress` กับ `prevProgRef` — **ลังที่เพิ่งโผล่ = ตั้ง baseline เงียบ ๆ ไม่อนิเมท** (กันบั๊กลังค้างทำให้เดินผิดคน), อนิเมทเฉพาะ `got` เพิ่มของลังที่ track อยู่แล้ว → match `box.packer.code` → ตัวละครคนนั้น
-- **ตัวละคร:** สไตล์ **Gather.town (Classic)** วาดด้วย canvas (`drawChar`) — pixel avatar หัวโต มีเส้นขอบ ตามีประกาย แก้มแดง เดิน bob ขาสลับ, เสื้อ = สีพนักงาน
+- **ตัวละคร 2 ระดับ:** PNG sprite จริง (PixelLab.ai, 8 ทิศ × 4 walk frames) → ถ้าไม่มี → fallback procedural pixel art (`drawChar` วาด canvas ล้วน)
+  - **Sprite-based:** `PACKER_SPRITE_DIRS` map code → folder path, `spriteCache` preload ทั้ง idle + walk frames ตอน module load
+  - **Procedural fallback (Gather.town Classic):** หัวโต hoodie + spike hair + แว่น/หมวก/แก้มแดง — ใช้ `PACKER_STYLES` config สีต่อ code
+  - `getSprite(ch)`: เลือก `walk[dir][frame]` ถ้ามี waypoint, ไม่งั้น `idle[dir]` — return `null` → fallback procedural
+  - `dirFromVec(dx, dy)`: คำนวณ 8 ทิศจากเวกเตอร์การเคลื่อนที่ → set `ch.dir` ('N'/'NE'/'E'/'SE'/'S'/'SW'/'W'/'NW') ใน game loop
 - **ยังเป็น prototype:** ตำแหน่งยืน = กลางชั้น (ยังไม่อิงแถว/ชั้นจริง) — เฟสต่อไป: ตำแหน่งตาม location ละเอียด เช่น `B-03`
+
+### PixelLab.ai — Character Generation Workflow
+สำหรับสร้าง sprite avatars ใหม่ — ไม่ต้องวาดเอง
+
+**Tool:** [PixelLab.ai](https://pixellab.ai) (v3 character generator) — รองรับ 8-direction rotation + walk animation อัตโนมัติ
+
+#### Settings ที่ต้องใช้
+| Field | ค่า |
+|---|---|
+| Character Type | **Humanoid** |
+| Generation Mode | **v3 NEW** |
+| Camera View | **Low Top-Down** (มุม Gather.town) |
+| Sprite Size | **48px** (สำคัญ — output canvas จะเป็น 68×68 พร้อม padding) |
+| Detail | Highly detailed |
+| Outline | **Black outline** |
+
+#### Prompt Template (ภาษาอังกฤษ)
+```
+Chibi young Asian male warehouse worker, big head small body,
+friendly anime face with big eyes and rosy cheeks.
+[HAIR DESCRIPTION] [ACCESSORY].
+[OUTFIT COLOR] zip-up hoodie with hood down on back.
+Dark jeans. White sneakers. Standing pose, arms relaxed at sides.
+```
+
+แทนที่ในส่วน `[...]` ต่อพนักงาน:
+
+| Code | ลุค |
+|---|---|
+| **มุก** | brown spiky hair / royal blue hoodie |
+| **แล็ค** | blonde spiky messy hair + black-framed rectangular glasses / navy blue hoodie |
+| **N/A** (EMP-03) | dark brown messy short hair / forest green hoodie |
+| **ตั๋ง** | medium brown spiky hair / royal blue hoodie |
+
+**Keywords ห้ามลืม:** `chibi`, `big head small body`, `friendly anime face`, `rosy cheeks`, `hood down on back`, `Standing pose, arms relaxed at sides`
+
+#### Workflow ใน PixelLab UI
+1. **Generate v3 Character** — รอ ~30 วินาที → ได้ 8 รูปยืน (idle) ครบ 8 ทิศ
+2. **เปิดตัวการ์ตูน → Add Animation → Walking (4 frames)** — รอ gen 30-60 วินาที → ได้ 32 รูป (4 เฟรม × 8 ทิศ)
+3. **Download** — PixelLab จะให้ ZIP ที่มีโครงสร้าง:
+   ```
+   {ชื่อ}/
+   ├── rotations/{south,south-east,east,north-east,north,north-west,west,south-west}.png
+   └── animations/Walking-{hash}/{south,south-east,...}/frame_000.png ... frame_003.png
+   ```
+
+#### File Structure ที่โค้ดต้องการ
+หลัง extract แล้วต้องจัด layout เป็น:
+```
+public/characters/emp-XX/
+├── N.png, NE.png, E.png, SE.png, S.png, SW.png, W.png, NW.png   ← idle (8 ทิศ)
+└── walking/
+    ├── N/frame_000.png frame_001.png frame_002.png frame_003.png
+    ├── NE/, E/, SE/, S/, SW/, W/, NW/                            ← walk cycle 4 เฟรม × 8 ทิศ
+```
+
+**ขั้นตอน restructure (bash):**
+```bash
+cd public/characters/emp-XX
+# rotations → flat
+mv rotations/north.png N.png; mv rotations/north-east.png NE.png; mv rotations/east.png E.png
+mv rotations/south-east.png SE.png; mv rotations/south.png S.png; mv rotations/south-west.png SW.png
+mv rotations/west.png W.png; mv rotations/north-west.png NW.png; rmdir rotations
+# animations → walking/
+mkdir walking
+mv animations/Walking-*/north walking/N; mv animations/Walking-*/north-east walking/NE
+mv animations/Walking-*/east walking/E; mv animations/Walking-*/south-east walking/SE
+mv animations/Walking-*/south walking/S; mv animations/Walking-*/south-west walking/SW
+mv animations/Walking-*/west walking/W; mv animations/Walking-*/north-west walking/NW
+rmdir animations/Walking-* animations
+```
+
+#### Integration ในโค้ด
+เปิด [PackerDashboard.jsx](src/screens/PackerDashboard.jsx) — เพิ่ม entry ใน `PACKER_SPRITE_DIRS`:
+```js
+const PACKER_SPRITE_DIRS = {
+  'EMP-01': '/characters/emp-02',   // มุก
+  'EMP-02': '/characters/emp-01',   // แล็ค
+  'EMP-03': '/characters/emp-03',   // เปิดเมื่อ gen เสร็จ
+  'EMP-04': '/characters/emp-04',
+};
+```
+
+**Constants ที่ปรับได้ใน `PackerDashboard.jsx`:**
+- `SPRITE_SIZE` (68) — ขนาดที่วาดบน canvas ต้องตรงกับ source size ของ PixelLab
+- `SPRITE_FOOT_PAD` (14) — padding ใต้ฝ่าเท้าใน sprite canvas → ใช้ดันรูปลงให้ฝ่าเท้าติดเงา (PixelLab v3 มี padding ~14px ใต้เท้า)
+- `WALK_FRAMES` (4) — จำนวนเฟรม walk animation
+- `SPRITE_DIRS` — 8 ทิศ ['N','NE','E','SE','S','SW','W','NW']
+
+#### Tips
+- **PixelLab gen ตัวเดียวกัน 2 variants** บ่อย (เช่น 2 north folders) — เลือกอันที่ดูดีกว่า ลบอีกอัน
+- **ค่า `SPRITE_FOOT_PAD` อาจต่างกันต่อ character** ถ้า PixelLab pad ไม่คงที่ — ปรับ +/- 2px ถ้าตัวลอย/จมพื้น
+- **ทางเดินระหว่างชั้น (`AW = SW * 0.8`) แคบกว่า sprite 68px** — sprite อาจล้ำเข้าชั้นข้างเคียงเล็กน้อย ยอมรับได้
 
 ## Outbound (BoxClosedLabel) — Logic สำคัญ
 - Tab label: **Outbound** (เดิม: Box & Label) — screen-label "รายการส่งสินค้า", frame title: **"เลขที่ลัง"**
