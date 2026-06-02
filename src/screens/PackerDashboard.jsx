@@ -138,9 +138,7 @@ function drawShelf(ctx, z, r, active) {
 const SPRITE_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const SPRITE_SIZE = 68;     // ขนาดที่วาด (ตรงกับ source ของ PixelLab — ไม่ scale, ภาพคมสุด)
 const SPRITE_FOOT_PAD = 14; // padding ว่างใต้ฝ่าเท้าใน sprite (default PixelLab v3)
-const PACKER_FOOT_PADS = {
-  'EMP-04': 0,  // emp-03 sprite — feet flush to bottom of canvas
-};
+const PACKER_FOOT_PADS = {};  // per-character override ถ้า PixelLab pad ไม่คงที่
 const WALK_FRAMES = 4;
 const PACKER_SPRITE_DIRS = {
   'EMP-01': '/characters/emp-02',   // มุก ใช้ตัวการ์ตูนจาก emp-02
@@ -193,8 +191,8 @@ function drawSpriteChar(ctx, ch, img) {
   // เงา
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.beginPath(); ctx.ellipse(x, y + 2, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
-  // ตัวการ์ตูน — ดันลง footPad ให้ฝ่าเท้าจริงติดเงา
-  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + footPad);
+  // ตัวการ์ตูน — scale ทุก sprite เป็น SPRITE_SIZE×SPRITE_SIZE (รองรับ source ขนาดต่าง เช่น 96×96)
+  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + footPad, SPRITE_SIZE, SPRITE_SIZE);
   // ป๊อปอัพ +1
   if (ch.pop > 0) {
     const py = headTop - 12 - (1 - ch.pop) * 14;
