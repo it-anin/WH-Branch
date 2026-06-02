@@ -28,36 +28,10 @@ function rowsToMap(rows) {
   return map;
 }
 
-// อ่าน cell โดยอ้างค่า raw (cell.v) ก่อน — ถ้าเป็น string อยู่แล้วใช้เลย (รักษา leading zero / format ของผู้ใช้)
-// ถ้าเป็น number/date ค่อย fallback ไปอ่าน formatted text (cell.w)
-function readCell(cell) {
-  if (!cell) return '';
-  if (typeof cell.v === 'string') return cell.v;          // text cell → preserve raw "001/25"
-  if (cell.w != null) return cell.w;                       // number/date → formatted display
-  return String(cell.v ?? '');
-}
-
 function parseXLSX(buffer) {
   const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-  const rows = [];
-  // debug: dump raw cell object ของ SKU 800418 LOT cell ตัวแรกที่เจอ
-  let dumped = false;
-  for (let R = range.s.r; R <= range.e.r; R++) {
-    const row = [];
-    for (let C = range.s.c; C <= range.e.c; C++) {
-      row.push(readCell(ws[XLSX.utils.encode_cell({ r: R, c: C })]));
-    }
-    if (!dumped && R > 0 && String(row[1] ?? '') === '800418') {
-      const lotCell = ws[XLSX.utils.encode_cell({ r: R, c: 0 })];
-      console.log(`◆ raw cell ของ SKU 800418 LOT (row ${R + 1}):`, lotCell);
-      console.log(`  .t (type):`, lotCell?.t, '| .v:', JSON.stringify(lotCell?.v),
-                  '| .w:', JSON.stringify(lotCell?.w), '| .z (format):', JSON.stringify(lotCell?.z));
-      dumped = true;
-    }
-    rows.push(row);
-  }
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
   return rowsToMap(rows);
 }
 
