@@ -230,7 +230,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                     border: `1.5px solid ${on ? color : 'var(--line)'}`,
                     background: on ? color : 'white',
                     color: on ? 'white' : (f.accentColor && f.n > 0 ? color : 'var(--ink)'),
-                    fontFamily: 'Patrick Hand', fontSize: 12, fontWeight: on ? 700 : 400,
+                    fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: on ? 700 : 400,
                   }}
                 >{f.label} ({f.n})</button>
               );
@@ -238,7 +238,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           </div>
           {packers.length > 0 && (
             <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: 'var(--mute)' }}>แพ็คโดย:</span>
+              <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--mute)' }}>แพ็คโดย:</span>
               {[{ code: 'all', name: 'ทุกคน' }, ...packers].map(p => {
                 const on = packerFilter === p.code;
                 return (
@@ -250,7 +250,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                       border: `1.5px solid ${on ? 'var(--accent)' : 'var(--line)'}`,
                       background: on ? 'var(--accent)' : 'white',
                       color: on ? 'white' : 'var(--ink)',
-                      fontFamily: 'Patrick Hand', fontSize: 11, fontWeight: on ? 700 : 400,
+                      fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: on ? 700 : 400,
                     }}
                   >{p.name}</button>
                 );
@@ -258,7 +258,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
             </div>
           )}
           {visibleBoxes.length === 0 && (
-            <div style={{ gridColumn: '1 / -1', fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', textAlign: 'center', marginTop: 20 }}>
+            <div style={{ gridColumn: '1 / -1', fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--mute)', textAlign: 'center', marginTop: 20 }}>
               {closedBoxes.length === 0 ? 'ยังไม่มีลังที่ปิด' : 'ไม่มีลังในกลุ่มนี้'}
             </div>
           )}
@@ -285,11 +285,11 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 {b.pos && b.pos !== '—' && (
                   <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', textAlign: 'center', wordBreak: 'break-all' }}>{b.pos}</div>
                 )}
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', textAlign: 'center' }}>
+                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--mute)', textAlign: 'center' }}>
                   {b.skuCount ?? 0} SKU · {b.totalQty ?? 0} ชิ้น
                 </div>
                 {b.packer && (
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--mute)', textAlign: 'center' }}>
                     {b.packer.name}
                   </div>
                 )}
@@ -317,7 +317,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               ผลการค้นหา "{globalSearch}" — {searchResults.length} รายการ
             </div>
             {searchResults.length === 0 ? (
-              <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>
+              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 15, color: 'var(--mute)' }}>
                 ไม่พบสินค้าในลังที่ปิดแล้ว
               </div>
             ) : (
@@ -337,13 +337,13 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                       <tr key={`${l.boxId}-${l.sku}-${i}`}>
                         <td>
                           <span style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700, color: 'var(--accent)' }}>{l.boxId}</span>
-                          {l.packer && <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: 'var(--mute)' }}>{l.packer.name}</div>}
+                          {l.packer && <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--mute)' }}>{l.packer.name}</div>}
                         </td>
                         <td>
                           <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                          <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 15 }}>{l.name}</div>
                         </td>
-                        <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
+                        <td style={{ fontFamily: 'JetBrains Mono' }}>{l.unit}</td>
                         <td style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
                           ×{l.qty ?? l.got ?? 0}
                         </td>
@@ -362,14 +362,14 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
             <div className="row" style={{ marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
               <b className="hand" style={{ fontSize: 22, color: 'var(--red)' }}>🔴 แก้ไขสินค้าที่มีปัญหา · {activeBox.id}</b>
               {activeBox.problemBy && (
-                <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
+                <span style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--mute)' }}>
                   แจ้งโดย: {activeBox.problemBy.name}{activeBox.problemAt ? ` · ${activeBox.problemAt}` : ''}
                 </span>
               )}
             </div>
 
             {activeBox.problemNote && (
-              <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px solid var(--red)', borderRadius: 10, background: '#fde8e8', fontFamily: 'Patrick Hand', fontSize: 14, color: '#c0392b' }}>
+              <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px solid var(--red)', borderRadius: 10, background: '#fde8e8', fontFamily: 'JetBrains Mono', fontSize: 14, color: '#c0392b' }}>
                 📝 {activeBox.problemNote}
               </div>
             )}
@@ -391,9 +391,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                           <tr key={l.sku}>
                             <td>
                               <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                              <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 15 }}>{l.name}</div>
                             </td>
-                            <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
+                            <td style={{ fontFamily: 'JetBrains Mono' }}>{l.unit}</td>
                             <td>
                               <div className="row" style={{ gap: 8, justifyContent: 'center', alignItems: 'center' }}>
                                 <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--red)', color: 'var(--red)', fontWeight: 700 }} onClick={() => adjustQty(l.sku, -1)}>−</button>
@@ -406,7 +406,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                       </tbody>
                     </table>
                   ) : (
-                    <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', padding: 10 }}>ไม่มีข้อมูลรายการสินค้า</div>
+                    <div style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--mute)', padding: 10 }}>ไม่มีข้อมูลรายการสินค้า</div>
                   )}
                 </div>
 
@@ -420,7 +420,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
               {activeBox.problemImage && (
                 <div>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', marginBottom: 6 }}>📷 รูปหลักฐาน</div>
+                  <div style={{ fontFamily: 'JetBrains Mono', fontSize: 14, color: 'var(--mute)', marginBottom: 6 }}>📷 รูปหลักฐาน</div>
                   <img src={activeBox.problemImage} alt="หลักฐาน" style={{ width: '100%', borderRadius: 10, border: '1.5px solid var(--line)', objectFit: 'contain', display: 'block' }} />
                 </div>
               )}
@@ -448,8 +448,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                       {boxItems.map(l => (
                         <tr key={l.sku}>
                           <td className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</td>
-                          <td style={{ fontFamily: 'Patrick Hand' }}>{l.name}</td>
-                          <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
+                          <td style={{ fontFamily: 'JetBrains Mono' }}>{l.name}</td>
+                          <td style={{ fontFamily: 'JetBrains Mono' }}>{l.unit}</td>
                           <td style={{ fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, textAlign: 'center' }}>×{l.qty ?? l.got ?? 0}</td>
                           <td className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{l.location || '—'}</td>
                         </tr>
@@ -457,7 +457,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                     </tbody>
                   </table>
                 ) : (
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', padding: 10 }}>ไม่มีข้อมูลรายการสินค้า</div>
+                  <div style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--mute)', padding: 10 }}>ไม่มีข้อมูลรายการสินค้า</div>
                 )}
               </div>
             </div>
@@ -547,7 +547,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--mute)', fontFamily: 'Patrick Hand', fontSize: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--mute)', fontFamily: 'JetBrains Mono', fontSize: 16 }}>
             เลือกลังทางซ้ายเพื่อดูรายละเอียด
           </div>
         )}
