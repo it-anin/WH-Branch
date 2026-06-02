@@ -701,6 +701,12 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 <button className="btn sm ghost" onClick={() => setViewingId(null)}>× ปิด</button>
               </div>
 
+              {viewingBox.problemType === 'incomplete' && (
+                <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
+                  สแกนสินค้าที่ app เพื่อรีเช็ค
+                </div>
+              )}
+
               {/* รายการสินค้า — Blind recheck: ไม่แสดงต้องมี/ขาด เพื่อให้ scan ใหม่โดยไม่รู้จำนวน */}
               {(() => {
                 const psc = viewingBox.problemScanCounts || {};
@@ -753,9 +759,6 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               />
               <div className="row" style={{ marginTop: 10, gap: 10, justifyContent: 'flex-end' }}>
                 <button className="btn" onClick={saveProblemNote} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>📦 แจ้งคลังสินค้า</button>
-              </div>
-              <div style={{ marginTop: 12, padding: '10px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
-                กด <b>"แจ้งคลังสินค้า"</b> ก่อน → ลังจะไปขึ้น badge "แจ้งปัญหา" ที่หน้า <b>Outbound</b> เพื่อแก้ไขจำนวนสินค้าจริง
               </div>
             </div>
           ) : isViewingOther ? (
