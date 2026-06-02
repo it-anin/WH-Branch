@@ -42,10 +42,14 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const packerBoxes = closedBoxes.filter(b => packerFilter === 'all' || b.packer?.code === packerFilter);
   const pendingN = packerBoxes.filter(b => !isApproved(b)).length;
   const approvedN = packerBoxes.filter(isApproved).length;
+  // ลังที่เภสัชแจ้งปัญหา (problemReviewed=true จาก pharmacist recheck-fail หรือหัวหน้ากด "แจ้งคลังสินค้า")
+  const hasProblem = (b) => b.problemReviewed && !b.problemResolved;
+  const problemN = packerBoxes.filter(hasProblem).length;
   const visibleBoxes = packerBoxes
     .filter(b =>
       outboundFilter === 'approved' ? isApproved(b)
       : outboundFilter === 'pending' ? !isApproved(b)
+      : outboundFilter === 'problem' ? hasProblem(b)
       : true
     )
     .sort((a, b) => a.id.localeCompare(b.id)); // เรียงเลขที่ลังน้อย→มาก
@@ -213,17 +217,19 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               { k: 'all', label: 'ทั้งหมด', n: packerBoxes.length },
               { k: 'pending', label: 'รออนุมัติ', n: pendingN },
               { k: 'approved', label: 'อนุมัติแล้ว', n: approvedN },
+              { k: 'problem', label: '🔴 แจ้งปัญหา', n: problemN, accentColor: 'var(--red)' },
             ].map(f => {
               const on = outboundFilter === f.k;
+              const color = f.accentColor || 'var(--accent)';
               return (
                 <button
                   key={f.k}
                   onClick={() => setOutboundFilter(f.k)}
                   style={{
                     padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
-                    border: `1.5px solid ${on ? 'var(--accent)' : 'var(--line)'}`,
-                    background: on ? 'var(--accent)' : 'white',
-                    color: on ? 'white' : 'var(--ink)',
+                    border: `1.5px solid ${on ? color : 'var(--line)'}`,
+                    background: on ? color : 'white',
+                    color: on ? 'white' : (f.accentColor && f.n > 0 ? color : 'var(--ink)'),
                     fontFamily: 'Patrick Hand', fontSize: 12, fontWeight: on ? 700 : 400,
                   }}
                 >{f.label} ({f.n})</button>
