@@ -172,10 +172,21 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   // Desktop: ปุ่มเลือกพนักงาน = filter เฉพาะลังที่พนักงานคนนั้นสแกน (receivedBy)
   const staffFilter = !isControlled && branchStaff ? branchStaff.code : null;
   const matchStaff = (b) => !staffFilter || b.receivedBy?.code === staffFilter || b.problemBy?.code === staffFilter;
-  // pending + ลังที่มีปัญหา ขึ้นก่อน (problem สำคัญสุด)
-  const sortRank = (b) => b.problemReported && !b.problemResolved ? 0 : b.receivePending ? 1 : 2;
+  // priority: problem (0) > receivePending (1) > exported รอสาขาสแกน (2) > อื่น (3)
+  const sortRank = (b) =>
+    b.problemReported && !b.problemResolved ? 0
+    : b.receivePending ? 1
+    : (b.status === 'exported' && !receiveBoxIds.includes(b.id)) ? 2
+    : 3;
   const approvalBoxes = boxes
-    .filter(b => b.receivePending || b.problemReported || receiveBoxIds.includes(b.id))
+    // เห็นลังที่คลังส่งออกแล้ว (status=exported) ด้วย — ไม่ต้องรอ Android สแกน
+    .filter(b =>
+      b.receivePending
+      || b.problemReported
+      || receiveBoxIds.includes(b.id)
+      || b.status === 'exported'
+      || b.status === 'received'
+    )
     .filter(matchStaff)
     .sort((a, b) => sortRank(a) - sortRank(b));
   const pendingCount = boxes.filter(b => b.receivePending && matchStaff(b)).length;
