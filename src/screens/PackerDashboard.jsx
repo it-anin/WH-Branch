@@ -137,8 +137,14 @@ function drawShelf(ctx, z, r, active) {
 //   public/characters/{empCode}/walking/{DIR}/frame_000..003.png — walk cycle 4 frames × 8 ทิศ
 const SPRITE_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const SPRITE_SIZE = 68;     // ขนาดที่วาด (ตรงกับ source ของ PixelLab — ไม่ scale, ภาพคมสุด)
-const SPRITE_FOOT_PAD = 14; // padding ว่างใต้ฝ่าเท้าใน sprite (default PixelLab v3)
-const PACKER_FOOT_PADS = {};  // per-character override ถ้า PixelLab pad ไม่คงที่
+const SPRITE_FOOT_PAD = 14; // padding ว่างใต้ฝ่าเท้าใน sprite (default PixelLab v3 68×68)
+// per-character override — sprite ของแต่ละคนอาจขนาด/padding ต่างกันถ้า PixelLab gen คนละรอบ
+const PACKER_SPRITE_SIZES = {
+  'EMP-04': 96,  // emp-03 sprite — canvas 96×96 (PixelLab gen 64px → 96 canvas)
+};
+const PACKER_FOOT_PADS = {
+  'EMP-04': 24,  // emp-03 sprite — fern foot pad วัดได้ 24px ใต้เท้า
+};
 const WALK_FRAMES = 4;
 const PACKER_SPRITE_DIRS = {
   'EMP-01': '/characters/emp-02',   // มุก ใช้ตัวการ์ตูนจาก emp-02
@@ -185,14 +191,15 @@ function getSprite(ch) {
 
 function drawSpriteChar(ctx, ch, img) {
   const x = Math.round(ch.x), y = Math.round(ch.y);
+  const spriteSize = PACKER_SPRITE_SIZES[ch.code] ?? SPRITE_SIZE;
   const footPad = PACKER_FOOT_PADS[ch.code] ?? SPRITE_FOOT_PAD;
-  const headTop = y - SPRITE_SIZE + footPad + 4;
+  const headTop = y - spriteSize + footPad + 4;
 
   // เงา
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.beginPath(); ctx.ellipse(x, y + 2, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
-  // ตัวการ์ตูน — scale ทุก sprite เป็น SPRITE_SIZE×SPRITE_SIZE (รองรับ source ขนาดต่าง เช่น 96×96)
-  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + footPad, SPRITE_SIZE, SPRITE_SIZE);
+  // ตัวการ์ตูน — วาดที่ native size เพื่อ pixel คมสุด (รองรับ source ขนาดต่าง)
+  ctx.drawImage(img, x - spriteSize / 2, y - spriteSize + footPad);
   // ป๊อปอัพ +1
   if (ch.pop > 0) {
     const py = headTop - 12 - (1 - ch.pop) * 14;
