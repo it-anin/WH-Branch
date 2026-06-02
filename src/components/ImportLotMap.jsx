@@ -65,7 +65,7 @@ export default function ImportLotMap({ matchCount, meta, onImport }) {
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
       <button className={`btn sm${displayUploadedAt ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
-        {displayUploadedAt ? '✅ อัปโหลดไฟล์ LOT แล้ว' : '⇑ อัปโหลดไฟล์ LOT'}
+        {displayUploadedAt ? '✅ อัปโหลดไฟล์ R01.119 (LOT) แล้ว' : '⇑ อัปโหลดไฟล์ R01.119 (LOT)'}
       </button>
       {displayUploadedAt && (
         <span className="chip ok" style={{ fontFamily: 'Patrick Hand', fontSize: 13 }}>
