@@ -137,7 +137,10 @@ function drawShelf(ctx, z, r, active) {
 //   public/characters/{empCode}/walking/{DIR}/frame_000..003.png — walk cycle 4 frames × 8 ทิศ
 const SPRITE_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const SPRITE_SIZE = 68;     // ขนาดที่วาด (ตรงกับ source ของ PixelLab — ไม่ scale, ภาพคมสุด)
-const SPRITE_FOOT_PAD = 14; // padding ว่างใต้ฝ่าเท้าใน sprite
+const SPRITE_FOOT_PAD = 14; // padding ว่างใต้ฝ่าเท้าใน sprite (default PixelLab v3)
+const PACKER_FOOT_PADS = {
+  'EMP-04': 0,  // emp-03 sprite — feet flush to bottom of canvas
+};
 const WALK_FRAMES = 4;
 const PACKER_SPRITE_DIRS = {
   'EMP-01': '/characters/emp-02',   // มุก ใช้ตัวการ์ตูนจาก emp-02
@@ -184,13 +187,14 @@ function getSprite(ch) {
 
 function drawSpriteChar(ctx, ch, img) {
   const x = Math.round(ch.x), y = Math.round(ch.y);
-  const headTop = y - SPRITE_SIZE + SPRITE_FOOT_PAD + 4;
+  const footPad = PACKER_FOOT_PADS[ch.code] ?? SPRITE_FOOT_PAD;
+  const headTop = y - SPRITE_SIZE + footPad + 4;
 
   // เงา
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.beginPath(); ctx.ellipse(x, y + 2, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
-  // ตัวการ์ตูน — ดันลง SPRITE_FOOT_PAD ให้ฝ่าเท้าจริงติดเงา
-  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + SPRITE_FOOT_PAD);
+  // ตัวการ์ตูน — ดันลง footPad ให้ฝ่าเท้าจริงติดเงา
+  ctx.drawImage(img, x - SPRITE_SIZE / 2, y - SPRITE_SIZE + footPad);
   // ป๊อปอัพ +1
   if (ch.pop > 0) {
     const py = headTop - 12 - (1 - ch.pop) * 14;
