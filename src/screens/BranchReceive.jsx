@@ -963,6 +963,11 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   <div className="row" style={{ marginBottom: 10 }}>
                     <div>
                       <b style={{ fontFamily: 'Caveat', fontSize: isAndroid ? 16 : 22 }}>ตรวจสอบสินค้าในลัง</b>
+                      {foundBox?.id && (
+                        <span className="mono" style={{ fontSize: 12, color: 'var(--accent)', marginLeft: 8, fontWeight: 700 }}>
+                          {foundBox.id}
+                        </span>
+                      )}
                       {foundBox?.packer && (
                         <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', marginLeft: 10 }}>
                           แพ็คโดย: <b style={{ color: '#555' }}>{foundBox.packer.name} · {foundBox.packer.code}</b>
@@ -994,19 +999,11 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   )}
 
                   {(() => {
-                    const totalPieces = Object.values(scanCounts).reduce((s, c) => s + c, 0);
                     const scannedItems = [...boxItems]
                       .filter(l => (scanCounts[l.sku] || 0) > 0)
                       .sort((a, b) => (a.sku === lastScannedSku ? -1 : b.sku === lastScannedSku ? 1 : 0));
                     return (
                       <>
-                        <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px solid var(--line)', borderRadius: 10, background: 'white' }}>
-                          <div className="row">
-                            <span style={{ fontFamily: 'Patrick Hand', fontSize: 14 }}>สแกนแล้ว</span>
-                            <div className="spacer" />
-                            <span style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>{totalPieces} ชิ้น</span>
-                          </div>
-                        </div>
                         {scannedItems.length === 0 ? (
                           <div style={{ padding: '20px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', textAlign: 'center', fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>
                             ยิงบาร์โค้ดสินค้าเพื่อเริ่มตรวจสอบ
