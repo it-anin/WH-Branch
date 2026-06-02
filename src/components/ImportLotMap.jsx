@@ -42,24 +42,22 @@ function parseXLSX(buffer) {
   const ws = wb.Sheets[wb.SheetNames[0]];
   const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
   const rows = [];
+  // debug: dump raw cell object ของ SKU 800418 LOT cell ตัวแรกที่เจอ
+  let dumped = false;
   for (let R = range.s.r; R <= range.e.r; R++) {
     const row = [];
     for (let C = range.s.c; C <= range.e.c; C++) {
       row.push(readCell(ws[XLSX.utils.encode_cell({ r: R, c: C })]));
     }
+    if (!dumped && R > 0 && String(row[1] ?? '') === '800418') {
+      const lotCell = ws[XLSX.utils.encode_cell({ r: R, c: 0 })];
+      console.log(`◆ raw cell ของ SKU 800418 LOT (row ${R + 1}):`, lotCell);
+      console.log(`  .t (type):`, lotCell?.t, '| .v:', JSON.stringify(lotCell?.v),
+                  '| .w:', JSON.stringify(lotCell?.w), '| .z (format):', JSON.stringify(lotCell?.z));
+      dumped = true;
+    }
     rows.push(row);
   }
-  // debug: header + ทุก row ของ SKU 800418 (ไม่จำกัด)
-  console.log('HEADER row:', JSON.stringify(rows[0]));
-  let found = 0;
-  rows.slice(1).forEach((r, i) => {
-    const sku = String(r[1] ?? '');
-    if (sku === '800418') {
-      console.log(`★ SKU 800418 row ${i + 1}: LOT=${JSON.stringify(r[0])} (typeof=${typeof r[0]}) | qty=${JSON.stringify(r[5])}`);
-      found++;
-    }
-  });
-  console.log(`SKU 800418 พบ ${found} rows`);
   return rowsToMap(rows);
 }
 
