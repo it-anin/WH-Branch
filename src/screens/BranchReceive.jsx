@@ -453,8 +453,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
     const match = boxItems.find(l => matchBarcode(l, val));
     if (!match) {
-      setScanError(`ไม่พบ "${val}" ในลังนี้`);
+      setScanError(`ไม่มี SKU นี้ในลัง`);
       setLastScannedSku(null);
+      showToast('⚠ ไม่มี SKU นี้ในลัง', 'error');
       return;
     }
 
