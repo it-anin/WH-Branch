@@ -49,19 +49,17 @@ function parseXLSX(buffer) {
     }
     rows.push(row);
   }
-  // debug: ดู row ของ SKU 800418 + row ที่ LOT มี / (น่าสงสัยว่าจะโดน Excel แปลงเป็นวันที่)
-  let n = 0;
+  // debug: header + ทุก row ของ SKU 800418 (ไม่จำกัด)
+  console.log('HEADER row:', JSON.stringify(rows[0]));
+  let found = 0;
   rows.slice(1).forEach((r, i) => {
     const sku = String(r[1] ?? '');
-    const lot = String(r[0] ?? '');
-    if (sku === '800418' || lot.includes('/')) {
-      if (n < 20) {
-        console.log(`row ${i + 1}: LOT=${JSON.stringify(r[0])} (typeof=${typeof r[0]}) | SKU=${JSON.stringify(r[1])}`);
-        n++;
-      }
+    if (sku === '800418') {
+      console.log(`★ SKU 800418 row ${i + 1}: LOT=${JSON.stringify(r[0])} (typeof=${typeof r[0]}) | qty=${JSON.stringify(r[5])}`);
+      found++;
     }
   });
-  console.log(`debug: matched ${n} rows (capped 20)`);
+  console.log(`SKU 800418 พบ ${found} rows`);
   return rowsToMap(rows);
 }
 
