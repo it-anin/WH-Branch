@@ -628,7 +628,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                     <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.barcode}</div>
                   )}
                 </div>
-                <div style={{ textAlign: 'right', fontFamily: 'system-ui', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
+                <div style={{ textAlign: 'right', fontFamily: 'system-ui', fontWeight: 400, fontSize: 15, flexShrink: 0 }}>
                   <span style={{ color: '#000' }}>{c.got}</span>
                   <span style={{ fontSize: 15, color: '#000' }}> / {c.need}</span>
                   <div style={{ fontSize: 11, fontFamily: 'system-ui', color: 'var(--mute)' }}>{c.unit}</div>
