@@ -5,7 +5,7 @@ const statusLabel = {
   packing:  { label: 'กำลังแพ็ค',       bg: '#ffd080', border: '#c88a10' },
   closed:   { label: 'ปิดลังแล้ว',      bg: '#b8d4f0', border: '#4a80c0' },
   exported: { label: 'อนุมัติแล้ว',     bg: '#96e096', border: '#3a9a3a' },
-  received: { label: 'รับที่สาขาแล้ว', bg: '#d4b8f5', border: '#7840c0' },
+  received: { label: 'สาขารับสินค้าแล้ว', bg: '#f5b8d4', border: '#c04080' },
 };
 
 function BoxTable({ boxes, onOpen, onPrint }) {
@@ -118,6 +118,7 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
           <span className="chip" style={{ background: '#ffd080', borderColor: '#c88a10' }}>กำลังแพ็ค · {boxes.filter(b => b.status === 'open' || b.status === 'packing').length}</span>
           <span className="chip" style={{ background: '#b8d4f0', borderColor: '#4a80c0' }}>ปิดลังแล้ว · {boxes.filter(b => b.status === 'closed').length}</span>
           <span className="chip" style={{ background: '#96e096', borderColor: '#3a9a3a' }}>อนุมัติแล้ว · {boxes.filter(b => b.status === 'exported').length}</span>
+          <span className="chip" style={{ background: '#f5b8d4', borderColor: '#c04080' }}>สาขารับสินค้าแล้ว · {boxes.filter(b => b.status === 'received').length}</span>
           <div className="spacer" />
           <button className="btn sm ghost" onClick={() => showToast('รีเฟรชแล้ว')}>⟲ รีเฟรช</button>
           <button className="btn sm" onClick={handleExport}>⇩ Export รายการลังทั้งหมด</button>
