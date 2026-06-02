@@ -28,11 +28,29 @@ function rowsToMap(rows) {
   return map;
 }
 
+// อ่าน cell โดยอ้างค่า raw (cell.v) ก่อน — ถ้าเป็น string อยู่แล้วใช้เลย (รักษา leading zero / format ของผู้ใช้)
+// ถ้าเป็น number/date ค่อย fallback ไปอ่าน formatted text (cell.w)
+function readCell(cell) {
+  if (!cell) return '';
+  if (typeof cell.v === 'string') return cell.v;          // text cell → preserve raw "001/25"
+  if (cell.w != null) return cell.w;                       // number/date → formatted display
+  return String(cell.v ?? '');
+}
+
 function parseXLSX(buffer) {
   const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  // raw: false → ใช้ formatted text แทนเลขดิบ (เช่น date serial → "01/01/2026")
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  const rows = [];
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    const row = [];
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      row.push(readCell(ws[XLSX.utils.encode_cell({ r: R, c: C })]));
+    }
+    rows.push(row);
+  }
+  // debug: ดู LOT 5 row แรกหลัง header เพื่อตรวจว่าค่าถูกอ่านเป็น text หรือ formatted date
+  rows.slice(1, 6).forEach((r, i) => console.log(`LOT row ${i + 1}:`, JSON.stringify(r[0]), '| SKU:', JSON.stringify(r[1])));
   return rowsToMap(rows);
 }
 
