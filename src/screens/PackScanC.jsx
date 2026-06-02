@@ -622,15 +622,15 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                       <div className="mono" style={{ fontSize: 10, color: 'var(--ink)', background: 'var(--paper-dark)', borderRadius: 3, padding: '0 4px', flexShrink: 0 }}>{c.location}</div>
                     )}
                   </div>
-                  <div style={{ fontFamily: 'JetBrains Mono', fontSize: isAndroid ? 12 : 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                  <div style={{ fontFamily: 'system-ui', fontSize: isAndroid ? 13 : 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
                   {/* ⚠ barcode ต้องแสดงเสมอทั้ง desktop และ Android — ห้ามลบ พนักงานใช้ยืนยันก่อนสแกน */}
                   {c.barcode && (
                     <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.barcode}</div>
                   )}
                 </div>
-                <div style={{ textAlign: 'right', fontFamily: 'system-ui', fontWeight: 700, fontSize: isAndroid ? 18 : 22, flexShrink: 0 }}>
-                  <span style={{ color: done ? 'var(--green)' : partial ? 'var(--accent)' : 'var(--mute)' }}>{c.got}</span>
-                  <span style={{ fontSize: isAndroid ? 13 : 16, color: 'var(--mute)' }}> / {c.need}</span>
+                <div style={{ textAlign: 'right', fontFamily: 'system-ui', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
+                  <span style={{ color: '#000' }}>{c.got}</span>
+                  <span style={{ fontSize: 15, color: '#000' }}> / {c.need}</span>
                   <div style={{ fontSize: 11, fontFamily: 'system-ui', color: 'var(--mute)' }}>{c.unit}</div>
                 </div>
               </div>
