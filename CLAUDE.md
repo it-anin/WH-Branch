@@ -18,6 +18,8 @@ Warehouse Management System สำหรับ Anin (anin.co.th)
 
 **Stack:** React 18 + Vite, JavaScript (no TypeScript), SheetJS (xlsx), Firebase Firestore, no CSS framework
 
+**Fonts:** `system-ui` (sans-serif default ของ OS) ทุกที่ + `JetBrains Mono` (`.mono` class) สำหรับ SKU/barcode/box ID — เดิมใช้ Patrick Hand / Caveat / Kalam แต่ sweep ออกหมดแล้ว, index.html โหลด Google Fonts แค่ JetBrains Mono ตัวเดียว
+
 **Hosting:** Vercel — `https://wh-branch.vercel.app` (auto-deploy เมื่อ push ขึ้น GitHub)
 
 **Android app:** WebView wrapper (`android/`) — โหลด `https://wh-branch.vercel.app?android=1`, รับ scanner broadcast → inject `wh-scan` CustomEvent เข้า WebView
@@ -376,9 +378,11 @@ open → packing → closed → exported → received
 | open / packing | กำลังแพ็ค | 🟡 เหลือง `#ffd080` |
 | closed | ปิดลังแล้ว | 🔵 ฟ้า `#b8d4f0` |
 | exported | อนุมัติแล้ว | 🟢 เขียว `#96e096` |
-| received | รับที่สาขาแล้ว | 🟣 ม่วง `#d4b8f5` |
+| received | **สาขารับสินค้าแล้ว** | 🩷 ชมพู `#f5b8d4` (border `#c04080`) |
 
 สีกำหนดด้วย inline style ตรงที่ `<span className="chip" style={{ background, borderColor }}>` — ไม่ใช้ CSS class เพื่อให้ชัดเจนต่างกัน
+
+**Summary chip row (เหนือตาราง):** มี 5 chips นับสถานะ — `ทั้งหมด` / `กำลังแพ็ค` / `ปิดลังแล้ว` / `อนุมัติแล้ว` / `สาขารับสินค้าแล้ว` (ใช้สีเดียวกันกับ status badge ในตาราง)
 
 ---
 
