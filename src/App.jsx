@@ -271,7 +271,7 @@ export default function App() {
     const label = now.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
     const entry = { dateKey, label, clearedAt: now.toISOString(), boxes: [...boxes] };
     const cutoff = new Date(now);
-    cutoff.setDate(cutoff.getDate() - 30);
+    cutoff.setDate(cutoff.getDate() - 7);
     setHistory(prev => [entry, ...prev.filter(h => new Date(h.clearedAt) > cutoff)]);
     const batch = writeBatch(db);
     boxesRef.current.forEach(b => batch.delete(doc(db, 'boxes', b.id)));
