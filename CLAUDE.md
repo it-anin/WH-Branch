@@ -329,6 +329,8 @@ input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bu
 
 ตัวอย่าง: `F0224` มี 2 rows คือ `-36` และ `+36` → sum = 0 → **ไม่ขึ้น popup** (สต็อกหมดเพราะรับคืน/โอนออกหมด)
 
+**`parseWorkbook` รองรับทั้ง CSV และ XLSX:** detect ด้วย `/\.csv$/i.test(file.name)` → CSV อ่านเป็น text ผ่าน `FileReader.readAsText(file, 'utf-8')` + `XLSX.read(input, { type: 'string' })`, XLSX อ่านเป็น ArrayBuffer + `type: 'array'`. ใช้ `sheet_to_json(ws, { header: 1, raw: true, defval: '' })` เพื่อให้ string cell คง LOT format เดิม (เช่น `001/25` ไม่ถูกแปลงเป็นเลข)
+
 **Import order:** catalog ก่อน → barcode map → cost map → LOT map (แต่ละไฟล์ import แยกอิสระ)
 **Re-import:** ต้อง import ทั้งสองไฟล์แรกใหม่ถ้าแก้ไข applyBarcodeMap logic
 **LOT structure backward-compat:** Firestore listener รับได้ทั้งรูปแบบเก่า (`lots: [string]` → จะ normalize เป็น `{lot, qty: Infinity}`) และใหม่ (`lots: [{lot, qty}]`) — ต้อง re-import เพื่อ get qty จริง
@@ -554,22 +556,42 @@ rmdir animations/Walking-* animations
 เปิด [PackerDashboard.jsx](src/screens/PackerDashboard.jsx) — เพิ่ม entry ใน `PACKER_SPRITE_DIRS`:
 ```js
 const PACKER_SPRITE_DIRS = {
-  'EMP-01': '/characters/emp-02',   // มุก
-  'EMP-02': '/characters/emp-01',   // แล็ค
-  'EMP-03': '/characters/emp-03',   // เปิดเมื่อ gen เสร็จ
-  'EMP-04': '/characters/emp-04',
+  'EMP-01': '/characters/emp-02',   // มุก ใช้ตัวการ์ตูนจาก emp-02
+  'EMP-02': '/characters/emp-01',   // แล็ค ใช้ตัวการ์ตูนจาก emp-01 (ผมบลอนด์ + แว่น)
+  // 'EMP-03': '/characters/emp-03',
+  'EMP-04': '/characters/emp-03',   // ตั๋ง ใช้ emp-03 (sprite 96×96 — ต่างจาก default 68×68)
 };
 ```
 
 **Constants ที่ปรับได้ใน `PackerDashboard.jsx`:**
-- `SPRITE_SIZE` (68) — ขนาดที่วาดบน canvas ต้องตรงกับ source size ของ PixelLab
-- `SPRITE_FOOT_PAD` (14) — padding ใต้ฝ่าเท้าใน sprite canvas → ใช้ดันรูปลงให้ฝ่าเท้าติดเงา (PixelLab v3 มี padding ~14px ใต้เท้า)
+- `SPRITE_SIZE` (68) — default canvas size ของ PixelLab v3 sprite
+- `SPRITE_FOOT_PAD` (14) — default padding ใต้ฝ่าเท้า (PixelLab v3 68×68)
+- `SPRITE_TOP_PAD` (8) — default padding เหนือหัว
 - `WALK_FRAMES` (4) — จำนวนเฟรม walk animation
 - `SPRITE_DIRS` — 8 ทิศ ['N','NE','E','SE','S','SW','W','NW']
 
+**Per-character overrides** (ถ้า PixelLab gen sprite ขนาด/padding ต่าง):
+```js
+const PACKER_SPRITE_SIZES = { 'EMP-04': 96 };  // ตั๋ง — canvas 96×96 ไม่ใช่ 68×68
+const PACKER_FOOT_PADS    = { 'EMP-04': 24 };  // ตั๋ง — วัดได้ 24px ใต้เท้า
+const PACKER_TOP_PADS     = { 'EMP-04': 24 };  // ตั๋ง — วัดได้ 24px เหนือหัว
+```
+- **`drawSpriteChar` วาดที่ native size** (ไม่ scale) — pixel art คมสุดทุก sprite
+- **headTop ยึดหัวจริง** ผ่าน `(topPad - SPRITE_TOP_PAD)` delta → ชื่ออยู่เหนือหัวจริงตรงทุก sprite
+- **shadow ที่ `y + 2`** = ใต้ฝ่าเท้า 2px (anchor `y` คือฝ่าเท้า) — อิงจาก footPad ต่อคน ทำให้เงาตรงเท้าเสมอ
+
+#### วิธีวัด padding ของ sprite (PowerShell)
+```powershell
+Add-Type -AssemblyName System.Drawing
+$img = New-Object System.Drawing.Bitmap 'public\characters\emp-03\S.png'
+# วน scan pixel หา row บนสุด/ล่างสุดที่มี alpha > 0
+# → topPad = head row, footPad = (Height-1) - foot row
+```
+
 #### Tips
 - **PixelLab gen ตัวเดียวกัน 2 variants** บ่อย (เช่น 2 north folders) — เลือกอันที่ดูดีกว่า ลบอีกอัน
-- **ค่า `SPRITE_FOOT_PAD` อาจต่างกันต่อ character** ถ้า PixelLab pad ไม่คงที่ — ปรับ +/- 2px ถ้าตัวลอย/จมพื้น
+- **PixelLab ขนาด canvas ไม่คงที่** — emp-01/02 ได้ 68×68 แต่ emp-03 ได้ 96×96 (ขึ้นกับ Sprite Size setting ตอน gen) → ต้อง override ผ่าน `PACKER_SPRITE_SIZES`
+- **อาการถ้า spriteSize ผิด:** sprite วาดไม่ centered, เงาอยู่กลางตัว, ชื่อห่างจากหัว — fix โดยวัด `S.png` แล้ว set ทั้ง 3 overrides
 - **ทางเดินระหว่างชั้น (`AW = SW * 0.8`) แคบกว่า sprite 68px** — sprite อาจล้ำเข้าชั้นข้างเคียงเล็กน้อย ยอมรับได้
 
 ## Outbound (BoxClosedLabel) — Logic สำคัญ
