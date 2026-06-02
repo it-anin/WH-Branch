@@ -49,8 +49,19 @@ function parseXLSX(buffer) {
     }
     rows.push(row);
   }
-  // debug: ดู LOT 5 row แรกหลัง header เพื่อตรวจว่าค่าถูกอ่านเป็น text หรือ formatted date
-  rows.slice(1, 6).forEach((r, i) => console.log(`LOT row ${i + 1}:`, JSON.stringify(r[0]), '| SKU:', JSON.stringify(r[1])));
+  // debug: ดู row ของ SKU 800418 + row ที่ LOT มี / (น่าสงสัยว่าจะโดน Excel แปลงเป็นวันที่)
+  let n = 0;
+  rows.slice(1).forEach((r, i) => {
+    const sku = String(r[1] ?? '');
+    const lot = String(r[0] ?? '');
+    if (sku === '800418' || lot.includes('/')) {
+      if (n < 20) {
+        console.log(`row ${i + 1}: LOT=${JSON.stringify(r[0])} (typeof=${typeof r[0]}) | SKU=${JSON.stringify(r[1])}`);
+        n++;
+      }
+    }
+  });
+  console.log(`debug: matched ${n} rows (capped 20)`);
   return rowsToMap(rows);
 }
 
