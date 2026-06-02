@@ -708,16 +708,24 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               )}
 
               {/* รายการสินค้า — Blind recheck: ไม่แสดงต้องมี/ขาด เพื่อให้ scan ใหม่โดยไม่รู้จำนวน */}
+              <div style={{ marginBottom: 4 }}>
+                <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, color: 'var(--ink)' }}>
+                  รายการสินค้าที่ต้องรีเช็ค
+                </div>
+                <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
+                  ผลสแกนรอบแรก (จากพนักงานสาขา)
+                </div>
+              </div>
               {(() => {
                 const psc = viewingBox.problemScanCounts || {};
                 return (
-                  <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 280, overflowY: 'auto', marginBottom: 14 }}>
+                  <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 280, overflowY: 'auto', marginTop: 8, marginBottom: 14 }}>
                     <table className="tbl" style={{ fontSize: 14 }}>
                       <thead style={{ position: 'sticky', top: 0 }}>
                         <tr>
                           <th>SKU / ชื่อ</th>
                           <th style={{ width: 60 }}>หน่วย</th>
-                          <th style={{ width: 80, textAlign: 'center' }}>สแกนแล้ว</th>
+                          <th style={{ width: 100, textAlign: 'center' }}>จำนวนที่สแกนได้</th>
                         </tr>
                       </thead>
                       <tbody>
