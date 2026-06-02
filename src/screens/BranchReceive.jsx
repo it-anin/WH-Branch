@@ -825,7 +825,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                       <th style={{ width: 36 }}>✓</th>
                       <th>SKU / ชื่อ</th>
                       <th style={{ width: 70 }}>หน่วย</th>
-                      <th style={{ width: 60, textAlign: 'center' }}>ต้องมี</th>
+                      {!recheckMode && <th style={{ width: 60, textAlign: 'center' }}>ต้องมี</th>}
                       <th style={{ width: 70, textAlign: 'center' }}>สแกนแล้ว</th>
                     </tr>
                   </thead>
@@ -856,9 +856,11 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                             <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
                           </td>
                           <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
-                          <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, color: 'var(--mute)' }}>
-                            {needed}
-                          </td>
+                          {!recheckMode && (
+                            <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, color: 'var(--mute)' }}>
+                              {needed}
+                            </td>
+                          )}
                           <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: countColor }}>
                             {count}{over && <span style={{ fontSize: 13, marginLeft: 2 }}>+{count - needed}</span>}
                           </td>
@@ -875,7 +877,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   background: 'var(--accent-soft)', textAlign: 'center',
                 }}>
                   <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>
-                    ✓ ส่งให้เภสัชอนุมัติเอกสารแล้ว
+                    ✓ {recheckMode ? 'รีเช็คสินค้าแล้ว · ส่งให้อนุมัติเอกสาร' : 'ส่งให้เภสัชอนุมัติเอกสารแล้ว'}
                   </div>
                   <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', marginTop: 4 }}>
                     กดปุ่ม [+ ลังถัดไป] เพื่อสแกนลังต่อ
@@ -884,7 +886,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               ) : (
                 <div style={{ border: '2px solid #e67e22', borderRadius: 12, padding: '14px 16px', background: '#fff3cd', textAlign: 'center' }}>
                   <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: '#b86000' }}>
-                    ✓ ส่งให้หัวหน้ารีเช็คสินค้าแล้ว
+                    ✓ {recheckMode ? 'รีเช็คสินค้าแล้ว' : 'ส่งให้หัวหน้ารีเช็คสินค้าแล้ว'}
                   </div>
                   <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: '#b86000', marginTop: 4 }}>
                     {verifyResult === 'over' ? 'พบสินค้าเกินจำนวน' : 'พบสินค้าไม่ครบ'} · กดปุ่ม [+ ลังถัดไป] เพื่อสแกนลังต่อ
