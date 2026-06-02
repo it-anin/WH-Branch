@@ -87,7 +87,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onIns
           </div>
         ) : null;
       })()}
-      <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
+      <div style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
       <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 3 }}>เลขที่เอกสาร: {box.pos}</div>
       <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
         เลขที่ลัง: <span className="mono" style={{ fontSize: 11 }}>{box.id}</span>
