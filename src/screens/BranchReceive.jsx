@@ -778,7 +778,23 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 style={{ width: '100%', minHeight: 70, resize: 'vertical' }}
               />
               <div className="row" style={{ marginTop: 10, gap: 10, justifyContent: 'flex-end' }}>
-                <button className="btn" onClick={saveProblemNote} style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}>📦 แจ้งคลังสินค้า</button>
+                {(() => {
+                  const notified = !!viewingBox?.problemReviewed;
+                  return (
+                    <button
+                      className="btn"
+                      onClick={notified ? undefined : saveProblemNote}
+                      disabled={notified}
+                      style={{
+                        borderColor: notified ? 'var(--line)' : 'var(--accent)',
+                        color: notified ? 'var(--mute)' : 'var(--accent)',
+                        background: notified ? 'var(--paper-dark)' : 'white',
+                        cursor: notified ? 'not-allowed' : 'pointer',
+                        opacity: notified ? 0.7 : 1,
+                      }}
+                    >{notified ? '✓ แจ้งคลังสินค้าแล้ว' : '📦 แจ้งคลังสินค้า'}</button>
+                  );
+                })()}
               </div>
             </div>
           ) : isViewingOther ? (
