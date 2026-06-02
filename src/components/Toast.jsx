@@ -16,7 +16,7 @@ export default function Toast({ toasts }) {
       {toasts.map(t => (
         <div key={t.id} style={{
           ...STYLES[t.type] || STYLES.default,
-          fontFamily: 'Patrick Hand', fontSize: 16,
+          fontFamily: 'system-ui', fontSize: 16,
           padding: '10px 22px', borderRadius: 10,
           whiteSpace: 'nowrap',
         }}>

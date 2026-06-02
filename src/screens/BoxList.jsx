@@ -10,7 +10,7 @@ const statusLabel = {
 
 function BoxTable({ boxes, onOpen, onPrint }) {
   if (boxes.length === 0) return (
-    <div style={{ padding: '20px 0', fontFamily: 'Patrick Hand', color: 'var(--mute)', textAlign: 'center' }}>
+    <div style={{ padding: '20px 0', fontFamily: 'system-ui', color: 'var(--mute)', textAlign: 'center' }}>
       ไม่มีข้อมูลลัง
     </div>
   );
@@ -27,7 +27,7 @@ function BoxTable({ boxes, onOpen, onPrint }) {
           <tr key={b.id}>
             <td className="num-col">{b.id}</td>
             <td><span className="chip" style={{ background: statusLabel[b.status]?.bg, borderColor: statusLabel[b.status]?.border }}>● {statusLabel[b.status]?.label || b.status}</span></td>
-            <td style={{ fontFamily: 'Patrick Hand', fontSize: 14 }}>{b.packer?.name || '—'}</td>
+            <td style={{ fontFamily: 'system-ui', fontSize: 14 }}>{b.packer?.name || '—'}</td>
             <td>{b.skuCount}</td>
             <td>{b.totalQty}</td>
             <td className="num-col">{b.pos}</td>
@@ -59,7 +59,7 @@ function HistoryEntry({ entry, generateCSV, triggerDownload, onDelete }) {
         }}
         onClick={() => setOpen(p => !p)}
       >
-        <span style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700 }}>
+        <span style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700 }}>
           {open ? '▾' : '▸'} {entry.label}
         </span>
         <span className="chip">{total} ลัง</span>
@@ -144,7 +144,7 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
               borderBottom: '2px dashed var(--line)', paddingBottom: 8, marginBottom: 14,
               gap: 10,
             }}>
-              <span style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, color: 'var(--mute)' }}>
+              <span style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--mute)' }}>
                 ประวัติย้อนหลัง ({history.length} วัน · เก็บไว้ 1 เดือน)
               </span>
               <div className="spacer" />

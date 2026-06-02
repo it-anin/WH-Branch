@@ -18,7 +18,7 @@ html, body {
   padding: 0;
   background: var(--paper);
   color: var(--ink);
-  font-family: 'Kalam', cursive;
+  font-family: system-ui, sans-serif;
   font-size: 16px;
   line-height: 1.4;
 }
@@ -31,8 +31,8 @@ body {
 }
 
 .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.85em; }
-.hand { font-family: 'Caveat', cursive; }
-.print { font-family: 'Patrick Hand', cursive; }
+.hand { font-family: system-ui, sans-serif; }
+.print { font-family: system-ui, sans-serif; }
 
 .topbar {
   position: sticky; top: 0; z-index: 50;
@@ -41,12 +41,12 @@ body {
   padding: 12px 24px;
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
 }
-.topbar h1 { font-family: 'Caveat', cursive; margin: 0; font-size: 28px; font-weight: 700; }
-.topbar .subtitle { font-family: 'Patrick Hand', cursive; color: var(--mute); font-size: 16px; }
+.topbar h1 { font-family: system-ui, sans-serif; margin: 0; font-size: 28px; font-weight: 700; }
+.topbar .subtitle { font-family: system-ui, sans-serif; color: var(--mute); font-size: 16px; }
 
 .tabs { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
 .tab {
-  font-family: 'Patrick Hand', cursive; font-size: 17px;
+  font-family: system-ui, sans-serif; font-size: 17px;
   padding: 6px 14px; border: 2px solid var(--line);
   background: var(--paper); cursor: pointer;
   border-radius: 18px 22px 19px 21px / 20px 18px 22px 19px;
@@ -58,7 +58,7 @@ body {
 .canvas { padding: 24px; max-width: 1600px; margin: 0 auto; }
 
 .screen-label {
-  font-family: 'Caveat', cursive; font-size: 22px; font-weight: 700;
+  font-family: system-ui, sans-serif; font-size: 22px; font-weight: 700;
   margin: 8px 0 4px; display: flex; align-items: baseline; gap: 10px;
 }
 .screen-label .num {
@@ -66,7 +66,7 @@ body {
   border: 2px solid var(--line); border-radius: 4px; font-size: 18px;
 }
 .screen-label .desc {
-  font-family: 'Patrick Hand', cursive; font-size: 15px;
+  font-family: system-ui, sans-serif; font-size: 15px;
   color: var(--mute); font-weight: 400;
 }
 
@@ -83,11 +83,11 @@ body {
   background: var(--paper-dark);
   border-radius: 14px 18px 0 0 / 16px 14px 0 0;
 }
-.frame-header .title { font-family: 'Caveat', cursive; font-size: 22px; font-weight: 700; }
+.frame-header .title { font-family: system-ui, sans-serif; font-size: 22px; font-weight: 700; }
 .frame-header .meta { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--mute); }
 
 .btn {
-  font-family: 'Patrick Hand', cursive; font-size: 16px;
+  font-family: system-ui, sans-serif; font-size: 16px;
   padding: 7px 16px; border: 2px solid var(--line);
   background: var(--paper); cursor: pointer;
   border-radius: 10px 14px 11px 13px / 12px 10px 14px 11px;
@@ -100,7 +100,7 @@ body {
 .btn.ghost { box-shadow: none; background: transparent; }
 .btn.danger { background: var(--red); color: white; }
 .btn.sm { font-size: 14px; padding: 4px 10px; }
-.btn.lg { font-size: 22px; padding: 14px 28px; font-family: 'Caveat', cursive; font-weight: 700; }
+.btn.lg { font-size: 22px; padding: 14px 28px; font-family: system-ui, sans-serif; font-weight: 700; }
 
 .input {
   font-family: 'JetBrains Mono', monospace; font-size: 15px;
@@ -112,7 +112,7 @@ body {
 
 .chip {
   display: inline-flex; align-items: center; gap: 4px;
-  font-family: 'Patrick Hand', cursive; font-size: 14px;
+  font-family: system-ui, sans-serif; font-size: 14px;
   padding: 2px 10px; border: 1.5px solid var(--line);
   border-radius: 20px; background: var(--paper-dark);
 }
@@ -122,7 +122,7 @@ body {
 .chip.info { background: #c4d8f5; }
 
 .note {
-  font-family: 'Caveat', cursive; font-size: 18px;
+  font-family: system-ui, sans-serif; font-size: 18px;
   color: var(--accent); font-weight: 700;
   position: absolute; max-width: 220px; line-height: 1.1;
   pointer-events: none;
@@ -145,14 +145,14 @@ body {
 .grid-3-pack { display: grid; grid-template-columns: 2fr 1.1fr; gap: 20px; }
 .spacer { flex: 1; }
 
-.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-family: 'Patrick Hand', cursive; font-size: 15px; }
+.tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-family: system-ui, sans-serif; font-size: 15px; }
 .tbl th, .tbl td { padding: 8px 10px; text-align: left; border-bottom: 1.5px dashed var(--mute); }
-.tbl th { font-family: 'Caveat', cursive; font-size: 17px; font-weight: 700; background: var(--paper-dark); }
+.tbl th { font-family: system-ui, sans-serif; font-size: 17px; font-weight: 700; background: var(--paper-dark); }
 .tbl tr:last-child td { border-bottom: none; }
 .tbl .num-col { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
 
 .variant-label {
-  display: inline-block; font-family: 'Caveat', cursive; font-size: 24px; font-weight: 700;
+  display: inline-block; font-family: system-ui, sans-serif; font-size: 24px; font-weight: 700;
   background: var(--accent); color: white; padding: 4px 14px;
   transform: rotate(-2deg); margin-bottom: 6px;
   border: 2px solid var(--line); box-shadow: 3px 3px 0 var(--line);
@@ -163,15 +163,15 @@ body {
   background: var(--paper); border: 2.5px solid var(--line);
   border-radius: 14px; padding: 14px;
   box-shadow: 6px 6px 0 var(--line); z-index: 100;
-  font-family: 'Patrick Hand', cursive;
+  font-family: system-ui, sans-serif;
 }
-.tweaks-panel h3 { font-family: 'Caveat', cursive; margin: 0 0 8px; font-size: 22px; display: flex; align-items: center; gap: 8px; }
+.tweaks-panel h3 { font-family: system-ui, sans-serif; margin: 0 0 8px; font-size: 22px; display: flex; align-items: center; gap: 8px; }
 .tweak-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; gap: 10px; }
 .tweak-row label { font-size: 14px; }
 
 .seg { display: inline-flex; border: 1.5px solid var(--line); border-radius: 8px; overflow: hidden; }
 .seg button {
-  font-family: 'Patrick Hand', cursive; font-size: 13px;
+  font-family: system-ui, sans-serif; font-size: 13px;
   padding: 3px 8px; border: none; background: var(--paper);
   cursor: pointer; border-right: 1.5px solid var(--line);
 }
@@ -193,13 +193,13 @@ body {
 .flow-arrow {
   display: flex; align-items: center; justify-content: center;
   margin: 10px 0; color: var(--accent);
-  font-family: 'Caveat', cursive; font-size: 18px;
+  font-family: system-ui, sans-serif; font-size: 18px;
 }
 
 .scan-indicator {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 2px 10px; border: 1.5px dashed var(--green);
-  border-radius: 20px; font-family: 'Patrick Hand', cursive;
+  border-radius: 20px; font-family: system-ui, sans-serif;
   font-size: 13px; color: var(--green);
 }
 .scan-indicator::before {
@@ -211,7 +211,7 @@ body {
 
 .section-divider {
   text-align: center; margin: 40px 0 20px;
-  font-family: 'Caveat', cursive; font-size: 26px;
+  font-family: system-ui, sans-serif; font-size: 26px;
   color: var(--mute); position: relative;
 }
 .section-divider::before, .section-divider::after {

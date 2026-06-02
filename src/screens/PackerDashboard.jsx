@@ -203,7 +203,7 @@ function drawSpriteChar(ctx, ch, img) {
   }
   // ชื่อ
   ctx.fillStyle = '#3a2f1e';
-  ctx.font = 'bold 12px "Patrick Hand", sans-serif';
+  ctx.font = 'bold 12px "system-ui", sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(ch.name, x, headTop - 4);
 }
@@ -332,7 +332,7 @@ function drawChar(ctx, ch) {
   }
   // ชื่อ
   ctx.fillStyle = '#3a2f1e';
-  ctx.font = 'bold 12px "Patrick Hand", sans-serif';
+  ctx.font = 'bold 12px "system-ui", sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText(ch.name, 0, headTop - 8);
 
@@ -348,7 +348,7 @@ function renderScene(ctx, L, chars, zonesInData, w, H) {
   // ทางเดินหลัก (ในห้อง)
   ctx.fillStyle = '#e3dccb'; ctx.fillRect(10, L.mainAisleY - 14, w - 20, (rb - 10) - (L.mainAisleY - 14));
   ctx.fillStyle = 'rgba(120,100,70,0.45)';
-  ctx.font = '11px "Patrick Hand", sans-serif'; ctx.textAlign = 'left';
+  ctx.font = '11px "system-ui", sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('ทางเดินหลัก', 16, L.mainAisleY - 17);
   // ผนังห้อง
   ctx.strokeStyle = '#b6ad97'; ctx.lineWidth = 4; ctx.strokeRect(8, 8, w - 16, rb - 8);
@@ -360,7 +360,7 @@ function renderScene(ctx, L, chars, zonesInData, w, H) {
   Object.entries(L.shelfRects).forEach(([z, r]) => drawShelf(ctx, z, r, zonesInData.has(z)));
   // โซนนอกอาคาร L, M, N, S, COOL
   Object.entries(L.areaRects).forEach(([z, r]) => drawArea(ctx, z, r, zonesInData.has(z)));
-  ctx.fillStyle = 'rgba(70,70,60,0.5)'; ctx.font = '11px "Patrick Hand", sans-serif';
+  ctx.fillStyle = 'rgba(70,70,60,0.5)'; ctx.font = '11px "system-ui", sans-serif';
   ctx.textAlign = 'right'; ctx.fillText('พื้นที่นอกอาคาร', w - 12, rb + 14);
   // ตัวละคร (เรียงตาม y)
   [...chars].sort((a, b) => a.y - b.y).forEach(ch => drawChar(ctx, ch));
@@ -500,8 +500,8 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
 
   return (
     <div ref={wrapRef} style={{ marginBottom: 24 }}>
-      <div style={{ fontFamily: 'Caveat', fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
-        👤 มุมมองพนักงาน<span style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}></span>
+      <div style={{ fontFamily: 'system-ui', fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
+        👤 มุมมองพนักงาน<span style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)' }}></span>
       </div>
       <div style={{ border: '2px solid var(--line)', borderRadius: 14, overflow: 'hidden', boxShadow: '3px 3px 0 var(--line)', lineHeight: 0 }}>
         <canvas ref={canvasRef} style={{ width: '100%', height: H, display: 'block', imageRendering: 'pixelated' }} />
@@ -564,11 +564,11 @@ export default function PackerDashboard({ catalogByPacker, boxes, itemsByBox, PA
     <div className="frame" style={{ padding: 24 }}>
       {/* big real-time counter */}
       <div style={{ textAlign: 'center', marginBottom: 24, padding: '16px 0', borderBottom: '2px dashed var(--line)' }}>
-        <div style={{ fontFamily: 'Caveat', fontSize: 56, fontWeight: 700, lineHeight: 1 }}>
+        <div style={{ fontFamily: 'system-ui', fontSize: 56, fontWeight: 700, lineHeight: 1 }}>
           <span style={{ color: 'var(--accent)' }}>{totalGot}</span>
           <span style={{ color: 'var(--mute)', fontSize: 32 }}> / {totalNeed} ชิ้น</span>
         </div>
-        <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)', marginTop: 4 }}>
+        <div style={{ fontFamily: 'system-ui', fontSize: 15, color: 'var(--mute)', marginTop: 4 }}>
           แพ็คกิ้งวันนี้ · {Math.round(totalPct * 100)}% เสร็จแล้ว · {boxes.filter(b => b.status === 'closed' || b.status === 'exported').length} ลังปิดแล้ว
         </div>
       </div>
@@ -580,11 +580,11 @@ export default function PackerDashboard({ catalogByPacker, boxes, itemsByBox, PA
 
       {/* summary row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 28, flexWrap: 'wrap' }}>
-        <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700 }}>📦 ภาพรวมรายคน</div>
+        <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700 }}>📦 ภาพรวมรายคน</div>
       </div>
 
       {!hasCatalog ? (
-        <div style={{ textAlign: 'center', padding: '40px 0', fontFamily: 'Patrick Hand', fontSize: 16, color: 'var(--mute)' }}>
+        <div style={{ textAlign: 'center', padding: '40px 0', fontFamily: 'system-ui', fontSize: 16, color: 'var(--mute)' }}>
           ยังไม่มีข้อมูล · กรุณานำเข้ารายการเบิกสินค้าและกด 🔀 สุ่มใหม่ก่อน
         </div>
       ) : (
@@ -598,7 +598,7 @@ export default function PackerDashboard({ catalogByPacker, boxes, itemsByBox, PA
               boxShadow: '3px 3px 0 var(--line)',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
             }}>
-              <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: p.color }}>{p.name}</div>
+              <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: p.color }}>{p.name}</div>
               <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--mute)' }}>{p.code}</div>
 
               {/* doughnut + center text */}
@@ -609,19 +609,19 @@ export default function PackerDashboard({ catalogByPacker, boxes, itemsByBox, PA
                   display: 'flex', flexDirection: 'column',
                   alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <div style={{ fontFamily: 'Caveat', fontSize: 30, fontWeight: 700, color: p.color, lineHeight: 1 }}>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 30, fontWeight: 700, color: p.color, lineHeight: 1 }}>
                     {Math.round(p.pct * 100)}%
                   </div>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)' }}>เสร็จแล้ว</div>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)' }}>เสร็จแล้ว</div>
                 </div>
               </div>
 
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700 }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700 }}>
                   <span style={{ color: p.color }}>{p.got}</span>
                   <span style={{ color: 'var(--mute)', fontSize: 16 }}> / {p.need} ชิ้น</span>
                 </div>
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', marginTop: 4 }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', marginTop: 4 }}>
                   {p.skuCount} SKU · {p.closedBoxes} ลังปิดแล้ว
                 </div>
               </div>

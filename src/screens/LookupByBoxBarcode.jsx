@@ -54,7 +54,7 @@ export default function LookupByBoxBarcode({ boxes, setTab, setActiveBoxId, show
         <div style={{ textAlign: 'center' }}>
           <div className="hand" style={{ fontSize: 22, marginBottom: 10 }}>ยิงบาร์โค้ดปิดลัง</div>
           <div style={{ border: '3px dashed var(--line)', borderRadius: 14, padding: 24, background: 'white' }}>
-            <div style={{ fontFamily: 'Caveat', fontSize: 60, fontWeight: 700, color: 'var(--accent)' }}>|||</div>
+            <div style={{ fontFamily: 'system-ui', fontSize: 60, fontWeight: 700, color: 'var(--accent)' }}>|||</div>
             <input
               className="input big"
               placeholder="BX-…"
@@ -65,7 +65,7 @@ export default function LookupByBoxBarcode({ boxes, setTab, setActiveBoxId, show
               onKeyDown={(e) => { if (e.key === 'Enter') doSearch(query); }}
             />
           </div>
-          <div style={{ fontFamily: 'Patrick Hand', color: 'var(--mute)', marginTop: 8, fontSize: 14 }}>
+          <div style={{ fontFamily: 'system-ui', color: 'var(--mute)', marginTop: 8, fontSize: 14 }}>
             หรือ พิมพ์ Box ID / POS number
           </div>
         </div>
@@ -74,7 +74,7 @@ export default function LookupByBoxBarcode({ boxes, setTab, setActiveBoxId, show
           {foundBox ? (
             <>
               <div className="row" style={{ marginBottom: 8 }}>
-                <b style={{ fontFamily: 'Caveat', fontSize: 22 }}>{foundBox.id}</b>
+                <b style={{ fontFamily: 'system-ui', fontSize: 22 }}>{foundBox.id}</b>
                 <span className={statusCls[foundBox.status] || 'chip'} style={{ marginLeft: 10 }}>
                   {statusLabel[foundBox.status] || foundBox.status}
                 </span>
@@ -93,16 +93,16 @@ export default function LookupByBoxBarcode({ boxes, setTab, setActiveBoxId, show
                       {boxItems.map((l) => (
                         <tr key={l.sku}>
                           <td className="num-col">{l.sku}</td>
-                          <td style={{ fontFamily: 'Patrick Hand' }}>{l.name}</td>
-                          <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
-                          <td style={{ fontFamily: 'Caveat', fontSize: 18, textAlign: 'center' }}>×{l.qty ?? l.got ?? 0}</td>
+                          <td style={{ fontFamily: 'system-ui' }}>{l.name}</td>
+                          <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
+                          <td style={{ fontFamily: 'system-ui', fontSize: 18, textAlign: 'center' }}>×{l.qty ?? l.got ?? 0}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               ) : (
-                <div style={{ fontFamily: 'Patrick Hand', color: 'var(--mute)', fontSize: 14, padding: '16px 0' }}>
+                <div style={{ fontFamily: 'system-ui', color: 'var(--mute)', fontSize: 14, padding: '16px 0' }}>
                   ไม่มีข้อมูลรายการสินค้าในลังนี้
                 </div>
               )}
@@ -113,11 +113,11 @@ export default function LookupByBoxBarcode({ boxes, setTab, setActiveBoxId, show
               </div>
             </>
           ) : result === 'not_found' ? (
-            <div style={{ fontFamily: 'Patrick Hand', color: 'var(--red)', padding: 20, fontSize: 18 }}>
+            <div style={{ fontFamily: 'system-ui', color: 'var(--red)', padding: 20, fontSize: 18 }}>
               ไม่พบลัง "{query}"
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 200, fontFamily: 'Patrick Hand', fontSize: 16, color: 'var(--mute)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 200, fontFamily: 'system-ui', fontSize: 16, color: 'var(--mute)' }}>
               ยิงบาร์โค้ดลังหรือพิมพ์ Box ID เพื่อค้นหา
             </div>
           )}

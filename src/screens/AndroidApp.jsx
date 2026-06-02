@@ -40,7 +40,7 @@ export default function AndroidApp({
               background: 'var(--paper-dark)',
               display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap',
             }}>
-              <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', whiteSpace: 'nowrap' }}>
                 พนักงาน:
               </span>
               {PACKERS.map(p => {
@@ -52,7 +52,7 @@ export default function AndroidApp({
                     borderRadius: 999,
                     background: active ? 'var(--accent)' : 'white',
                     color: active ? 'white' : 'var(--ink)',
-                    fontFamily: 'Patrick Hand', fontSize: 15,
+                    fontFamily: 'system-ui', fontSize: 15,
                     cursor: 'pointer',
                     fontWeight: active ? 700 : 400,
                     boxShadow: active ? '2px 2px 0 var(--line)' : '1px 1px 0 var(--line)',
@@ -82,10 +82,10 @@ export default function AndroidApp({
                 alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24,
               }}>
                 <div style={{ fontSize: 52 }}>👆</div>
-                <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
                   เลือกชื่อพนักงานก่อน
                 </div>
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)', textAlign: 'center' }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 15, color: 'var(--mute)', textAlign: 'center' }}>
                   กดปุ่มชื่อพนักงานด้านบนเพื่อดูรายการสินค้าที่ต้องแพ็ค
                 </div>
               </div>
@@ -103,7 +103,7 @@ export default function AndroidApp({
               background: 'var(--paper-dark)',
               display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap',
             }}>
-              <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', whiteSpace: 'nowrap' }}>
                 พนักงาน:
               </span>
               {BRANCH_STAFF.map(s => {
@@ -115,7 +115,7 @@ export default function AndroidApp({
                     borderRadius: 999,
                     background: active ? 'var(--accent)' : 'white',
                     color: active ? 'white' : 'var(--ink)',
-                    fontFamily: 'Patrick Hand', fontSize: 15,
+                    fontFamily: 'system-ui', fontSize: 15,
                     cursor: 'pointer',
                     fontWeight: active ? 700 : 400,
                     boxShadow: active ? '2px 2px 0 var(--line)' : '1px 1px 0 var(--line)',
@@ -143,10 +143,10 @@ export default function AndroidApp({
                 alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24,
               }}>
                 <div style={{ fontSize: 52 }}>👆</div>
-                <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
                   เลือกชื่อพนักงานก่อน
                 </div>
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)', textAlign: 'center' }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 15, color: 'var(--mute)', textAlign: 'center' }}>
                   กดปุ่มชื่อพนักงานด้านบนเพื่อเริ่มรับสินค้า
                 </div>
               </div>
@@ -171,7 +171,7 @@ export default function AndroidApp({
             border: 'none',
             borderTop: `3px solid ${tab === t.k ? 'var(--accent)' : 'transparent'}`,
             background: tab === t.k ? 'var(--accent-soft)' : 'transparent',
-            fontFamily: 'Patrick Hand', fontSize: 17,
+            fontFamily: 'system-ui', fontSize: 17,
             color: tab === t.k ? 'var(--accent)' : 'var(--mute)',
             cursor: 'pointer',
             fontWeight: tab === t.k ? 700 : 400,

@@ -70,7 +70,7 @@ export default function TweaksPanel({ tweaks, setTweaks, open, setOpen }) {
         </div>
       </div>
 
-      <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 8 }}>
+      <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 8 }}>
         Tweaks are wireframe-level only.
       </div>
     </div>

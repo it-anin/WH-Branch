@@ -47,7 +47,7 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
 
         {/* modal header */}
         <div className="row" style={{ padding: '12px 18px', borderBottom: '1.5px solid var(--line)' }}>
-          <span style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700 }}>📦 ลังที่ปิดแล้ว</span>
+          <span style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700 }}>📦 ลังที่ปิดแล้ว</span>
           {packer && <span className="mono" style={{ fontSize: 12, color: 'var(--mute)', marginLeft: 8 }}>{packer.name}</span>}
           <span className="chip" style={{ marginLeft: 8 }}>{myBoxes.length} ลัง</span>
           <div className="spacer" />
@@ -73,7 +73,7 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
             overflowY: 'auto', background: 'var(--paper-dark)',
           }}>
             {myBoxes.length === 0 && (
-              <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', textAlign: 'center', marginTop: 20 }}>
+              <div style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', textAlign: 'center', marginTop: 20 }}>
                 ยังไม่มีลังที่ปิด
               </div>
             )}
@@ -89,8 +89,8 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
                   cursor: 'pointer', transition: 'all 0.1s',
                 }}>
                   <div style={{ fontSize: 28 }}>📦</div>
-                  <div style={{ fontFamily: 'Caveat', fontSize: 13, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--ink)' }}>{b.id}</div>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: 'var(--mute)' }}>{b.skuCount ?? 0} SKU · {b.totalQty ?? 0} ชิ้น</div>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--ink)' }}>{b.id}</div>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 11, color: 'var(--mute)' }}>{b.skuCount ?? 0} SKU · {b.totalQty ?? 0} ชิ้น</div>
                   {b.status === 'exported' && <span className="chip ok" style={{ fontSize: 10 }}>ส่ง POS</span>}
                 </button>
               );
@@ -101,12 +101,12 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
           <div style={{ overflowY: 'auto', padding: 16 }}>
             {isSearching ? (
               globalResults.length === 0 ? (
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)', textAlign: 'center', marginTop: 40 }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 15, color: 'var(--mute)', textAlign: 'center', marginTop: 40 }}>
                   ไม่พบสินค้า "{search}"
                 </div>
               ) : (
                 <>
-                  <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, marginBottom: 10 }}>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, marginBottom: 10 }}>
                     ผลการค้นหา "{search}" — {globalResults.length} รายการ
                   </div>
                   <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white' }}>
@@ -123,13 +123,13 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
                         {globalResults.map((l, i) => (
                           <tr key={`${l.boxId}-${l.sku}-${i}`} style={{ cursor: 'pointer' }}
                             onClick={() => { setSelectedId(l.boxId); setSearch(''); }}>
-                            <td style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700, color: 'var(--accent)' }}>{l.boxId}</td>
+                            <td style={{ fontFamily: 'system-ui', fontSize: 16, fontWeight: 700, color: 'var(--accent)' }}>{l.boxId}</td>
                             <td>
                               <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                              <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                              <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                             </td>
-                            <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
-                            <td style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
+                            <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
+                            <td style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
                               ×{l.qty ?? l.got ?? 0}
                             </td>
                           </tr>
@@ -140,16 +140,16 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
                 </>
               )
             ) : !selectedId ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontFamily: 'system-ui', fontSize: 15, color: 'var(--mute)' }}>
                 เลือกลังทางซ้ายเพื่อดูรายการสินค้า
               </div>
             ) : selectedItems.length === 0 ? (
-              <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)', textAlign: 'center', marginTop: 40 }}>
+              <div style={{ fontFamily: 'system-ui', fontSize: 15, color: 'var(--mute)', textAlign: 'center', marginTop: 40 }}>
                 ไม่มีข้อมูลรายการสินค้าในลังนี้
               </div>
             ) : (
               <>
-                <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, marginBottom: 10 }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, marginBottom: 10 }}>
                   สินค้าในลัง {selectedId}
                 </div>
                 <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white' }}>
@@ -166,14 +166,14 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
                     <tbody>
                       {selectedItems.map((l, i) => (
                         <tr key={l.sku}>
-                          <td style={{ color: 'var(--mute)', fontFamily: 'Caveat', fontSize: 18 }}>{i + 1}</td>
+                          <td style={{ color: 'var(--mute)', fontFamily: 'system-ui', fontSize: 18 }}>{i + 1}</td>
                           <td>
                             <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                            <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                            <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                           </td>
                           <td className="num-col" style={{ fontSize: 12 }}>{l.barcode}</td>
-                          <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
-                          <td style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
+                          <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
+                          <td style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
                             ×{l.qty ?? l.got ?? 0}
                           </td>
                         </tr>
@@ -408,7 +408,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
             <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
               SKU: <span className="mono">{pendingLot.match.sku}</span>
             </div>
-            <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginBottom: 14, color: '#333' }}>
+            <div style={{ fontFamily: 'system-ui', fontSize: 14, marginBottom: 14, color: '#333' }}>
               {pendingLot.match.name}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
@@ -423,7 +423,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                   onClick={() => handleLotSelect(lot)}
                 >
                   <span>{lot}</span>
-                  <span style={{ fontSize: 13, opacity: 0.85, fontFamily: 'Patrick Hand' }}>เหลือ {remaining}</span>
+                  <span style={{ fontSize: 13, opacity: 0.85, fontFamily: 'system-ui' }}>เหลือ {remaining}</span>
                 </button>
               ))}
             </div>
@@ -479,7 +479,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
           <div className="spacer" />
           {/* Android: เช็ค X/Y ชิดขวา แทนปุ่มลังที่ปิด */}
           {isAndroid ? (
-            <span style={{ fontSize: 11, color: 'var(--mute)', fontFamily: 'Patrick Hand' }}>
+            <span style={{ fontSize: 11, color: 'var(--mute)', fontFamily: 'system-ui' }}>
               เช็ค {doneCount}/{items.length}
               {catalogMeta && (
                 <span style={{ marginLeft: 6 }}>
@@ -568,7 +568,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
           isAndroid ? (
             <div className="row" style={{ marginBottom: 8, gap: 6, justifyContent: 'center' }}>
               <button className="btn sm ghost" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>←</button>
-              <span style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', minWidth: 60, textAlign: 'center' }}>
+              <span style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)', minWidth: 60, textAlign: 'center' }}>
                 หน้า {page + 1}/{totalPages}
               </span>
               <button className="btn sm ghost" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}>→</button>
@@ -628,10 +628,10 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                     <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.barcode}</div>
                   )}
                 </div>
-                <div style={{ textAlign: 'right', fontFamily: 'Caveat', fontWeight: 700, fontSize: isAndroid ? 18 : 22, flexShrink: 0 }}>
+                <div style={{ textAlign: 'right', fontFamily: 'system-ui', fontWeight: 700, fontSize: isAndroid ? 18 : 22, flexShrink: 0 }}>
                   <span style={{ color: done ? 'var(--green)' : partial ? 'var(--accent)' : 'var(--mute)' }}>{c.got}</span>
                   <span style={{ fontSize: isAndroid ? 13 : 16, color: 'var(--mute)' }}> / {c.need}</span>
-                  <div style={{ fontSize: 11, fontFamily: 'Patrick Hand', color: 'var(--mute)' }}>{c.unit}</div>
+                  <div style={{ fontSize: 11, fontFamily: 'system-ui', color: 'var(--mute)' }}>{c.unit}</div>
                 </div>
               </div>
             );

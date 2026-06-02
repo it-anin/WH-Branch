@@ -76,7 +76,7 @@ export default function ImportCostMap({ matchCount, meta, onImport }) {
         {displayUploadedAt ? '✅ อัปโหลดไฟล์ Price แล้ว' : '⇑ อัปโหลดไฟล์ Price'}
       </button>
       {displayUploadedAt && (
-        <span className="chip ok" style={{ fontFamily: 'Patrick Hand', fontSize: 13 }}>
+        <span className="chip ok" style={{ fontFamily: 'system-ui', fontSize: 13 }}>
           ไฟล์วันที่ {displayUploadedAt}
         </span>
       )}

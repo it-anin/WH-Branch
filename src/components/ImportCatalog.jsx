@@ -120,7 +120,7 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
           : '⇑ อัปโหลดไฟล์ Picklist'}
       </button>
       {displayFileDate && catalog.length > 0 && (
-        <span className="chip ok" style={{ fontFamily: 'Patrick Hand', fontSize: 13 }}>
+        <span className="chip ok" style={{ fontFamily: 'system-ui', fontSize: 13 }}>
           ✅ รายการเบิก: {catalog.length} รายการ · ไฟล์วันที่ {displayFileDate}
         </span>
       )}

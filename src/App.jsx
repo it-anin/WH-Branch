@@ -628,7 +628,7 @@ export default function App() {
               display: 'flex', alignItems: 'center', gap: 10,
               marginBottom: 16, flexWrap: 'wrap',
             }}>
-              <span style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)' }}>
+              <span style={{ fontFamily: 'system-ui', fontSize: 15, color: 'var(--mute)' }}>
                 พนักงานแพ็คกิ้ง:
               </span>
               {PACKERS.map(p => {
@@ -644,7 +644,7 @@ export default function App() {
                       borderRadius: 999,
                       background: active ? 'var(--accent)' : 'white',
                       color: active ? 'white' : 'var(--ink)',
-                      fontFamily: 'Patrick Hand', fontSize: 15,
+                      fontFamily: 'system-ui', fontSize: 15,
                       cursor: 'pointer',
                       boxShadow: active ? '2px 2px 0 var(--line)' : '1px 1px 0 var(--line)',
                       transition: 'all 0.12s',
@@ -656,7 +656,7 @@ export default function App() {
                 );
               })}
               {packer && (
-                <span style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>
+                <span style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)' }}>
                   · กำลังแพ็คโดย <b>{packer.name}</b>
                   {catalogByPacker[packer.code] && (
                     <span style={{ marginLeft: 6 }}>({catalogByPacker[packer.code].length} SKU)</span>
@@ -674,10 +674,10 @@ export default function App() {
                 background: 'var(--paper-dark)',
               }}>
                 <div style={{ fontSize: 48, marginBottom: 12 }}>👆</div>
-                <div style={{ fontFamily: 'Caveat', fontSize: 28, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 28, fontWeight: 700, color: 'var(--ink)', marginBottom: 8 }}>
                   เลือกชื่อพนักงานก่อน
                 </div>
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 16, color: 'var(--mute)' }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 16, color: 'var(--mute)' }}>
                   กดปุ่มชื่อพนักงานด้านบนเพื่อดูรายการสินค้าที่ต้องแพ็ค
                 </div>
               </div>
@@ -715,8 +715,8 @@ export default function App() {
           </>
         )}
 
-        <div style={{ marginTop: 50, padding: 20, borderTop: '2px dashed var(--line)', fontFamily: 'Patrick Hand', color: 'var(--mute)' }}>
-          <b style={{ fontFamily: 'Caveat', fontSize: 20 }}>NOTED</b>
+        <div style={{ marginTop: 50, padding: 20, borderTop: '2px dashed var(--line)', fontFamily: 'system-ui', color: 'var(--mute)' }}>
+          <b style={{ fontFamily: 'system-ui', fontSize: 20 }}>NOTED</b>
           <ul style={{ marginTop: 8 }}>
             <li>แสดงสถานะการดำเนินงานของพนักงานแพ็คกิ้งแต่ละคน</li>
             <li>รายการเบิกสินค้าดึงข้อมูลจากไฟล์ PickList_xxx โดยตรง</li>

@@ -82,23 +82,23 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onIns
           : isActive ? 'ลังที่กำลังตรวจ'
           : statusLabel[box.status] || box.status;
         return label ? (
-          <div style={{ fontFamily: 'Patrick Hand', fontSize: 11, color: hasProblem ? problemColor : isReceived ? '#6a9a3a' : 'var(--mute)', marginBottom: 2 }}>
+          <div style={{ fontFamily: 'system-ui', fontSize: 11, color: hasProblem ? problemColor : isReceived ? '#6a9a3a' : 'var(--mute)', marginBottom: 2 }}>
             {label}
           </div>
         ) : null;
       })()}
-      <div style={{ fontFamily: 'Caveat', fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
-      <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 3 }}>เลขที่เอกสาร: {box.pos}</div>
-      <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
+      <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
+      <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 3 }}>เลขที่เอกสาร: {box.pos}</div>
+      <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
         เลขที่ลัง: <span className="mono" style={{ fontSize: 11 }}>{box.id}</span>
       </div>
       {box.packer && (
-        <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
+        <div style={{ fontFamily: 'system-ui', fontSize: 12, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
           แพ็คโดย: {box.packer.name}
         </div>
       )}
       {(box.receivedBy || box.problemBy) && (
-        <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: hasProblem ? problemColor : isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
+        <div style={{ fontFamily: 'system-ui', fontSize: 12, color: hasProblem ? problemColor : isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
           ตรวจสอบโดย: {(box.receivedBy || box.problemBy).name}
         </div>
       )}
@@ -558,7 +558,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                     boxShadow: '3px 3px 0 var(--line)', padding: 6, minWidth: 190,
                     display: 'flex', flexDirection: 'column', gap: 4,
                   }}>
-                    <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', padding: '2px 12px' }}>
+                    <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', padding: '2px 12px' }}>
                       กรองลังตามผู้ตรวจรับ
                     </div>
                     <button
@@ -568,7 +568,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                         padding: '8px 12px', borderRadius: 8, cursor: 'pointer', border: 'none',
                         background: !branchStaff ? 'var(--accent)' : 'transparent',
                         color: !branchStaff ? 'white' : 'var(--ink)',
-                        fontFamily: 'Patrick Hand', fontSize: 15, textAlign: 'left',
+                        fontFamily: 'system-ui', fontSize: 15, textAlign: 'left',
                       }}
                     >
                       <span style={{ fontWeight: !branchStaff ? 700 : 400 }}>ทุกพนักงาน</span>
@@ -585,7 +585,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                             padding: '8px 12px', borderRadius: 8, cursor: 'pointer', border: 'none',
                             background: active ? 'var(--accent)' : 'transparent',
                             color: active ? 'white' : 'var(--ink)',
-                            fontFamily: 'Patrick Hand', fontSize: 15, textAlign: 'left',
+                            fontFamily: 'system-ui', fontSize: 15, textAlign: 'left',
                           }}
                         >
                           <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, opacity: 0.7 }}>{s.code}</span>
@@ -617,7 +617,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 padding: '18px 16px',
                 border: '2px dashed var(--line)', borderRadius: 14,
                 background: 'var(--paper-dark)', textAlign: 'center',
-                color: 'var(--mute)', fontFamily: 'Patrick Hand', fontSize: 14,
+                color: 'var(--mute)', fontFamily: 'system-ui', fontSize: 14,
               }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>📦</div>
                 {staffFilter ? (
@@ -654,7 +654,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           {!isAndroid && searchQ ? (
             <div>
               <div className="row" style={{ marginBottom: 12, gap: 10 }}>
-                <b style={{ fontFamily: 'Caveat', fontSize: 22 }}>🔍 ผลค้นหา "{itemSearch}"</b>
+                <b style={{ fontFamily: 'system-ui', fontSize: 22 }}>🔍 ผลค้นหา "{itemSearch}"</b>
                 <span className="chip info">{searchResults.length} รายการ</span>
                 <div className="spacer" />
                 <button className="btn sm ghost" onClick={() => setItemSearch('')}>× ล้างค้นหา</button>
@@ -665,8 +665,8 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   background: 'var(--paper-dark)', textAlign: 'center', color: 'var(--mute)',
                 }}>
                   <div style={{ fontSize: 42, marginBottom: 10 }}>🔍</div>
-                  <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700 }}>ไม่พบสินค้า</div>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, marginTop: 4 }}>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700 }}>ไม่พบสินค้า</div>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 14, marginTop: 4 }}>
                     ไม่พบ "{itemSearch}" ในลังรอบเบิกนี้
                   </div>
                 </div>
@@ -684,13 +684,13 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                     <tbody>
                       {searchResults.map((r, i) => (
                         <tr key={`${r.boxId}-${r.sku}-${i}`} style={{ cursor: 'pointer' }} onClick={() => { setViewingId(r.boxId); setItemSearch(''); }}>
-                          <td><span style={{ fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>{r.boxId}</span></td>
+                          <td><span style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>{r.boxId}</span></td>
                           <td>
                             <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{r.sku}</div>
-                            <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{r.name}</div>
+                            <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{r.name}</div>
                           </td>
-                          <td style={{ fontFamily: 'Patrick Hand' }}>{r.unit}</td>
-                          <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 20, fontWeight: 700 }}>×{r.qty}</td>
+                          <td style={{ fontFamily: 'system-ui' }}>{r.unit}</td>
+                          <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 20, fontWeight: 700 }}>×{r.qty}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -701,11 +701,11 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           ) : (!isAndroid && viewingBox?.problemReported && !viewingBox?.problemResolved) ? (
             <div>
               <div className="row" style={{ marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
-                <b style={{ fontFamily: 'Caveat', fontSize: 22, color: viewingBox.problemType === 'incomplete' ? '#e67e22' : 'var(--red)' }}>
+                <b style={{ fontFamily: 'system-ui', fontSize: 22, color: viewingBox.problemType === 'incomplete' ? '#e67e22' : 'var(--red)' }}>
                   {viewingBox.problemType === 'incomplete' ? `🔁 รีเช็คสินค้า · ${viewingBox.id}` : `🔴 ตรวจสอบปัญหา · ${viewingBox.id}`}
                 </b>
                 {viewingBox.problemBy && (
-                  <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
+                  <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)' }}>
                     แจ้งโดย: {viewingBox.problemBy.name}{viewingBox.problemAt ? ` · ${viewingBox.problemAt}` : ''}
                   </span>
                 )}
@@ -714,17 +714,17 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               </div>
 
               {viewingBox.problemType === 'incomplete' && (
-                <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px dashed var(--red)', borderRadius: 10, background: '#fde8e8', fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--red)', fontWeight: 700 }}>
+                <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px dashed var(--red)', borderRadius: 10, background: '#fde8e8', fontFamily: 'system-ui', fontSize: 13, color: 'var(--red)', fontWeight: 700 }}>
                   เภสัชสแกนสินค้าที่เครื่อง PDA (สแกนลังก่อน)
                 </div>
               )}
 
               {/* รายการสินค้า — Blind recheck: ไม่แสดงต้องมี/ขาด เพื่อให้ scan ใหม่โดยไม่รู้จำนวน */}
               <div style={{ marginBottom: 4 }}>
-                <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, color: 'var(--ink)' }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--ink)' }}>
                   รายการสินค้าที่ต้องรีเช็ค
                 </div>
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
                   ผลสแกนรอบแรก (จากพนักงานสาขา)
                 </div>
               </div>
@@ -747,10 +747,10 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                             <tr key={l.sku}>
                               <td>
                                 <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                                <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                                <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                               </td>
-                              <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
-                              <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 22, fontWeight: 700 }}>{got}</td>
+                              <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
+                              <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 22, fontWeight: 700 }}>{got}</td>
                             </tr>
                           );
                         })}
@@ -763,13 +763,13 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               {/* รูปหลักฐานสินค้าชำรุด */}
               {viewingBox.problemImage && (
                 <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', marginBottom: 6 }}>📷 รูปหลักฐาน</div>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)', marginBottom: 6 }}>📷 รูปหลักฐาน</div>
                   <img src={viewingBox.problemImage} alt="หลักฐาน" style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 10, border: '1.5px solid var(--line)', objectFit: 'contain', display: 'block' }} />
                 </div>
               )}
 
               {/* รายละเอียดปัญหาที่พบ (หัวหน้าบันทึก) */}
-              <div style={{ marginBottom: 6, fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>รายละเอียดปัญหาที่พบ (หัวหน้าบันทึกเพิ่ม)</div>
+              <div style={{ marginBottom: 6, fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)' }}>รายละเอียดปัญหาที่พบ (หัวหน้าบันทึกเพิ่ม)</div>
               <textarea
                 className="input"
                 placeholder="เช่น สินค้าขาด 2 ชิ้น / กล่องบุบ / ..."
@@ -800,9 +800,9 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           ) : isViewingOther ? (
             <div>
               <div className="row" style={{ marginBottom: 12, gap: 10 }}>
-                <b style={{ fontFamily: 'Caveat', fontSize: 22 }}>👁 {viewingBox?.id || viewingId}</b>
+                <b style={{ fontFamily: 'system-ui', fontSize: 22 }}>👁 {viewingBox?.id || viewingId}</b>
                 {viewingBox?.packer && (
-                  <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)' }}>
+                  <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)' }}>
                     แพ็คโดย: {viewingBox.packer.name}
                   </span>
                 )}
@@ -811,7 +811,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 <button className="btn sm ghost" onClick={() => setViewingId(null)}>× ปิด</button>
               </div>
               {viewingItems.length === 0 ? (
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 15, color: 'var(--mute)', textAlign: 'center', padding: 30 }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 15, color: 'var(--mute)', textAlign: 'center', padding: 30 }}>
                   ไม่มีข้อมูลรายการสินค้าในลังนี้
                 </div>
               ) : (
@@ -828,13 +828,13 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                     <tbody>
                       {viewingItems.map((l, i) => (
                         <tr key={l.sku}>
-                          <td style={{ fontFamily: 'Caveat', fontSize: 18, color: 'var(--mute)' }}>{i + 1}</td>
+                          <td style={{ fontFamily: 'system-ui', fontSize: 18, color: 'var(--mute)' }}>{i + 1}</td>
                           <td>
                             <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                            <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                            <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                           </td>
-                          <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
-                          <td style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
+                          <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
+                          <td style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
                             ×{l.qty ?? l.got ?? 0}
                           </td>
                         </tr>
@@ -847,7 +847,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           ) : phase === 'result' ? (
             <div>
               <div className="row" style={{ marginBottom: 14, gap: 10, flexWrap: 'wrap' }}>
-                <b style={{ fontFamily: 'Caveat', fontSize: 22 }}>{foundBox?.id}</b>
+                <b style={{ fontFamily: 'system-ui', fontSize: 22 }}>{foundBox?.id}</b>
                 <span className="chip ok">✓ ตรวจสอบแล้ว</span>
                 {verifyResult === 'ok'
                   ? <span className="chip ok" style={{ background: 'var(--green)', borderColor: 'var(--green)', color: 'white' }}>สินค้าถูกต้อง</span>
@@ -892,15 +892,15 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                           </td>
                           <td>
                             <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                            <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                            <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                           </td>
-                          <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
+                          <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
                           {!recheckMode && (
-                            <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, color: 'var(--mute)' }}>
+                            <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, color: 'var(--mute)' }}>
                               {needed}
                             </td>
                           )}
-                          <td style={{ textAlign: 'center', fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: countColor }}>
+                          <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: countColor }}>
                             {count}{over && <span style={{ fontSize: 13, marginLeft: 2 }}>+{count - needed}</span>}
                           </td>
                         </tr>
@@ -915,19 +915,19 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   border: '2px solid var(--accent)', borderRadius: 12, padding: '14px 16px',
                   background: 'var(--accent-soft)', textAlign: 'center',
                 }}>
-                  <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>
                     ✓ {recheckMode ? 'รีเช็คสินค้าแล้ว · ส่งให้อนุมัติเอกสาร' : 'ส่งให้เภสัชอนุมัติเอกสารแล้ว'}
                   </div>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', marginTop: 4 }}>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)', marginTop: 4 }}>
                     กดปุ่ม [+ ลังถัดไป] เพื่อสแกนลังต่อ
                   </div>
                 </div>
               ) : (
                 <div style={{ border: '2px solid #e67e22', borderRadius: 12, padding: '14px 16px', background: '#fff3cd', textAlign: 'center' }}>
-                  <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: '#b86000' }}>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: '#b86000' }}>
                     ✓ {recheckMode ? 'รีเช็คสินค้าแล้ว' : 'ส่งให้หัวหน้ารีเช็คสินค้าแล้ว'}
                   </div>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: '#b86000', marginTop: 4 }}>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 14, color: '#b86000', marginTop: 4 }}>
                     {verifyResult === 'over' ? 'พบสินค้าเกินจำนวน' : 'พบสินค้าไม่ครบ'} · กดปุ่ม [+ ลังถัดไป] เพื่อสแกนลังต่อ
                   </div>
                 </div>
@@ -936,7 +936,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           ) : phase === 'scan' ? (
             isAndroid ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>ยิงบาร์โค้ดที่ติดลัง หรือพิมพ์ BX-…</div>
+                <div style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)' }}>ยิงบาร์โค้ดที่ติดลัง หรือพิมพ์ BX-…</div>
                 <input
                   ref={inputRef}
                   className="input big"
@@ -950,7 +950,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   <div style={{
                     padding: '10px 14px',
                     border: '2px solid var(--red)', borderRadius: 10,
-                    background: '#fde8e8', fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--red)',
+                    background: '#fde8e8', fontFamily: 'system-ui', fontSize: 14, color: 'var(--red)',
                   }}>
                     ⚠ ไม่พบลัง "{query}" — ลองสแกนใหม่
                   </div>
@@ -963,10 +963,10 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               border: '2px dashed var(--line)', borderRadius: 16, background: 'var(--paper-dark)',
             }}>
               <div style={{ fontSize: 46 }}>📋</div>
-              <div style={{ fontFamily: 'Caveat', fontSize: 24, fontWeight: 700 }}>
+              <div style={{ fontFamily: 'system-ui', fontSize: 24, fontWeight: 700 }}>
                 {approvalBoxes.length > 0 ? 'เลือกลังทางซ้ายเพื่อดูรายละเอียด' : 'ยังไม่มีลังรออนุมัติ'}
               </div>
-              <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, maxWidth: 320 }}>
+              <div style={{ fontFamily: 'system-ui', fontSize: 14, maxWidth: 320 }}>
                 {approvalBoxes.length > 0
                   ? 'คลิก card ลังเพื่อดูรายการสินค้า แล้วกด "อนุมัติเอกสาร" เพื่อยืนยันรับเข้าสาขา'
                   : 'เมื่อพนักงานหน้าร้านสแกนรับสินค้าเสร็จที่แอป ลังจะมาขึ้นที่นี่ให้อนุมัติเอกสาร'}
@@ -978,7 +978,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               {boxItems.length === 0 ? (
                 <div style={{
                   padding: 30, border: '2px dashed var(--line)', borderRadius: 12,
-                  background: 'var(--paper-dark)', fontFamily: 'Patrick Hand',
+                  background: 'var(--paper-dark)', fontFamily: 'system-ui',
                   fontSize: 16, color: 'var(--mute)', textAlign: 'center',
                 }}>
                   <div style={{ fontSize: 36, marginBottom: 10 }}>⚠️</div>
@@ -990,14 +990,14 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 <>
                   <div className="row" style={{ marginBottom: 10 }}>
                     <div>
-                      <b style={{ fontFamily: 'Caveat', fontSize: isAndroid ? 16 : 22 }}>ตรวจสอบสินค้าในลัง</b>
+                      <b style={{ fontFamily: 'system-ui', fontSize: isAndroid ? 16 : 22 }}>ตรวจสอบสินค้าในลัง</b>
                       {foundBox?.id && (
                         <span className="mono" style={{ fontSize: 12, color: 'var(--accent)', marginLeft: 8, fontWeight: 700 }}>
                           {foundBox.id}
                         </span>
                       )}
                       {foundBox?.packer && (
-                        <span style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', marginLeft: 10 }}>
+                        <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', marginLeft: 10 }}>
                           แพ็คโดย: <b style={{ color: '#555' }}>{foundBox.packer.name} · {foundBox.packer.code}</b>
                         </span>
                       )}
@@ -1019,7 +1019,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                         />
                       </div>
                       {lastScannedSku && !scanError && (
-                        <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--green)', marginTop: 4 }}>
+                        <div style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--green)', marginTop: 4 }}>
                           ✓ {boxItems.find(l => l.sku === lastScannedSku)?.name} — ติ๊กแล้ว
                         </div>
                       )}
@@ -1033,7 +1033,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                     return (
                       <>
                         {scannedItems.length === 0 ? (
-                          <div style={{ padding: '20px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', textAlign: 'center', fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)' }}>
+                          <div style={{ padding: '20px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', textAlign: 'center', fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)' }}>
                             ยิงบาร์โค้ดสินค้าเพื่อเริ่มตรวจสอบ
                           </div>
                         ) : (
@@ -1051,11 +1051,11 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                                   <tr key={l.sku} style={{ background: '#e8f0d8' }}>
                                     <td>
                                       <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                                      <div style={{ fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                                      <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                                     </td>
-                                    <td style={{ fontFamily: 'Patrick Hand' }}>{l.unit}</td>
+                                    <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
                                     <td style={{ textAlign: 'center' }}>
-                                      <span style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: 'var(--ink)' }}>{scanCounts[l.sku]}</span>
+                                      <span style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--ink)' }}>{scanCounts[l.sku]}</span>
                                     </td>
                                   </tr>
                                 ))}
@@ -1072,7 +1072,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                       marginTop: 14, padding: '12px 18px',
                       border: '2px solid var(--green)', borderRadius: 10,
                       background: '#e8f0d8', textAlign: 'center',
-                      fontFamily: 'Caveat', fontSize: 22, fontWeight: 700, color: 'var(--green)',
+                      fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--green)',
                     }}>
                       ✓ รับสินค้าเรียบร้อยแล้ว — {foundBox?.id}
                     </div>
@@ -1084,14 +1084,14 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                           border: '1.5px solid var(--red)', borderRadius: 12,
                           padding: '14px 16px', background: '#fde8e8',
                         }}>
-                          <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--red)', marginBottom: 10 }}>
+                          <div style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--red)', marginBottom: 10 }}>
                             ⚠ แนบรูปหลักฐาน (ถ้ามี)
                           </div>
                           <label style={{
                             display: 'inline-flex', alignItems: 'center', gap: 8,
                             padding: '8px 14px', cursor: 'pointer',
                             border: '1.5px dashed var(--red)', borderRadius: 10,
-                            fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--red)',
+                            fontFamily: 'system-ui', fontSize: 14, color: 'var(--red)',
                             background: 'white',
                           }}>
                             📷 {reportImage ? 'เปลี่ยนรูป' : 'เลือกรูปภาพ'}
@@ -1108,7 +1108,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                                 alt="รูปหลักฐาน"
                                 style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, border: '1.5px solid var(--line)', objectFit: 'contain', display: 'block' }}
                               />
-                              <div style={{ fontFamily: 'Patrick Hand', fontSize: 12, color: 'var(--mute)', marginTop: 4 }}>
+                              <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 4 }}>
                                 {reportImage.name}
                               </div>
                             </div>

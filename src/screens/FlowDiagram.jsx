@@ -6,17 +6,17 @@ function Step({ num, title, desc, bg }) {
         borderRadius: '50%', background: bg,
         border: '2px solid var(--line)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: 'Caveat', fontWeight: 700, fontSize: 30,
+        fontFamily: 'system-ui', fontWeight: 700, fontSize: 30,
         boxShadow: '3px 3px 0 var(--line)',
       }}>{num}</div>
-      <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700 }}>{title}</div>
-      <div style={{ fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--mute)', maxWidth: 160, margin: '0 auto' }}>{desc}</div>
+      <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700 }}>{title}</div>
+      <div style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', maxWidth: 160, margin: '0 auto' }}>{desc}</div>
     </div>
   );
 }
 
 const Arrow = () => (
-  <div style={{ fontFamily: 'Caveat', fontSize: 30, color: 'var(--accent)', alignSelf: 'center' }}>⟶</div>
+  <div style={{ fontFamily: 'system-ui', fontSize: 30, color: 'var(--accent)', alignSelf: 'center' }}>⟶</div>
 );
 
 export default function FlowDiagram() {

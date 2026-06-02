@@ -279,7 +279,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 }}
               >
                 <div style={{ fontSize: 30 }}>📦</div>
-                <div style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--ink)', textAlign: 'center', lineHeight: 1.1 }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 16, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--ink)', textAlign: 'center', lineHeight: 1.1 }}>
                   {b.id}
                 </div>
                 {b.pos && b.pos !== '—' && (
@@ -336,7 +336,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                     {searchResults.map((l, i) => (
                       <tr key={`${l.boxId}-${l.sku}-${i}`}>
                         <td>
-                          <span style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700, color: 'var(--accent)' }}>{l.boxId}</span>
+                          <span style={{ fontFamily: 'system-ui', fontSize: 16, fontWeight: 700, color: 'var(--accent)' }}>{l.boxId}</span>
                           {l.packer && <div style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--mute)' }}>{l.packer.name}</div>}
                         </td>
                         <td>
@@ -344,7 +344,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                           <div style={{ fontFamily: 'JetBrains Mono', fontSize: 15 }}>{l.name}</div>
                         </td>
                         <td style={{ fontFamily: 'JetBrains Mono' }}>{l.unit}</td>
-                        <td style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
+                        <td style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
                           ×{l.qty ?? l.got ?? 0}
                         </td>
                         <td>
@@ -397,7 +397,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                             <td>
                               <div className="row" style={{ gap: 8, justifyContent: 'center', alignItems: 'center' }}>
                                 <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--red)', color: 'var(--red)', fontWeight: 700 }} onClick={() => adjustQty(l.sku, -1)}>−</button>
-                                <span style={{ fontFamily: 'Caveat', fontSize: 24, fontWeight: 700, minWidth: 30, textAlign: 'center' }}>{l.qty ?? l.got ?? 0}</span>
+                                <span style={{ fontFamily: 'system-ui', fontSize: 24, fontWeight: 700, minWidth: 30, textAlign: 'center' }}>{l.qty ?? l.got ?? 0}</span>
                                 <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--green)', color: 'var(--green)', fontWeight: 700 }} onClick={() => adjustQty(l.sku, +1)}>+</button>
                               </div>
                             </td>
@@ -450,7 +450,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                           <td className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</td>
                           <td style={{ fontFamily: 'JetBrains Mono' }}>{l.name}</td>
                           <td style={{ fontFamily: 'JetBrains Mono' }}>{l.unit}</td>
-                          <td style={{ fontFamily: 'Caveat', fontSize: 18, fontWeight: 700, textAlign: 'center' }}>×{l.qty ?? l.got ?? 0}</td>
+                          <td style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, textAlign: 'center' }}>×{l.qty ?? l.got ?? 0}</td>
                           <td className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{l.location || '—'}</td>
                         </tr>
                       ))}
@@ -473,11 +473,11 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px dashed var(--line)', paddingBottom: 8 }}>
                   <div>
-                    <div style={{ fontFamily: 'Caveat', fontSize: 20, fontWeight: 700 }}>คลังสินค้า · WH-01</div>
+                    <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700 }}>คลังสินค้า · WH-01</div>
                     <div style={{ fontSize: 10, color: 'var(--mute)' }}>packed {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontFamily: 'Caveat', fontSize: 16, fontWeight: 700 }}>{activeBox.id}</div>
+                    <div style={{ fontFamily: 'system-ui', fontSize: 16, fontWeight: 700 }}>{activeBox.id}</div>
                     {activeBox.status === 'exported' && activeBox.pos && activeBox.pos !== '—' && (
                       <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700 }}>เลขที่เอกสาร: {activeBox.pos}</div>
                     )}

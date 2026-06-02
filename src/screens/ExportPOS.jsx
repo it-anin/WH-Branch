@@ -130,7 +130,7 @@ export default function ExportPOS({ boxes, setBoxes, showToast, triggerDownload 
         </table>
 
         <div className="row" style={{ marginTop: 16, gap: 10 }}>
-          <div style={{ padding: 10, background: 'var(--paper-dark)', borderRadius: 8, fontFamily: 'Patrick Hand', fontSize: 14 }}>
+          <div style={{ padding: 10, background: 'var(--paper-dark)', borderRadius: 8, fontFamily: 'system-ui', fontSize: 14 }}>
             <b>สรุป:</b> {selectedBoxes.length} ลัง · {totalSku} SKU · {totalQty} ชิ้น
           </div>
           <div className="spacer" />

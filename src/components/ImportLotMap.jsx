@@ -68,7 +68,7 @@ export default function ImportLotMap({ matchCount, meta, onImport }) {
         {displayUploadedAt ? '✅ อัปโหลดไฟล์ R01.119 (LOT) แล้ว' : '⇑ อัปโหลดไฟล์ R01.119 (LOT)'}
       </button>
       {displayUploadedAt && (
-        <span className="chip ok" style={{ fontFamily: 'Patrick Hand', fontSize: 13 }}>
+        <span className="chip ok" style={{ fontFamily: 'system-ui', fontSize: 13 }}>
           ไฟล์วันที่ {displayUploadedAt}
         </span>
       )}

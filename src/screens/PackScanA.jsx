@@ -79,7 +79,7 @@ export default function PackScanA({ boxes, setBoxes, activeBoxId, setTab, showTo
               autoFocus
               onKeyDown={handleBarcode}
             />
-            <div style={{ fontFamily: 'Patrick Hand', fontSize: 14, color: 'var(--mute)', marginTop: 4 }}>
+            <div style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)', marginTop: 4 }}>
               ยิงซ้ำได้ → เพิ่มจำนวน · กด Enter เพื่อยืนยัน
             </div>
           </div>
@@ -160,7 +160,7 @@ export default function PackScanA({ boxes, setBoxes, activeBoxId, setTab, showTo
             ) : (
               <>
                 <div className="mono" style={{ fontSize: 12, color: 'var(--mute)' }}>— ยังไม่ได้สแกน —</div>
-                <div style={{ fontSize: 14, marginTop: 4, color: 'var(--mute)', fontFamily: 'Patrick Hand' }}>ยิงบาร์โค้ดเพื่อเริ่ม</div>
+                <div style={{ fontSize: 14, marginTop: 4, color: 'var(--mute)', fontFamily: 'system-ui' }}>ยิงบาร์โค้ดเพื่อเริ่ม</div>
               </>
             )}
           </div>
@@ -173,7 +173,7 @@ export default function PackScanA({ boxes, setBoxes, activeBoxId, setTab, showTo
             <div style={{ height: 8, background: 'var(--paper-dark)', borderRadius: 4, marginTop: 10, overflow: 'hidden', border: '1.5px solid var(--line)' }}>
               <div style={{ width: `${Math.min(100, (items.length / 15) * 100)}%`, height: '100%', background: 'var(--accent)' }} />
             </div>
-            <div style={{ fontSize: 12, color: 'var(--mute)', marginTop: 4, fontFamily: 'Patrick Hand' }}>{items.length} / 15 SKU</div>
+            <div style={{ fontSize: 12, color: 'var(--mute)', marginTop: 4, fontFamily: 'system-ui' }}>{items.length} / 15 SKU</div>
           </div>
 
           <button className="btn lg primary" style={{ width: '100%' }} onClick={handleCloseBox}>🔒 ปิดลัง + ออกเลข POS</button>

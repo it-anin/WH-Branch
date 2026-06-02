@@ -82,7 +82,7 @@ export default function PackScanB({ boxes, setBoxes, activeBoxId, setTab, showTo
             padding: 24, textAlign: 'center', background: 'white', position: 'relative',
           }}>
             <div className="hand" style={{ fontSize: 22, color: 'var(--mute)' }}>✦ โซนยิงบาร์โค้ด ✦</div>
-            <div style={{ fontSize: 56, margin: '16px 0', fontFamily: 'Caveat', fontWeight: 700, letterSpacing: 3 }}>
+            <div style={{ fontSize: 56, margin: '16px 0', fontFamily: 'system-ui', fontWeight: 700, letterSpacing: 3 }}>
               ||| <span style={{ color: 'var(--accent)' }}>ยิงเลย</span> |||
             </div>
             <input
@@ -111,10 +111,10 @@ export default function PackScanB({ boxes, setBoxes, activeBoxId, setTab, showTo
                 <>
                   <div className="mono" style={{ fontSize: 12, color: 'var(--mute)' }}>{lastScanned.sku}</div>
                   <div style={{ fontSize: 20 }}><b>{lastScanned.name}</b></div>
-                  <div style={{ fontFamily: 'Patrick Hand', fontSize: 14 }}>เพิ่มแล้ว · {lastScanned.unit} · รวมในลัง: {items.find(it => it.sku === lastScanned.sku)?.qty ?? 1}</div>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 14 }}>เพิ่มแล้ว · {lastScanned.unit} · รวมในลัง: {items.find(it => it.sku === lastScanned.sku)?.qty ?? 1}</div>
                 </>
               ) : (
-                <div style={{ fontFamily: 'Patrick Hand', fontSize: 16, color: 'var(--mute)' }}>ยังไม่ได้สแกน — ยิงบาร์โค้ดเพื่อเริ่ม</div>
+                <div style={{ fontFamily: 'system-ui', fontSize: 16, color: 'var(--mute)' }}>ยังไม่ได้สแกน — ยิงบาร์โค้ดเพื่อเริ่ม</div>
               )}
             </div>
             <button className="btn ghost sm" onClick={handleUndo}>↩ เลิกทำ</button>
@@ -140,12 +140,12 @@ export default function PackScanB({ boxes, setBoxes, activeBoxId, setTab, showTo
                 background: l.sku === lastScanned?.sku ? 'var(--accent-soft)' : 'transparent',
                 borderRadius: 6,
               }}>
-                <div style={{ width: 24, fontFamily: 'Caveat', fontSize: 20, fontWeight: 700, color: 'var(--mute)' }}>{i + 1}</div>
+                <div style={{ width: 24, fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--mute)' }}>{i + 1}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                  <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'Patrick Hand', fontSize: 15 }}>{l.name}</div>
+                  <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                 </div>
-                <div style={{ fontFamily: 'Caveat', fontSize: 22, fontWeight: 700 }}>×{l.qty}</div>
+                <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700 }}>×{l.qty}</div>
               </div>
             ))}
           </div>

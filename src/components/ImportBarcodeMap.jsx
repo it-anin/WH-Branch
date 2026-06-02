@@ -95,7 +95,7 @@ export default function ImportBarcodeMap({ matchCount, meta, onImport }) {
           : '⇑ อัปโหลดไฟล์ R05.106'}
       </button>
       {displayUploadedAt && (
-        <span className="chip ok" style={{ fontFamily: 'Patrick Hand', fontSize: 13 }}>
+        <span className="chip ok" style={{ fontFamily: 'system-ui', fontSize: 13 }}>
           ไฟล์วันที่ {displayUploadedAt}
         </span>
       )}
