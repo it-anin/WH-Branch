@@ -143,7 +143,7 @@ const PACKER_SPRITE_DIRS = {
   'EMP-01': '/characters/emp-02',   // มุก ใช้ตัวการ์ตูนจาก emp-02
   'EMP-02': '/characters/emp-01',   // แล็ค ใช้ตัวการ์ตูนจาก emp-01 (ผมบลอนด์ + แว่น)
   // 'EMP-03': '/characters/emp-03',
-  // 'EMP-04': '/characters/emp-04',
+  'EMP-04': '/characters/emp-03',
 };
 const spriteCache = {};      // { [empCode]: { idle: { [dir]: Image }, walk: { [dir]: [Image x 4] } } }
 Object.entries(PACKER_SPRITE_DIRS).forEach(([code, path]) => {
