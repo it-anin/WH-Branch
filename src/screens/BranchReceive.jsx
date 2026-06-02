@@ -198,10 +198,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     if (phase === 'verify') setTimeout(() => itemScanRef.current?.focus(), 50);
   }, [phase]);
 
+  // sync problemNote เมื่อ viewingId เปลี่ยน หรือลังที่ดูอยู่อัพเดทจาก Firestore (เช่น เภสัช Android เพิ่ง confirm)
   useEffect(() => {
-    const vb = viewingId ? boxes.find(b => b.id === viewingId) : null;
-    setProblemNote(vb?.problemNote || '');
-  }, [viewingId]);
+    setProblemNote(viewingBox?.problemNote || '');
+  }, [viewingId, viewingBox?.problemNote]);
 
   useEffect(() => {
     if (!staffMenuOpen) return;
