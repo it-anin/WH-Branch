@@ -232,7 +232,7 @@ export default function App() {
     const now = new Date();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
-    const todayPrefix = `BX-${mm}${dd}-`;
+    const todayPrefix = `BX-${dd}${mm}-`;
     const serials = currentBoxes
       .filter(b => b.id.startsWith(todayPrefix))
       .map(b => parseInt(b.id.slice(-4), 10))
@@ -245,7 +245,7 @@ export default function App() {
     const now = new Date();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
-    const todayKey = `${mm}${dd}`;
+    const todayKey = `${dd}${mm}`;
     const todayPrefix = `BX-${todayKey}-`;
     const time = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
     const counterRef = doc(db, 'config', 'boxCounter');
