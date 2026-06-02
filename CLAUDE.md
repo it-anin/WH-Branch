@@ -200,6 +200,7 @@ export const onAuthReady = (cb) => onAuthStateChanged(auth, (user) => { if (user
 ### `createNewBox()` — async
 ```js
 // ใช้ Firestore Transaction กับ config/boxCounter เพื่อป้องกัน Box ID ซ้ำข้ามพนักงาน
+// todayKey = `${dd}${mm}` (DDMM — วัน-เดือน, ค.ศ. ไม่มีปี)
 await runTransaction(db, async (tx) => {
   const snap = await tx.get(counterRef);
   const next = (data[todayKey] || 0) + 1;
@@ -211,6 +212,8 @@ setActiveBoxId(newId);
 return newId;
 ```
 **สำคัญ:** เป็น async — ทุก caller ต้อง `await createNewBox()` เสมอ
+
+**Box ID format:** `BX-{DDMM}-{NNNN}` เช่น `BX-0206-0001` (วันที่ 2 มิ.ย. ลังที่ 1) — `NNNN` reset ทุกวันที่ counter key เปลี่ยน. **ลังเก่าก่อน 1 มิ.ย. 2026** จะมี format เก่า `BX-{MMDD}-{NNNN}` — ระบบยังอ่านได้ปกติเพราะใช้ exact match ตรง box.id ไม่มี logic ที่ parse วัน/เดือนจากตัวเลข
 
 ### `applyBarcodeMap(items, map)`
 Logic 3 ระดับ (key = `sku__unit`):
@@ -568,9 +571,10 @@ const PACKER_SPRITE_DIRS = {
 - Global search ข้ามทุก closed box (frame-header) → แผงขวาแสดงตารางผล (maxHeight 450, sticky header)
 - **Layout:** grid `340px 1fr`
   - ซ้าย (440px) = การ์ดลัง **grid 3 คอลัมน์** เรียงตาม id น้อย→มาก + **ปุ่ม filter 2 แถว**:
-    - สถานะ (`outboundFilter`): ทั้งหมด / รออนุมัติ (`status closed`) / อนุมัติแล้ว (`exported`/`received`)
+    - สถานะ (`outboundFilter`): ทั้งหมด / รออนุมัติ (`status closed`) / อนุมัติแล้ว (`exported`/`received`) / **🔴 แจ้งปัญหา** (`problemReviewed && !problemResolved`)
     - พนักงานแพ็ค (`packerFilter`): ทุกคน + รายชื่อ packer ที่มีลังจริง (derive จาก closedBoxes)
     - 2 filter ทำงานร่วมกัน → `packerBoxes` (กรอง packer) → count สถานะ → `visibleBoxes`
+    - **ปุ่ม "🔴 แจ้งปัญหา"** ใช้สีแดง (`var(--red)`) แทนส้ม + ตัวอักษรแดงเมื่อ inactive และ N > 0 (เรียกความสนใจหัวหน้า)
   - ขวา (detail, grid `1fr 380px`):
     - คอลัมน์ซ้าย: **"รายชื่อสินค้าในลัง"** ตาราง SKU / ชื่อ / หน่วย / จำนวน / Location (maxHeight 450)
     - คอลัมน์ขวา: **"ตัวอย่างสติกเกอร์ติดลัง"** (90×65mm, barcode = Box ID, "คลังสินค้า · WH-01") → ปุ่ม ⇩ ส่งออกไฟล์ Text → แถว [เลขที่เอกสาร input + อนุมัติเอกสาร] → 🖨 พิมพ์ใบปิดลัง
@@ -708,6 +712,15 @@ const PACKER_SPRITE_DIRS = {
 - Desktop ที่หัวหน้าพิมพ์ note + กด `📦 แจ้งคลังสินค้า` **ยังใช้งานได้เหมือนเดิม** — เก็บไว้สำหรับ damaged box (มีรูป) หรือ incomplete ที่ไม่ได้ผ่าน pharmacist recheck
 - ถ้า pharmacist recheck-fail ก่อน → Outbound badge ขึ้นทันที + note auto-fill — หัวหน้า Desktop อาจไม่ต้องทำซ้ำ
 - Desktop "🔁 รีเช็คสินค้า" view (blind: SKU/ชื่อ/หน่วย/สแกนแล้ว) **เก็บไว้ดูประวัติเท่านั้น** ไม่ใช่หน้าสแกน
+  - มีหัวข้อตาราง **"รายการสินค้าที่ต้องรีเช็ค"** + subtitle "ผลสแกนรอบแรก (จากพนักงานสาขา)"
+  - คอลัมน์: SKU/ชื่อ / หน่วย / **จำนวนที่สแกนได้** (เปลี่ยนจาก "สแกนแล้ว")
+  - **Hint banner สีแดง** ด้านบนตาราง: `สแกนสินค้าที่ app เพื่อรีเช็ค` (เน้นว่า supervisor ไม่ทำ recheck บน Desktop — ต้องให้เภสัช scan ใน Android)
+  - useEffect ที่ sync `problemNote` textarea — dep ต้องมี `viewingBox?.problemNote` ไม่งั้น Firestore update จากเภสัช Android จะไม่ refresh ในหน้า Desktop จนกว่า user จะคลิกลังอื่นแล้วกลับมา (เคยเป็นบั๊ก)
+
+### Verify phase UI (ทั้ง Android และ Desktop)
+- **Title:** "ตรวจสอบสินค้าในลัง" + **`box.id` แสดงข้างกัน** (mono สีส้ม) — เห็นเลขลังตลอดเวลา
+- **ไม่มี panel "สแกนแล้ว N ชิ้น"** — ลบออกแล้ว ลด clutter (ตารางรายการสินค้าด้านล่างแสดงรายละเอียดเต็มอยู่แล้ว)
+- **สแกนสินค้าที่ไม่อยู่ในลัง:** showToast `⚠ ไม่มี SKU นี้ในลัง` (สีแดง) + inline `scanError` ใต้ input — โดดเด่นทั้งสองแบบ
 
 ## Toast Types
 `showToast(message, type?)` รองรับ 3 type — นิยามสีใน `Toast.jsx`:
