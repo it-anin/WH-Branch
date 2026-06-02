@@ -138,12 +138,16 @@ function drawShelf(ctx, z, r, active) {
 const SPRITE_DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 const SPRITE_SIZE = 68;     // ขนาดที่วาด (ตรงกับ source ของ PixelLab — ไม่ scale, ภาพคมสุด)
 const SPRITE_FOOT_PAD = 14; // padding ว่างใต้ฝ่าเท้าใน sprite (default PixelLab v3 68×68)
+const SPRITE_TOP_PAD = 8;   // padding ว่างเหนือหัวใน sprite (default)
 // per-character override — sprite ของแต่ละคนอาจขนาด/padding ต่างกันถ้า PixelLab gen คนละรอบ
 const PACKER_SPRITE_SIZES = {
   'EMP-04': 96,  // emp-03 sprite — canvas 96×96 (PixelLab gen 64px → 96 canvas)
 };
 const PACKER_FOOT_PADS = {
-  'EMP-04': 24,  // emp-03 sprite — fern foot pad วัดได้ 24px ใต้เท้า
+  'EMP-04': 24,  // emp-03 sprite — วัดได้ 24px ใต้เท้า
+};
+const PACKER_TOP_PADS = {
+  'EMP-04': 24,  // emp-03 sprite — วัดได้ 24px เหนือหัว
 };
 const WALK_FRAMES = 4;
 const PACKER_SPRITE_DIRS = {
@@ -193,7 +197,9 @@ function drawSpriteChar(ctx, ch, img) {
   const x = Math.round(ch.x), y = Math.round(ch.y);
   const spriteSize = PACKER_SPRITE_SIZES[ch.code] ?? SPRITE_SIZE;
   const footPad = PACKER_FOOT_PADS[ch.code] ?? SPRITE_FOOT_PAD;
-  const headTop = y - spriteSize + footPad + 4;
+  const topPad = PACKER_TOP_PADS[ch.code] ?? SPRITE_TOP_PAD;
+  // headTop ยึดตำแหน่งหัวจริงในแต่ละ sprite (ไม่ใช่ขอบบนของ canvas) — ชื่อจะอยู่เหนือหัวจริง ๆ
+  const headTop = y - spriteSize + footPad + (topPad - SPRITE_TOP_PAD) + 4;
 
   // เงา
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
