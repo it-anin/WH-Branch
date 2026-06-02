@@ -37,6 +37,7 @@ export default function App() {
   const [catalog, setCatalog] = useState([]);
   const [itemsByBox, _setItemsByBox] = useState({});
   const [history, setHistory] = useState(() => {
+    // Migration: ถ้ามี localStorage เก่าหลงเหลือ ใช้เป็น initial — Firestore listener จะ overwrite ทันที
     try { return JSON.parse(localStorage.getItem('wh_history')) || []; }
     catch { return []; }
   });
@@ -51,7 +52,7 @@ export default function App() {
   const receiveBoxIdsRef = useRef([]);
 
   useEffect(() => { localStorage.setItem('wh_tab', tab); }, [tab]);
-  useEffect(() => { localStorage.setItem('wh_history', JSON.stringify(history)); }, [history]);
+  // history เก็บใน Firestore (config/history collection) — ไม่ต้อง persist localStorage แล้ว
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', ACCENT);
@@ -176,7 +177,12 @@ export default function App() {
     const unsubZone = onSnapshot(doc(db, 'config', 'zoneAssignments'), snap => {
       if (snap.exists()) setZoneAssignments(snap.data().assignments || {});
     }, onErr('zoneAssignments'));
-    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); unsubLotMap(); unsubZone(); };
+    const unsubHistory = onSnapshot(collection(db, 'history'), snap => {
+      const data = snap.docs.map(d => ({ ...d.data(), id: d.id }))
+        .sort((a, b) => new Date(b.clearedAt) - new Date(a.clearedAt));
+      setHistory(data);
+    }, onErr('history'));
+    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); unsubLotMap(); unsubZone(); unsubHistory(); };
   }, []);
 
   function setBoxes(updater) {
@@ -265,34 +271,44 @@ export default function App() {
 
   function clearBoxes() {
     if (boxes.length === 0) { showToast('ไม่มีข้อมูลลังในวันนี้'); return; }
-    if (!window.confirm(`ล้างข้อมูลลังทั้งหมด ${boxes.length} ลัง?\nข้อมูลจะถูกเก็บในประวัติย้อนหลัง 1 เดือน`)) return;
+    if (!window.confirm(`ล้างข้อมูลลังทั้งหมด ${boxes.length} ลัง?\nข้อมูลจะถูกเก็บในประวัติย้อนหลัง 7 วัน`)) return;
     const now = new Date();
     const dateKey = now.toISOString().slice(0, 10);
     const label = now.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+    const docId = String(now.getTime());
     const entry = { dateKey, label, clearedAt: now.toISOString(), boxes: [...boxes] };
     const cutoff = new Date(now);
     cutoff.setDate(cutoff.getDate() - 7);
-    setHistory(prev => [entry, ...prev.filter(h => new Date(h.clearedAt) > cutoff)]);
+
     const batch = writeBatch(db);
+    // history: เขียน entry ใหม่ + ลบ entries เก่ากว่า 7 วัน (ทุกเครื่อง sync ผ่าน Firestore listener)
+    batch.set(doc(db, 'history', docId), entry);
+    history.filter(h => h.id && new Date(h.clearedAt) <= cutoff).forEach(h => {
+      batch.delete(doc(db, 'history', h.id));
+    });
+    // ล้าง boxes / items / progress / receive (เดิม)
     boxesRef.current.forEach(b => batch.delete(doc(db, 'boxes', b.id)));
     Object.keys(itemsByBoxRef.current).forEach(id => batch.delete(doc(db, 'boxItems', id)));
     Object.keys(scanProgress).forEach(id => batch.delete(doc(db, 'progress', id)));
     batch.delete(doc(db, 'config', 'receive'));
     batch.commit();
+
+    // Optimistic local update — Firestore listener จะ overwrite ใน sync ครั้งถัดไป
+    setHistory(prev => [{ ...entry, id: docId }, ...prev.filter(h => new Date(h.clearedAt) > cutoff)]);
     boxesRef.current = [];
     itemsByBoxRef.current = {};
     receiveBoxIdsRef.current = [];
     _setBoxes([]);
     _setItemsByBox({});
     _setReceiveBoxIds([]);
-    showToast('ล้างข้อมูลแล้ว · เก็บประวัติไว้ 1 เดือน');
+    showToast('ล้างข้อมูลแล้ว · เก็บประวัติไว้ 7 วัน');
   }
 
   async function clearFirestore() {
     if (!window.confirm(
       'ล้างข้อมูล Firestore ทั้งหมด?\n\n' +
-      '— boxes, boxItems, progress\n' +
-      '— catalog, barcodeMap, receive\n\n' +
+      '— boxes, boxItems, progress, history\n' +
+      '— catalog, barcodeMap, costMap, lotMap, receive\n\n' +
       '⚠ ไม่สามารถกู้คืนได้'
     )) return;
     try {
@@ -300,6 +316,7 @@ export default function App() {
       boxesRef.current.forEach(b => batch.delete(doc(db, 'boxes', b.id)));
       Object.keys(itemsByBoxRef.current).forEach(id => batch.delete(doc(db, 'boxItems', id)));
       Object.keys(scanProgress).forEach(id => batch.delete(doc(db, 'progress', id)));
+      history.filter(h => h.id).forEach(h => batch.delete(doc(db, 'history', h.id)));
       batch.delete(doc(db, 'config', 'catalog'));
       batch.delete(doc(db, 'config', 'barcodeMap'));
       batch.delete(doc(db, 'config', 'catalogByPacker'));
@@ -318,6 +335,7 @@ export default function App() {
       setBarcodeMap({});
       setCostMap({});
       setLotMap({});
+      setHistory([]);
       setCatalogMeta(null);
       setBarcodeMapMeta(null);
       setCostMapMeta(null);
