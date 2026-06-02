@@ -715,7 +715,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
 
               {viewingBox.problemType === 'incomplete' && (
                 <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px dashed var(--red)', borderRadius: 10, background: '#fde8e8', fontFamily: 'Patrick Hand', fontSize: 13, color: 'var(--red)', fontWeight: 700 }}>
-                  สแกนสินค้าที่ app เพื่อรีเช็ค
+                  เภสัชสแกนสินค้าที่เครื่อง PDA (สแกนลังก่อน)
                 </div>
               )}
 
