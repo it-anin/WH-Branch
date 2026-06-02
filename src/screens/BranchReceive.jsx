@@ -605,12 +605,12 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
       {/* ── body: 2-col ── */}
       <div style={isAndroid
         ? { padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }
-        : { padding: 20, display: 'grid', gridTemplateColumns: '420px 1fr', gap: 20 }
+        : { padding: 20, display: 'grid', gridTemplateColumns: '580px 1fr', gap: 20 }
       }>
 
-        {/* LEFT: box cards — desktop only, grid 2 คอลัมน์ */}
+        {/* LEFT: box cards — desktop only, grid 3 คอลัมน์ */}
         {!isAndroid && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, alignContent: 'start', overflowY: 'auto', maxHeight: 520 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, alignContent: 'start', overflowY: 'auto', maxHeight: 520 }}>
             {approvalBoxes.length === 0 ? (
               <div style={{
                 gridColumn: '1 / -1',
