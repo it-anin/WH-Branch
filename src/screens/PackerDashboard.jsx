@@ -15,6 +15,7 @@ const ZONE_LEVELS = { A: 5 }; // ที่เหลือ 7 ชั้น
 // โซนนอกอาคาร (พื้นที่กว้าง) — เดินออกประตูไปถึง
 const OUTSIDE_ZONES = ['L', 'M', 'N', 'S', 'COOL'];
 const OUTSIDE_SET = new Set(OUTSIDE_ZONES);
+const N_BAYS = { A: 6, default: 8 }; // จำนวนเชลฟ์ (ลึกเข้าผนัง) ต่อโซน — 1=ใกล้ทางเดิน, N=ด้านหลัง
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -24,6 +25,18 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
+}
+
+function tile(ctx, x, y, w, h, bg, gc, ts = 18) {
+  ctx.fillStyle = bg; ctx.fillRect(x, y, w, h);
+  if (!gc) return;
+  ctx.strokeStyle = gc; ctx.lineWidth = 0.4;
+  for (let gx = Math.ceil(x / ts) * ts; gx < x + w; gx += ts) {
+    ctx.beginPath(); ctx.moveTo(gx, y); ctx.lineTo(gx, y + h); ctx.stroke();
+  }
+  for (let gy = Math.ceil(y / ts) * ts; gy < y + h; gy += ts) {
+    ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x + w, gy); ctx.stroke();
+  }
 }
 
 function buildLayout(w, H, nPackers) {
@@ -50,10 +63,10 @@ function buildLayout(w, H, nPackers) {
   const AW = SW * 1.4;
 
   let x = pad;
-  const shelfRects = {}, aisleX = {};
+  const shelfRects = {}, aisleX = {}, aisleRects = {};
   segs.forEach(s => {
     if (s.t === 's') { shelfRects[s.z] = { x, y: shelfTop, w: SW - 3, h: shelfH }; x += SW; }
-    else { aisleX[s.id] = x + AW / 2; x += AW; }
+    else { aisleX[s.id] = x + AW / 2; aisleRects[s.id] = { x, y: shelfTop, w: AW, h: shelfH }; x += AW; }
   });
 
   const standPos = {};
@@ -80,54 +93,124 @@ function buildLayout(w, H, nPackers) {
   for (let i = 0; i < nPackers; i++) {
     home.push({ x: pad + 40 + i * ((avail - 80) / Math.max(1, nPackers - 1)), y: mainAisleY });
   }
-  return { shelfRects, areaRects, standPos, aisleX, mainAisleY, shelfTop, shelfH, roomBottom, doorX, home };
+  return { shelfRects, areaRects, aisleRects, standPos, aisleX, mainAisleY, shelfTop, shelfH, roomBottom, doorX, home };
 }
 
 function drawArea(ctx, z, r, active) {
   const cold = z === 'COOL';
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.10)';
+  roundRect(ctx, r.x + 3, r.y + 4, r.w, r.h, 8); ctx.fill();
+  // fill
   ctx.fillStyle = active ? (cold ? '#bcd6e2' : '#d2dcc0') : '#d2cdbd';
   roundRect(ctx, r.x, r.y, r.w, r.h, 8); ctx.fill();
   ctx.strokeStyle = active ? (cold ? '#6f9fb2' : '#93a974') : '#b3ab95';
   ctx.lineWidth = 2; roundRect(ctx, r.x, r.y, r.w, r.h, 8); ctx.stroke();
-  // พาเลท/กล่องวางพื้น
-  const bw = 13, gap = 5;
-  const cols = Math.max(1, Math.floor((r.w - 16) / (bw + gap)));
-  for (let i = 0; i < cols * 2; i++) {
-    const cx = r.x + 10 + (i % cols) * (bw + gap);
-    const cy = r.y + r.h - 24 - Math.floor(i / cols) * (bw + gap);
+  // พาเลทจากมุมมองด้านบน
+  const bw = 12, gap = 4;
+  const cols = Math.max(1, Math.floor((r.w - 12) / (bw + gap)));
+  const rows = Math.max(1, Math.floor((r.h - 22) / (bw + gap)));
+  for (let ri = 0; ri < rows; ri++) for (let ci = 0; ci < cols; ci++) {
+    const cx = r.x + 8 + ci * (bw + gap);
+    const cy = r.y + 20 + ri * (bw + gap);
     ctx.fillStyle = cold ? '#9fc2d0' : '#c6b083';
     ctx.fillRect(cx, cy, bw, bw);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillRect(cx, cy, bw, 2.5);
+    ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 0.4; ctx.strokeRect(cx, cy, bw, bw);
   }
-  // ป้ายโซน
   ctx.fillStyle = '#2a3530';
-  ctx.font = 'bold 14px "JetBrains Mono", monospace';
+  ctx.font = `bold ${z.length > 2 ? 11 : 14}px "JetBrains Mono", monospace`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(z, r.x + r.w / 2, r.y + 15);
+  ctx.fillText(z, r.x + r.w / 2, r.y + 13);
   ctx.textBaseline = 'alphabetic';
 }
 
-function drawShelf(ctx, z, r, active) {
-  const levels = ZONE_LEVELS[z] || 7;
-  ctx.fillStyle = active ? '#d8b988' : '#cdc2ac';
+// drawShelf → ถูกแทนที่ด้วย drawShelfTop (top-down view)
+function drawShelfTop(ctx, z, r, active, marks) {
+  const nBays = N_BAYS[z] || N_BAYS.default;
+  const H16   = Math.max(14, Math.min(20, r.h * 0.075));
+  const bayH  = (r.h - H16) / nBays;
+
+  // drop shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.fillRect(r.x + 4, r.y + 5, r.w, r.h);
+  // surface
+  ctx.fillStyle = active ? '#c8a055' : '#b8ad90';
   ctx.fillRect(r.x, r.y, r.w, r.h);
-  ctx.fillStyle = active ? '#b3905c' : '#ada085';
-  ctx.fillRect(r.x, r.y, r.w, 5);
-  ctx.fillStyle = '#7c6038';
-  ctx.fillRect(r.x, r.y + r.h - 4, r.w, 4);
-  // เส้นแบ่งชั้น
-  ctx.strokeStyle = 'rgba(90,70,40,0.35)'; ctx.lineWidth = 1;
-  for (let i = 1; i < levels; i++) {
-    const yy = r.y + (r.h / levels) * i;
-    ctx.beginPath(); ctx.moveTo(r.x, yy); ctx.lineTo(r.x + r.w, yy); ctx.stroke();
+  // NW highlight (แสงจากซ้ายบน)
+  ctx.fillStyle = active ? '#deba6a' : '#ccc0a0';
+  ctx.fillRect(r.x, r.y, r.w, 2.5);
+  ctx.fillStyle = active ? '#d0aa58' : '#c4b898';
+  ctx.fillRect(r.x, r.y, 2, r.h);
+  // SE dark edge
+  ctx.fillStyle = active ? 'rgba(85,50,8,0.16)' : 'rgba(65,52,35,0.12)';
+  ctx.fillRect(r.x, r.y + r.h - 2, r.w, 2);
+  ctx.fillRect(r.x + r.w - 2, r.y, 2, r.h);
+
+  // ── Bay grid (เชลฟ์ย่อย) ──
+  for (let i = 0; i < nBays; i++) {
+    const by0 = r.y + H16 + i * bayH;
+    const shelfNum = nBays - i; // 1 = ใกล้ main aisle, N = ด้านหลัง
+    if (i % 2 === 0) {
+      ctx.fillStyle = active ? 'rgba(155,108,28,0.07)' : 'rgba(88,75,52,0.05)';
+      ctx.fillRect(r.x + 1, by0, r.w - 2, bayH);
+    }
+    if (bayH >= 10) {
+      const fs = Math.max(6, Math.min(8, bayH * 0.48));
+      ctx.fillStyle = active ? 'rgba(80,52,8,0.40)' : 'rgba(62,50,32,0.35)';
+      ctx.font = `${fs}px monospace`;
+      ctx.textAlign = 'left';
+      ctx.fillText(shelfNum, r.x + 2.5, by0 + bayH * 0.68);
+    }
+    if (i > 0) {
+      ctx.strokeStyle = active ? 'rgba(108,76,18,0.16)' : 'rgba(85,68,45,0.12)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(r.x + 1, by0); ctx.lineTo(r.x + r.w - 1, by0); ctx.stroke();
+    }
   }
-  // ป้ายโซน (วงกลมน้ำเงิน) บนหัวชั้น
-  const cx = r.x + r.w / 2, cy = r.y + 14, rad = 11;
-  ctx.fillStyle = '#1f4e8c';
-  ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 13px "JetBrains Mono", monospace';
+
+  // ── Location highlights ──
+  if (marks) marks.forEach(m => {
+    if (!m.shelf) return;
+    const bayIdx = nBays - m.shelf;
+    if (bayIdx < 0 || bayIdx >= nBays) return;
+    const by0 = r.y + H16 + bayIdx * bayH;
+    ctx.fillStyle = m.color + '3a';
+    ctx.fillRect(r.x, by0, r.w, bayH);
+    ctx.strokeStyle = m.color; ctx.lineWidth = 1.5;
+    ctx.strokeRect(r.x + 0.75, by0 + 0.75, r.w - 1.5, bayH - 1.5);
+    if (bayH >= 9 && r.w >= 16) {
+      const fs = Math.max(7, Math.min(10, Math.min(bayH * 0.55, r.w * 0.18)));
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = m.color;
+      ctx.font = `bold ${fs}px monospace`;
+      ctx.fillText(m.code || z, r.x + r.w / 2, by0 + bayH * (m.level ? 0.38 : 0.52));
+      if (m.level && bayH >= 16) {
+        ctx.fillStyle = 'rgba(0,0,0,0.42)';
+        ctx.font = `${Math.max(6, fs - 1)}px monospace`;
+        ctx.fillText(`L${m.level}`, r.x + r.w / 2, by0 + bayH * 0.72);
+      }
+      ctx.textBaseline = 'alphabetic';
+    }
+  });
+
+  // outline
+  ctx.strokeStyle = active ? 'rgba(88,52,8,0.42)' : 'rgba(68,55,36,0.26)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(r.x, r.y, r.w, r.h);
+
+  // ── Header band (ป้ายโซน) ──
+  ctx.fillStyle = active ? '#a07020' : '#887048';
+  ctx.fillRect(r.x, r.y, r.w, H16);
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.fillRect(r.x, r.y, r.w, 2.5);
+  ctx.fillStyle = active ? 'rgba(52,32,5,0.28)' : 'rgba(45,36,20,0.16)';
+  ctx.fillRect(r.x, r.y + H16 - 1.5, r.w, 1.5);
+  const fsh = z.length > 1 ? Math.max(8, Math.round(H16 * 0.6)) : Math.max(9, Math.round(H16 * 0.7));
+  ctx.fillStyle = '#fff8e0';
+  ctx.font = `bold ${fsh}px "JetBrains Mono", monospace`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(z, cx, cy + 0.5);
+  ctx.fillText(z, r.x + r.w / 2, r.y + H16 / 2 + 0.5);
   ctx.textBaseline = 'alphabetic';
 }
 
@@ -356,24 +439,39 @@ function drawChar(ctx, ch) {
 
 function renderScene(ctx, L, chars, zonesInData, w, H) {
   const rb = L.roomBottom, dx = L.doorX;
-  // พื้นนอกอาคาร (ลานกว้าง)
-  ctx.fillStyle = '#d7d2c4'; ctx.fillRect(0, 0, w, H);
+  // พื้นนอกอาคาร
+  tile(ctx, 0, 0, w, H, '#c8c2b0', 'rgba(88,82,62,0.055)', 22);
   // ห้องคลัง
-  ctx.fillStyle = '#efe9dd'; ctx.fillRect(8, 8, w - 16, rb - 8);
-  // ทางเดินหลัก (ในห้อง)
-  ctx.fillStyle = '#e3dccb'; ctx.fillRect(10, L.mainAisleY - 14, w - 20, (rb - 10) - (L.mainAisleY - 14));
-  ctx.fillStyle = 'rgba(120,100,70,0.45)';
+  tile(ctx, 8, 8, w - 16, rb - 8, '#e8e2d4', 'rgba(105,90,62,0.06)', 18);
+  // ทางเดินย่อย (ระหว่างชั้นวาง)
+  Object.values(L.aisleRects || {}).forEach(ar =>
+    tile(ctx, ar.x, ar.y, ar.w, ar.h, '#ddd8c8', 'rgba(92,78,50,0.06)', 18)
+  );
+  // ทางเดินหลัก
+  const aisleTop = L.mainAisleY - 14;
+  tile(ctx, 10, aisleTop, w - 20, (rb - 10) - aisleTop, '#d8d2bf', 'rgba(92,78,50,0.07)', 18);
+  // เส้นกลางทางเดิน
+  ctx.strokeStyle = 'rgba(140,120,78,0.22)'; ctx.lineWidth = 1; ctx.setLineDash([8, 8]);
+  const midY = aisleTop + ((rb - 10) - aisleTop) / 2;
+  ctx.beginPath(); ctx.moveTo(12, midY); ctx.lineTo(w - 12, midY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(100,85,55,0.5)';
   ctx.font = '11px "system-ui", sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('ทางเดินหลัก', 16, L.mainAisleY - 17);
   // ผนังห้อง
   ctx.strokeStyle = '#b6ad97'; ctx.lineWidth = 4; ctx.strokeRect(8, 8, w - 16, rb - 8);
-  // ประตู (ช่องเปิดในผนังล่าง)
-  ctx.fillStyle = '#d7d2c4'; ctx.fillRect(dx - 26, rb - 10, 52, 16);
+  // ประตู
+  ctx.fillStyle = '#c8c2b0'; ctx.fillRect(dx - 26, rb - 10, 52, 16);
   ctx.strokeStyle = '#a89472'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(dx - 26, rb + 2, 30, -Math.PI / 2, 0); ctx.stroke();
-  // ชั้นวางในห้อง A–K
-  Object.entries(L.shelfRects).forEach(([z, r]) => drawShelf(ctx, z, r, zonesInData.has(z)));
-  // โซนนอกอาคาร L, M, N, S, COOL
+  // ชั้นวาง A–K (top-down + location marks จากตัวละครที่กำลังสแกน)
+  Object.entries(L.shelfRects).forEach(([z, r]) => {
+    const marks = chars
+      .filter(ch => ch.targetZone === z && ch.targetShelf)
+      .map(ch => ({ shelf: ch.targetShelf, level: ch.targetLevel, color: ch.color, code: ch.targetLocation }));
+    drawShelfTop(ctx, z, r, zonesInData.has(z), marks.length ? marks : null);
+  });
+  // โซนนอกอาคาร
   Object.entries(L.areaRects).forEach(([z, r]) => drawArea(ctx, z, r, zonesInData.has(z)));
   ctx.fillStyle = 'rgba(70,70,60,0.5)'; ctx.font = '11px "system-ui", sans-serif';
   ctx.textAlign = 'right'; ctx.fillText('พื้นที่นอกอาคาร', w - 12, rb + 14);
@@ -388,9 +486,12 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
   const [w, setW] = useState(900);
   const H = 430;
 
-  const skuZone = {};
+  const skuZone = {}, skuLocation = {};
   Object.values(catalogByPacker).forEach(items => items.forEach(it => {
-    if (it.sku && !skuZone[it.sku]) skuZone[it.sku] = extractZone(it.location);
+    if (it.sku) {
+      if (!skuZone[it.sku]) skuZone[it.sku] = extractZone(it.location);
+      if (!skuLocation[it.sku]) skuLocation[it.sku] = it.location || '';
+    }
   }));
   const zonesInData = new Set(Object.values(skuZone).filter(z => z !== '?'));
 
@@ -409,7 +510,7 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
   const layoutRef = useRef(null);
   const prevProgRef = useRef({});
   const dataRef = useRef({});
-  dataRef.current = { boxes, skuZone, packerZones };
+  dataRef.current = { boxes, skuZone, skuLocation, packerZones };
 
   useEffect(() => {
     const el = wrapRef.current; if (!el) return;
@@ -421,7 +522,7 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
   // ตรวจจับการสแกน → ตั้งเป้าหมายโซน
   useEffect(() => {
     const chars = charsRef.current; if (!chars || !layoutRef.current) return;
-    const { boxes, skuZone } = dataRef.current;
+    const { boxes, skuZone, skuLocation } = dataRef.current;
     const standPos = layoutRef.current.standPos;
     const prev = prevProgRef.current;
     const cur = {};
@@ -435,8 +536,16 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
       Object.entries(m).forEach(([sku, got]) => {
         if (got > (pm[sku] || 0)) {
           const zone = skuZone[sku];
-          const ch = chars.find(c => c.code === code);
-          if (ch && zone && standPos[zone]) { ch.targetZone = zone; ch.lastActive = performance.now(); ch.pop = 1; }
+          const loc  = (skuLocation && skuLocation[sku]) || '';
+          const lm   = loc.match(/^[A-Za-z]+(\d)(\d)?/);
+          const ch   = chars.find(c => c.code === code);
+          if (ch && zone && standPos[zone]) {
+            ch.targetZone     = zone;
+            ch.targetLocation = loc;
+            ch.targetShelf    = lm ? parseInt(lm[1]) : null;
+            ch.targetLevel    = lm && lm[2] ? parseInt(lm[2]) : null;
+            ch.lastActive = performance.now(); ch.pop = 1;
+          }
         }
       });
     });
@@ -456,8 +565,9 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
         code: p.code, name: p.name, color: p.color,
         style: PACKER_STYLES[p.code] || {},
         x: layoutRef.current.home[i].x, y: layoutRef.current.mainAisleY, facing: 1, dir: 'S',
-        frame: 0, frameT: 0, pop: 0, targetZone: null, lastActive: 0, cur: 'home', wp: [],
-        wanderZone: null, nextWander: 0,
+        frame: 0, frameT: 0, pop: 0,
+        targetZone: null, targetShelf: null, targetLevel: null, targetLocation: '',
+        lastActive: 0, cur: 'home', wp: [], wanderZone: null, nextWander: 0,
       }));
     }
 
@@ -475,7 +585,18 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
           : (baseZone && standPos[baseZone] ? baseZone : 'home'); // ยังไม่เคยหยิบ → ยืนโซนหลัก
         if (want !== ch.cur) {
           ch.cur = want;
-          const dest = want === 'home' ? { x: (home[i] || { x: w / 2 }).x, y: mainAisleY } : standPos[want];
+          let dest = want === 'home' ? { x: (home[i] || { x: w / 2 }).x, y: mainAisleY } : standPos[want];
+          // ถ้ารู้ shelf ที่แน่นอน → เดินไปตรง bay นั้นตาม Y จริง (top-down)
+          if (want !== 'home' && ch.targetShelf && !OUTSIDE_SET.has(want)) {
+            const sr = layoutRef.current.shelfRects?.[want];
+            if (sr) {
+              const nB  = N_BAYS[want] || N_BAYS.default;
+              const h16 = Math.max(14, Math.min(20, sr.h * 0.075));
+              const bH  = (sr.h - h16) / nB;
+              const idx = nB - ch.targetShelf;
+              if (idx >= 0 && idx < nB) dest = { x: standPos[want].x, y: sr.y + h16 + idx * bH + bH / 2 };
+            }
+          }
           const curOutside = ch.y > roomBottom;
           const destOutside = want !== 'home' && OUTSIDE_SET.has(want);
           const wp = [];
