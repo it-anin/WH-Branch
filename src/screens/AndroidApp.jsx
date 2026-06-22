@@ -1,14 +1,7 @@
 import { useState } from 'react';
 import PackScanC from './PackScanC.jsx';
 import BranchReceive from './BranchReceive.jsx';
-
-const BRANCH_STAFF = [
-  { code: 'BR-01', name: 'ก้า' },
-  { code: 'BR-02', name: 'กิ๊ฟ' },
-  { code: 'BR-03', name: 'นิคกี้' },
-  { code: 'BR-04', name: 'สุ่ย' },
-  { code: 'BR-05', name: 'อ๊อฟ', role: 'pharmacist' },  // เภสัช — มีสิทธิ์ recheck ลังที่แจ้งปัญหา
-];
+import { BRANCHES, getBranch } from '../branches.js';
 
 export default function AndroidApp({
   screenProps,
@@ -16,8 +9,57 @@ export default function AndroidApp({
   onScanProgress, catalogMeta,
 }) {
   const [tab, setAndroidTab] = useState('pack');
+  const [branch, setBranch] = useState(() => getBranch(localStorage.getItem('wh_branch')));
   const [branchStaff, setBranchStaff] = useState(null);
   const packCatalog = packer ? (catalogByPacker[packer.code] || screenProps.catalog) : screenProps.catalog;
+
+  function selectBranch(b) {
+    setBranch(b);
+    setBranchStaff(null);   // คนละสาขา = คนละพนักงาน
+    localStorage.setItem('wh_branch', b.code);
+  }
+  function changeBranch() {
+    setBranch(null);
+    setBranchStaff(null);
+    localStorage.removeItem('wh_branch');
+  }
+
+  // ── หน้าแรก: เลือกสาขา (ก่อนเข้าใช้งาน) ──
+  if (!branch) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 20, padding: 24,
+        background: 'var(--paper)',
+      }}>
+        <div style={{ fontSize: 52 }}>🏢</div>
+        <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
+          เลือกสาขา
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 320 }}>
+          {BRANCHES.map(b => (
+            <button key={b.code} onClick={() => selectBranch(b)} style={{
+              padding: '16px 20px',
+              border: '2px solid var(--line)',
+              borderRadius: 14,
+              background: 'white',
+              boxShadow: '2px 2px 0 var(--line)',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+            }}>
+              <span style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--ink)' }}>
+                {b.name}
+              </span>
+              <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)' }}>
+                {b.staff.length} คน
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -26,6 +68,30 @@ export default function AndroidApp({
       background: 'var(--paper)',
       overflow: 'hidden',
     }}>
+
+      {/* branch header */}
+      <div style={{
+        padding: '6px 12px',
+        borderBottom: '2px solid var(--line)',
+        background: 'var(--accent-soft)',
+        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 15 }}>🏢</span>
+        <span style={{ fontFamily: 'system-ui', fontSize: 15, fontWeight: 700, color: 'var(--accent)' }}>
+          สาขา {branch.name}
+        </span>
+        <button onClick={changeBranch} style={{
+          marginLeft: 'auto',
+          padding: '3px 12px',
+          border: '1.5px solid var(--line)',
+          borderRadius: 999,
+          background: 'white',
+          fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)',
+          cursor: 'pointer',
+        }}>
+          เปลี่ยนสาขา
+        </button>
+      </div>
 
       {/* content */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -106,7 +172,7 @@ export default function AndroidApp({
               <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', whiteSpace: 'nowrap' }}>
                 พนักงาน:
               </span>
-              {BRANCH_STAFF.map(s => {
+              {branch.staff.map(s => {
                 const active = branchStaff?.code === s.code;
                 return (
                   <button key={s.code} onClick={() => setBranchStaff(active ? null : s)} style={{
@@ -135,6 +201,7 @@ export default function AndroidApp({
                   branchStaff={branchStaff}
                   setBranchStaff={setBranchStaff}
                   isAndroid={true}
+                  branch={branch.code}
                 />
               </div>
             ) : (

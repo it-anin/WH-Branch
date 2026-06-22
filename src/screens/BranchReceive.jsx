@@ -1,13 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { matchBarcode } from '../data.js';
+import { ALL_BRANCH_STAFF } from '../branches.js';
 
-const BRANCH_STAFF = [
-  { code: 'BR-01', name: 'ก้า' },
-  { code: 'BR-02', name: 'กิ๊ฟ' },
-  { code: 'BR-03', name: 'นิคกี้' },
-  { code: 'BR-04', name: 'สุ่ย' },
-  { code: 'BR-05', name: 'อ๊อฟ', role: 'pharmacist' },  // เภสัช — มีสิทธิ์ recheck ลังที่แจ้งปัญหา
-];
+// Desktop staff filter dropdown ใช้รายชื่อรวมทุกสาขา; Android ใช้ staff ของสาขาที่เลือก (controlled mode)
+const BRANCH_STAFF = ALL_BRANCH_STAFF;
 
 const statusLabel = {
   open:     'เปิด',
@@ -135,7 +131,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onIns
   );
 }
 
-export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false }) {
+export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null }) {
   const [internalBranchStaff, setInternalBranchStaff] = useState(null);
   const isControlled = branchStaffProp !== undefined;
   const branchStaff = isControlled ? branchStaffProp : internalBranchStaff;
@@ -172,6 +168,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   // Desktop: ปุ่มเลือกพนักงาน = filter เฉพาะลังที่พนักงานคนนั้นสแกน (receivedBy)
   const staffFilter = !isControlled && branchStaff ? branchStaff.code : null;
   const matchStaff = (b) => !staffFilter || b.receivedBy?.code === staffFilter || b.problemBy?.code === staffFilter;
+  // กรองตามสาขา (Android): เห็นเฉพาะลังของสาขาตัวเอง — ลังไม่มี branch (legacy/untagged) เห็นได้ทุกสาขา
+  const matchBranch = (b) => !branch || !b.branch || b.branch === branch;
   // priority: problem (0) > receivePending (1) > exported รอสาขาสแกน (2) > อื่น (3)
   const sortRank = (b) =>
     b.problemReported && !b.problemResolved ? 0
@@ -188,9 +186,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       || b.status === 'received'
     )
     .filter(matchStaff)
+    .filter(matchBranch)
     .sort((a, b) => sortRank(a) - sortRank(b));
-  const pendingCount = boxes.filter(b => b.receivePending && matchStaff(b)).length;
-  const problemCount = boxes.filter(b => b.problemReported && !b.problemResolved && matchStaff(b)).length;
+  const pendingCount = boxes.filter(b => b.receivePending && matchStaff(b) && matchBranch(b)).length;
+  const problemCount = boxes.filter(b => b.problemReported && !b.problemResolved && matchStaff(b) && matchBranch(b)).length;
 
   // ค้นหา SKU/ชื่อ ว่าอยู่ลังไหน — ค้นข้ามทุกลังที่ปิด/ส่งออก/รับแล้ว (ไม่ผูกกับตัวกรองพนักงาน)
   const searchQ = itemSearch.trim().toLowerCase();
@@ -258,6 +257,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setQuery('');
     // Android ไม่แสดงเลขลัง (จอเล็ก) — Desktop แสดงเลขลังเพื่อแยกง่าย
     const boxLabel = isAndroid ? '' : `ลัง ${box.id} `;
+    // กันสแกนลังของสาขาอื่น (ลังไม่มี branch = legacy → ปล่อยผ่าน)
+    if (branch && box.branch && box.branch !== branch) {
+      showToast(`⚠ ${boxLabel}เป็นของสาขา ${box.branch} ไม่ใช่ ${branch}`, 'error');
+      return;
+    }
     if (box.status === 'received') {
       showToast(`⚠ ${boxLabel}รับเข้าสาขาแล้ว`, 'error');
       return;

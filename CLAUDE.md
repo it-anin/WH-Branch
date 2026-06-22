@@ -83,17 +83,28 @@ const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, ite
 ]
 ```
 
-### BRANCH_STAFF (hardcoded ใน BranchReceive.jsx + AndroidApp.jsx — ต้อง sync 2 ไฟล์)
+### BRANCHES + พนักงานต่อสาขา (`src/branches.js` — single source of truth)
+แต่ละสาขามีพนักงานของตัวเอง; **เลือกสาขาตอนเปิดแอป Android** (หน้าแรก) → เลือกพนักงานของสาขานั้น
 ```js
-[
-  { code: 'BR-01', name: 'ก้า' },
-  { code: 'BR-02', name: 'กิ๊ฟ' },
-  { code: 'BR-03', name: 'นิคกี้' },
-  { code: 'BR-04', name: 'สุ่ย' },
-  { code: 'BR-05', name: 'อ๊อฟ', role: 'pharmacist' },   // เภสัช — มีสิทธิ์ recheck ลังที่แจ้งปัญหา
-]
+// src/branches.js
+export const BRANCHES = [
+  { code: 'SRC', name: 'SRC', staff: [ก้า, กิ๊ฟ, สุ่ย, นิคกี้, อ๊อฟ(pharmacist)] },
+  { code: 'KKL', name: 'KKL', staff: [แตงโม, ทราย, ออด(pharmacist)] },
+  { code: 'SSS', name: 'SSS', staff: [ออย, ฟ้าใส, เบส(pharmacist)] },
+];
+export const ALL_BRANCH_STAFF = ...  // flatten ทุกสาขา (+ branch code) — ใช้ใน Desktop staff filter
 ```
-**`role: 'pharmacist'`** = สิทธิ์เดียวที่มีตอนนี้ — ตรวจสอบใน `handleScan` เพื่อตัดสินใจว่าให้เข้า recheck mode หรือบล็อก
+- **code สาขา = suffix ของ Picklist** (`Picklist_SRC` → `SRC`) → ตรงกับ `catalogMeta.branch` และ `box.branch`
+- **`role: 'pharmacist'`** = สิทธิ์เดียวที่มีตอนนี้ — ตรวจใน `handleScan` (BranchReceive) ว่าให้เข้า recheck mode หรือบล็อก. แต่ละสาขามีเภสัช 1 คน
+- **AndroidApp:** ถ้ายังไม่เลือกสาขา → หน้าจอ "เลือกสาขา"; เลือกแล้วเก็บใน `localStorage['wh_branch']` (เปลี่ยนสาขาได้ผ่านปุ่ม "เปลี่ยนสาขา" บน branch header) → ส่ง `branch={branch.code}` ให้ BranchReceive
+- **เดิม** เคย hardcode `BRANCH_STAFF` (BR-01..BR-05) ซ้ำใน BranchReceive.jsx + AndroidApp.jsx — ย้ายมา `branches.js` แล้ว (BranchReceive import `ALL_BRANCH_STAFF`, AndroidApp import `BRANCHES`)
+
+### กรองลังตามสาขา (Android receive)
+- **`box.branch`** (field บน box) — set ตอน `createNewBox` จาก `catalogMeta?.branch` (สาขาของ Picklist ที่ import ล่าสุด) → sync Firestore `boxes/{id}`
+- BranchReceive รับ prop `branch` (Android = สาขาที่เลือก, Desktop = `null` เห็นทุกสาขา):
+  - `matchBranch(b)` = `!branch || !b.branch || b.branch === branch` → กรอง `approvalBoxes` + `pendingCount`/`problemCount`
+  - **`handleScan`:** block + toast แดง ถ้า `box.branch && box.branch !== branch` ("เป็นของสาขา X ไม่ใช่ Y")
+  - ลังไม่มี `branch` (legacy/Picklist ไม่มี suffix) → เห็นได้/สแกนได้ทุกสาขา (fallback)
 
 ---
 
