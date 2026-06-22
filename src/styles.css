@@ -94,13 +94,23 @@ body {
   box-shadow: 2px 2px 0 var(--line); transition: all 0.1s;
 }
 .btn:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 var(--line); }
-.btn:active { transform: translate(1px,1px); box-shadow: 1px 1px 0 var(--line); }
+.btn:active { transform: translate(2px,2px); box-shadow: none; }
 .btn.primary { background: var(--accent); color: white; }
 .btn.accent { background: var(--yellow); }
 .btn.ghost { box-shadow: none; background: transparent; }
 .btn.danger { background: var(--red); color: white; }
 .btn.sm { font-size: 14px; padding: 4px 10px; }
 .btn.lg { font-size: 22px; padding: 14px 28px; font-family: system-ui, sans-serif; font-weight: 700; }
+
+/* ── Button press: "กดยุบเงา" (แบบ 1) ── ยุบปุ่มลงไปชนเงาตอนกด
+   ครอบคลุมทุกปุ่ม รวม inline-style ใน Android (chips/แท็บ/เลือกสาขา) ที่ตั้ง :active ผ่าน inline ไม่ได้
+   + portal dialogs (ยืนยันปิดลัง/เลือก LOT) ที่ render ไป document.body
+   !important เพื่อ override box-shadow/transform ที่เป็น inline; เว้น :disabled และ .no-press */
+button { transition: transform .07s ease, box-shadow .07s ease; }
+button:active:not(:disabled):not(.no-press) {
+  transform: translate(2px, 2px) !important;
+  box-shadow: none !important;
+}
 
 .input {
   font-family: 'JetBrains Mono', monospace; font-size: 15px;
