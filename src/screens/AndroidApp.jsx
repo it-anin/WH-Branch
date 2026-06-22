@@ -3,19 +3,29 @@ import PackScanC from './PackScanC.jsx';
 import BranchReceive from './BranchReceive.jsx';
 import { BRANCHES, getBranch } from '../branches.js';
 
+// WAREHOUSE = คลังสินค้า (แพ็คกิ้งเท่านั้น) — ไม่อยู่ใน BRANCHES เพราะไม่มี staff รับสินค้า + ไม่กระทบ desktop filter
+const WAREHOUSE = { code: 'WAREHOUSE', name: 'WAREHOUSE', warehouse: true };
+const resolveLoc = (code) => code === 'WAREHOUSE' ? WAREHOUSE : getBranch(code);
+
 export default function AndroidApp({
   screenProps,
   packer, setPacker, PACKERS, catalogByPacker,
   onScanProgress, catalogMeta,
 }) {
-  const [tab, setAndroidTab] = useState('pack');
-  const [branch, setBranch] = useState(() => getBranch(localStorage.getItem('wh_branch')));
+  const [branch, setBranch] = useState(() => resolveLoc(localStorage.getItem('wh_branch')));
+  // WAREHOUSE → แพ็คกิ้ง, สาขา → รับสินค้า (แต่ละโหมดมีแท็บเดียว)
+  const [tab, setAndroidTab] = useState(() => branch && !branch.warehouse ? 'receive' : 'pack');
   const [branchStaff, setBranchStaff] = useState(null);
   const packCatalog = packer ? (catalogByPacker[packer.code] || screenProps.catalog) : screenProps.catalog;
+  const isWarehouse = branch?.warehouse === true;
+  const availableTabs = isWarehouse
+    ? [{ k: 'pack', label: '📦 แพ็คกิ้ง' }]
+    : [{ k: 'receive', label: '📥 รับสินค้า' }];
 
   function selectBranch(b) {
     setBranch(b);
     setBranchStaff(null);   // คนละสาขา = คนละพนักงาน
+    setAndroidTab(b.warehouse ? 'pack' : 'receive');
     localStorage.setItem('wh_branch', b.code);
   }
   function changeBranch() {
@@ -33,11 +43,32 @@ export default function AndroidApp({
         alignItems: 'center', justifyContent: 'center', gap: 20, padding: 24,
         background: 'var(--paper)',
       }}>
-        <div style={{ fontSize: 52 }}>🏢</div>
+        <div style={{ fontSize: 52 }}>📍</div>
         <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
-          เลือกสาขา
+          เลือกที่ทำงาน
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 320 }}>
+          {/* WAREHOUSE — แพ็คกิ้ง */}
+          <button onClick={() => selectBranch(WAREHOUSE)} style={{
+            padding: '16px 20px',
+            border: '2px solid var(--accent)',
+            borderRadius: 14,
+            background: 'var(--accent-soft)',
+            boxShadow: '2px 2px 0 var(--line)',
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+          }}>
+            <span style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>
+              📦 WAREHOUSE
+            </span>
+            <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--accent)' }}>
+              แพ็คกิ้ง
+            </span>
+          </button>
+
+          <div style={{ height: 1, background: 'var(--line)', opacity: 0.5, margin: '2px 0' }} />
+
+          {/* สาขา — รับสินค้า */}
           {BRANCHES.map(b => (
             <button key={b.code} onClick={() => selectBranch(b)} style={{
               padding: '16px 20px',
@@ -52,7 +83,7 @@ export default function AndroidApp({
                 {b.name}
               </span>
               <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)' }}>
-                {b.staff.length} คน
+                รับสินค้า · {b.staff.length} คน
               </span>
             </button>
           ))}
@@ -76,9 +107,9 @@ export default function AndroidApp({
         background: 'var(--accent-soft)',
         display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 15 }}>🏢</span>
+        <span style={{ fontSize: 15 }}>{isWarehouse ? '📦' : '🏢'}</span>
         <span style={{ fontFamily: 'system-ui', fontSize: 15, fontWeight: 700, color: 'var(--accent)' }}>
-          สาขา {branch.name}
+          {isWarehouse ? 'WAREHOUSE' : `สาขา ${branch.name}`}
         </span>
         <button onClick={changeBranch} style={{
           marginLeft: 'auto',
@@ -89,7 +120,7 @@ export default function AndroidApp({
           fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)',
           cursor: 'pointer',
         }}>
-          เปลี่ยนสาขา
+          เปลี่ยน
         </button>
       </div>
 
@@ -229,10 +260,7 @@ export default function AndroidApp({
         borderTop: '2px solid var(--line)',
         background: 'var(--paper-dark)',
       }}>
-        {[
-          { k: 'pack',    label: '📦 แพ็คกิ้ง' },
-          { k: 'receive', label: '📥 รับสินค้า' },
-        ].map(t => (
+        {availableTabs.map(t => (
           <button key={t.k} onClick={() => setAndroidTab(t.k)} style={{
             flex: 1,
             border: 'none',

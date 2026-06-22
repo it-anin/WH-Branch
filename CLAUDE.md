@@ -96,7 +96,10 @@ export const ALL_BRANCH_STAFF = ...  // flatten ทุกสาขา (+ branch 
 ```
 - **code สาขา = suffix ของ Picklist** (`Picklist_SRC` → `SRC`) → ตรงกับ `catalogMeta.branch` และ `box.branch`
 - **`role: 'pharmacist'`** = สิทธิ์เดียวที่มีตอนนี้ — ตรวจใน `handleScan` (BranchReceive) ว่าให้เข้า recheck mode หรือบล็อก. แต่ละสาขามีเภสัช 1 คน
-- **AndroidApp:** ถ้ายังไม่เลือกสาขา → หน้าจอ "เลือกสาขา"; เลือกแล้วเก็บใน `localStorage['wh_branch']` (เปลี่ยนสาขาได้ผ่านปุ่ม "เปลี่ยนสาขา" บน branch header) → ส่ง `branch={branch.code}` ให้ BranchReceive
+- **AndroidApp — หน้าแรก "เลือกที่ทำงาน"** (ถ้ายังไม่เลือก): มี **WAREHOUSE** + 3 สาขา; เก็บใน `localStorage['wh_branch']` (ปุ่ม "เปลี่ยน" บน header รีเซ็ต)
+  - **WAREHOUSE** (sentinel `{code:'WAREHOUSE', warehouse:true}` — module-level ใน AndroidApp.jsx, **ไม่อยู่ใน BRANCHES**) → แสดง **แท็บ 📦 แพ็คกิ้งอย่างเดียว** (เลือก packer จาก PACKERS)
+  - **สาขา (SRC/KKL/SSS)** → แสดง **แท็บ 📥 รับสินค้าอย่างเดียว** (เลือกพนักงานจาก `branch.staff`) → ส่ง `branch={branch.code}` ให้ BranchReceive
+  - `availableTabs` กรอง bottom tab bar ตามโหมด; `tab` ตั้งให้ตรงโหมดทั้งตอนเลือกและตอน restore จาก localStorage
 - **เดิม** เคย hardcode `BRANCH_STAFF` (BR-01..BR-05) ซ้ำใน BranchReceive.jsx + AndroidApp.jsx — ย้ายมา `branches.js` แล้ว (BranchReceive import `ALL_BRANCH_STAFF`, AndroidApp import `BRANCHES`)
 
 ### กรองลังตามสาขา (Android receive)
