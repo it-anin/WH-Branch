@@ -28,10 +28,10 @@ function rowsToMap(rows) {
   return map;
 }
 
-function parseXLSX(buffer) {
-  const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
+function parseWorkbook(input, type) {
+  const wb = XLSX.read(input, { type, cellDates: false, raw: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
   return rowsToMap(rows);
 }
 
@@ -45,8 +45,9 @@ export default function ImportLotMap({ matchCount, meta, onImport }) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
+    const isCsv = /\.csv$/i.test(file.name);
     reader.onload = (ev) => {
-      const map = parseXLSX(ev.target.result);
+      const map = parseWorkbook(ev.target.result, isCsv ? 'string' : 'array');
       if (Object.keys(map).length === 0) {
         alert('ไม่พบข้อมูล LOT กรุณาตรวจสอบรูปแบบไฟล์\n(ColA=LOT, ColB=SKU)');
         return;
@@ -56,7 +57,8 @@ export default function ImportLotMap({ matchCount, meta, onImport }) {
       setUploadedAt(fd);
       onImport(map, { fileDate: fd });
     };
-    reader.readAsArrayBuffer(file);
+    if (isCsv) reader.readAsText(file, 'utf-8');
+    else reader.readAsArrayBuffer(file);
     e.target.value = '';
   }
 

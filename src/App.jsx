@@ -263,7 +263,7 @@ export default function App() {
       tx.set(counterRef, { ...data, [todayKey]: next });
       newId = `${todayPrefix}${String(next).padStart(4, '0')}`;
     });
-    const newBox = { id: newId, pos: '—', status: 'open', packer: packer || null, skuCount: 0, totalQty: 0, updated: time, createdAt: Date.now() };
+    const newBox = { id: newId, pos: '—', status: 'open', packer: packer || null, branch: catalogMeta?.branch || null, skuCount: 0, totalQty: 0, updated: time, createdAt: Date.now() };
     setBoxes(prev => [newBox, ...prev]);
     setActiveBoxId(newId);
     return newId;
@@ -431,13 +431,29 @@ export default function App() {
   }, [catalog, barcodeMap, catalogByPacker, lotMap]);
 
   function applyBarcodeMap(items, map) {
-    const skusInMap = new Set(Object.keys(map).map(k => k.split('__')[0]));
+    const skuBarcodes = {};
+    Object.entries(map).forEach(([key, barcodes]) => {
+      const sku = key.split('__')[0];
+      if (!skuBarcodes[sku]) skuBarcodes[sku] = [];
+      for (const barcode of barcodes || []) {
+        if (barcode && !skuBarcodes[sku].includes(barcode)) skuBarcodes[sku].push(barcode);
+      }
+    });
+
+    const mergeBarcodes = (...groups) => {
+      const merged = [];
+      groups.flat().forEach(barcode => {
+        const value = String(barcode ?? '').trim();
+        if (value && !merged.includes(value)) merged.push(value);
+      });
+      return merged;
+    };
+
     return items.map(item => {
       const key = `${item.sku}__${item.unit}`;
-      const barcodes = map[key];
-      if (barcodes && barcodes.length > 0) return { ...item, barcode: barcodes.join(',') };
-      if (skusInMap.has(item.sku)) return { ...item, barcode: '' }; // SKU มีใน map แต่ unit ไม่ตรง → clear
-      return item; // SKU ไม่มีใน map เลย → ใช้ barcode เดิมจาก ColC
+      const barcodes = mergeBarcodes(item.barcode ? item.barcode.split(',') : [], map[key] || [], skuBarcodes[item.sku] || []);
+      if (barcodes.length > 0) return { ...item, barcode: barcodes.join(',') };
+      return item;
     });
   }
 
@@ -446,7 +462,6 @@ export default function App() {
     const mapEntries = Object.entries(map).map(([key, barcodes]) => ({ key, barcodes }));
     setDoc(doc(db, 'config', 'barcodeMap'), { entries: mapEntries, ...(meta ? { _meta: meta } : {}) })
       .catch(err => console.error('barcodeMap write failed:', err.code));
-    const matched = catalog.filter(item => map[`${item.sku}__${item.unit}`]).length;
     const updated = applyBarcodeMap(catalog, map);
     setCatalog(updated);
     setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(catalogMeta ? { _meta: catalogMeta } : {}) });

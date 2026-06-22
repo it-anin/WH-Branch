@@ -17,17 +17,30 @@ function toStr(val) {
   return s;
 }
 
+function parseBarcodes(val) {
+  const raw = toStr(val);
+  if (!raw) return [];
+  return raw
+    .split(/[\r\n,;|/]+/)
+    .map(v => v.trim())
+    .filter(Boolean)
+    .filter((v, idx, arr) => arr.indexOf(v) === idx);
+}
+
 function rowsToItems(rows) {
   return rows
     .slice(1)
-    .map(vals => ({
-      sku:      toStr(vals[1]),
-      barcode:  toStr(vals[2]),
-      name:     String(vals[3] ?? '').trim(),
-      unit:     String(vals[4] ?? '').trim(),
-      qty:      Math.max(1, parseInt(vals[5], 10) || 1),
-      location: String(vals[6] ?? '').trim(),
-    }))
+    .map(vals => {
+      const barcodes = parseBarcodes(vals[2]);
+      return {
+        sku:      toStr(vals[1]),
+        barcode:  barcodes.join(','),
+        name:     String(vals[3] ?? '').trim(),
+        unit:     String(vals[4] ?? '').trim(),
+        qty:      Math.max(1, parseInt(vals[5], 10) || 1),
+        location: String(vals[6] ?? '').trim(),
+      };
+    })
     .filter(item => item.sku && item.name);
 }
 
@@ -57,10 +70,10 @@ function parseCSV(text) {
   return rowsToItems(lines.map(splitCSVLine));
 }
 
-function parseXLSX(buffer) {
-  const wb = XLSX.read(buffer, { type: 'array' });
+function parseWorkbook(input, type) {
+  const wb = XLSX.read(input, { type, raw: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
   return rowsToItems(rows);
 }
 
@@ -81,9 +94,10 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
+    const isCsv = /\.csv$/i.test(file.name);
 
     reader.onload = (ev) => {
-      const items = parseXLSX(ev.target.result);
+      const items = parseWorkbook(ev.target.result, isCsv ? 'string' : 'array');
 
       if (items.length === 0) {
         alert('ไม่พบรายการสินค้าในไฟล์ กรุณาตรวจสอบรูปแบบ');
@@ -97,7 +111,8 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
       onImport(items, { branch: b, fileDate: fd });
     };
 
-    reader.readAsArrayBuffer(file);
+    if (isCsv) reader.readAsText(file, 'utf-8');
+    else reader.readAsArrayBuffer(file);
 
     e.target.value = '';
   }
