@@ -96,10 +96,13 @@ export const ALL_BRANCH_STAFF = ...  // flatten ทุกสาขา (+ branch 
 ```
 - **code สาขา = suffix ของ Picklist** (`Picklist_SRC` → `SRC`) → ตรงกับ `catalogMeta.branch` และ `box.branch`
 - **`role: 'pharmacist'`** = สิทธิ์เดียวที่มีตอนนี้ — ตรวจใน `handleScan` (BranchReceive) ว่าให้เข้า recheck mode หรือบล็อก. แต่ละสาขามีเภสัช 1 คน
-- **AndroidApp — หน้าแรก "เลือกที่ทำงาน"** (ถ้ายังไม่เลือก): มี **WAREHOUSE** + 3 สาขา; เก็บใน `localStorage['wh_branch']` (ปุ่ม "เปลี่ยน" บน header รีเซ็ต)
-  - **WAREHOUSE** (sentinel `{code:'WAREHOUSE', warehouse:true}` — module-level ใน AndroidApp.jsx, **ไม่อยู่ใน BRANCHES**) → แสดง **แท็บ 📦 แพ็คกิ้งอย่างเดียว** (เลือก packer จาก PACKERS)
-  - **สาขา (SRC/KKL/SSS)** → แสดง **แท็บ 📥 รับสินค้าอย่างเดียว** (เลือกพนักงานจาก `branch.staff`) → ส่ง `branch={branch.code}` ให้ BranchReceive
-  - `availableTabs` กรอง bottom tab bar ตามโหมด; `tab` ตั้งให้ตรงโหมดทั้งตอนเลือกและตอน restore จาก localStorage
+- **AndroidApp — flow 3 ขั้น:** (1) **เลือกที่ทำงาน** → (2) **เลือกพนักงาน** → (3) **หน้าสแกน** — แต่ละขั้นเป็นหน้าจอเต็ม gate ด้วย `if (!branch)` / `if (!currentStaff)`
+  - **ขั้น 1 เลือกที่ทำงาน:** **WAREHOUSE** + 3 สาขา; location เก็บใน `localStorage['wh_branch']`
+    - **WAREHOUSE** (sentinel `{code:'WAREHOUSE', warehouse:true}` — module-level, **ไม่อยู่ใน BRANCHES**) → โหมดแพ็คกิ้ง
+    - **สาขา (SRC/KKL/SSS)** → โหมดรับสินค้า
+  - **ขั้น 2 เลือกพนักงาน:** `staffList = isWarehouse ? PACKERS : branch.staff`; `currentStaff/setStaff = isWarehouse ? packer/setPacker : branchStaff/setBranchStaff` (packer = lifted ที่ App.jsx, branchStaff = local) — เภสัชมี tag 💊; ปุ่ม "← เปลี่ยนที่ทำงาน" → `changeBranch`
+    - **staff ไม่ persist** — `selectBranch`/`changeBranch` ล้าง packer+branchStaff เสมอ → reload แล้วต้องเลือกพนักงานใหม่ทุกครั้ง (location ยังจำได้)
+  - **ขั้น 3 หน้าสแกน:** PackScanC (warehouse) / BranchReceive (`branch={branch.code}`); header โชว์ ที่ทำงาน + 👤 พนักงาน + ปุ่ม "เปลี่ยน" (`setStaff(null)` → กลับขั้น 2); bottom bar = ป้ายโหมดเฉย ๆ (ไม่มี tab switching แล้ว)
 - **เดิม** เคย hardcode `BRANCH_STAFF` (BR-01..BR-05) ซ้ำใน BranchReceive.jsx + AndroidApp.jsx — ย้ายมา `branches.js` แล้ว (BranchReceive import `ALL_BRANCH_STAFF`, AndroidApp import `BRANCHES`)
 
 ### กรองลังตามสาขา (Android receive)

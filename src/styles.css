@@ -112,6 +112,15 @@ button:active:not(:disabled):not(.no-press) {
   box-shadow: none !important;
 }
 
+/* หน้า "เลือกที่ทำงาน" (Android): ปุ่มการ์ดใหญ่ — เด้งเข้าตอนโผล่ (ไล่ทีละใบด้วย animationDelay)
+   + กดยุบเงาชัดขึ้นด้วยการย่อตัวเล็กน้อย (2px translate เฉย ๆ ดูไม่ออกบนการ์ดใหญ่) */
+.loc-btn { animation: locIn .32s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes locIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.loc-btn:active:not(:disabled) { transform: translate(2px, 2px) scale(.97) !important; }
+
 .input {
   font-family: 'JetBrains Mono', monospace; font-size: 15px;
   padding: 10px 14px; border: 2px solid var(--line); background: white;

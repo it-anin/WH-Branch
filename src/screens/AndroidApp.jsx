@@ -7,57 +7,65 @@ import { BRANCHES, getBranch } from '../branches.js';
 const WAREHOUSE = { code: 'WAREHOUSE', name: 'WAREHOUSE', warehouse: true };
 const resolveLoc = (code) => code === 'WAREHOUSE' ? WAREHOUSE : getBranch(code);
 
+// สไตล์ปุ่มการ์ดใหญ่ (หน้าเลือกที่ทำงาน / เลือกพนักงาน)
+const cardBtn = {
+  padding: '16px 20px',
+  border: '2px solid var(--line)',
+  borderRadius: 14,
+  background: 'white',
+  boxShadow: '2px 2px 0 var(--line)',
+  cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+};
+const fullScreen = {
+  position: 'fixed', inset: 0,
+  display: 'flex', flexDirection: 'column',
+  alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24,
+  background: 'var(--paper)',
+};
+
 export default function AndroidApp({
   screenProps,
   packer, setPacker, PACKERS, catalogByPacker,
   onScanProgress, catalogMeta,
 }) {
   const [branch, setBranch] = useState(() => resolveLoc(localStorage.getItem('wh_branch')));
-  // WAREHOUSE → แพ็คกิ้ง, สาขา → รับสินค้า (แต่ละโหมดมีแท็บเดียว)
-  const [tab, setAndroidTab] = useState(() => branch && !branch.warehouse ? 'receive' : 'pack');
   const [branchStaff, setBranchStaff] = useState(null);
   const packCatalog = packer ? (catalogByPacker[packer.code] || screenProps.catalog) : screenProps.catalog;
   const isWarehouse = branch?.warehouse === true;
-  const availableTabs = isWarehouse
-    ? [{ k: 'pack', label: '📦 แพ็คกิ้ง' }]
-    : [{ k: 'receive', label: '📥 รับสินค้า' }];
 
+  // staff ขึ้นกับโหมด: WAREHOUSE → packers (lifted ที่ App.jsx), สาขา → branch.staff (local)
+  const staffList    = isWarehouse ? PACKERS : (branch?.staff || []);
+  const currentStaff = isWarehouse ? packer : branchStaff;
+  const setStaff     = isWarehouse ? setPacker : setBranchStaff;
+
+  // เลือกที่ทำงาน → ล้างพนักงานทั้ง 2 โหมดเสมอ → ไปหน้าเลือกพนักงาน
   function selectBranch(b) {
     setBranch(b);
-    setBranchStaff(null);   // คนละสาขา = คนละพนักงาน
-    setAndroidTab(b.warehouse ? 'pack' : 'receive');
+    setBranchStaff(null);
+    setPacker(null);
     localStorage.setItem('wh_branch', b.code);
   }
+  // กลับไปหน้าเลือกที่ทำงาน
   function changeBranch() {
     setBranch(null);
     setBranchStaff(null);
+    setPacker(null);
     localStorage.removeItem('wh_branch');
   }
 
-  // ── หน้าแรก: เลือกสาขา (ก่อนเข้าใช้งาน) ──
+  // ── ขั้นที่ 1: เลือกที่ทำงาน ──
   if (!branch) {
     return (
-      <div style={{
-        position: 'fixed', inset: 0,
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', gap: 20, padding: 24,
-        background: 'var(--paper)',
-      }}>
+      <div style={fullScreen}>
         <div style={{ fontSize: 52 }}>📍</div>
         <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
           เลือกที่ทำงาน
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 320 }}>
           {/* WAREHOUSE — แพ็คกิ้ง */}
-          <button onClick={() => selectBranch(WAREHOUSE)} style={{
-            padding: '16px 20px',
-            border: '2px solid var(--accent)',
-            borderRadius: 14,
-            background: 'var(--accent-soft)',
-            boxShadow: '2px 2px 0 var(--line)',
-            cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-          }}>
+          <button className="loc-btn" onClick={() => selectBranch(WAREHOUSE)}
+            style={{ ...cardBtn, border: '2px solid var(--accent)', background: 'var(--accent-soft)' }}>
             <span style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>
               📦 WAREHOUSE
             </span>
@@ -69,16 +77,9 @@ export default function AndroidApp({
           <div style={{ height: 1, background: 'var(--line)', opacity: 0.5, margin: '2px 0' }} />
 
           {/* สาขา — รับสินค้า */}
-          {BRANCHES.map(b => (
-            <button key={b.code} onClick={() => selectBranch(b)} style={{
-              padding: '16px 20px',
-              border: '2px solid var(--line)',
-              borderRadius: 14,
-              background: 'white',
-              boxShadow: '2px 2px 0 var(--line)',
-              cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-            }}>
+          {BRANCHES.map((b, i) => (
+            <button key={b.code} className="loc-btn" onClick={() => selectBranch(b)}
+              style={{ ...cardBtn, animationDelay: `${(i + 1) * 70}ms` }}>
               <span style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--ink)' }}>
                 {b.name}
               </span>
@@ -92,6 +93,51 @@ export default function AndroidApp({
     );
   }
 
+  // ── ขั้นที่ 2: เลือกพนักงาน (ก่อนเข้าหน้าสแกน) ──
+  if (!currentStaff) {
+    return (
+      <div style={fullScreen}>
+        <div style={{ fontSize: 52 }}>👤</div>
+        <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
+          เลือกพนักงาน
+        </div>
+        <div style={{
+          fontFamily: 'system-ui', fontSize: 15, fontWeight: 700, color: 'var(--accent)',
+          background: 'var(--accent-soft)', padding: '4px 14px', borderRadius: 999,
+        }}>
+          {isWarehouse ? '📦 WAREHOUSE · แพ็คกิ้ง' : `🏢 สาขา ${branch.name} · รับสินค้า`}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 320, marginTop: 4 }}>
+          {staffList.map((s, i) => (
+            <button key={s.code} className="loc-btn" onClick={() => setStaff(s)}
+              style={{ ...cardBtn, animationDelay: `${i * 60}ms` }}>
+              <span style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--ink)' }}>
+                {s.name}
+              </span>
+              {s.role === 'pharmacist' && (
+                <span style={{
+                  fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: 'white',
+                  background: 'var(--accent)', padding: '2px 10px', borderRadius: 999,
+                }}>
+                  💊 เภสัช
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <button onClick={changeBranch} style={{
+          marginTop: 8,
+          padding: '8px 18px',
+          border: '1.5px solid var(--line)', borderRadius: 999, background: 'white',
+          fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)', cursor: 'pointer',
+        }}>
+          ← เปลี่ยนที่ทำงาน
+        </button>
+      </div>
+    );
+  }
+
+  // ── ขั้นที่ 3: หน้าสแกน ──
   return (
     <div style={{
       position: 'fixed', inset: 0,
@@ -100,7 +146,7 @@ export default function AndroidApp({
       overflow: 'hidden',
     }}>
 
-      {/* branch header */}
+      {/* header: ที่ทำงาน + พนักงาน + ปุ่มเปลี่ยนพนักงาน */}
       <div style={{
         padding: '6px 12px',
         borderBottom: '2px solid var(--line)',
@@ -111,7 +157,11 @@ export default function AndroidApp({
         <span style={{ fontFamily: 'system-ui', fontSize: 15, fontWeight: 700, color: 'var(--accent)' }}>
           {isWarehouse ? 'WAREHOUSE' : `สาขา ${branch.name}`}
         </span>
-        <button onClick={changeBranch} style={{
+        <span style={{ color: 'var(--mute)', fontSize: 13 }}>·</span>
+        <span style={{ fontFamily: 'system-ui', fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>
+          👤 {currentStaff.name}
+        </span>
+        <button onClick={() => setStaff(null)} style={{
           marginLeft: 'auto',
           padding: '3px 12px',
           border: '1.5px solid var(--line)',
@@ -124,157 +174,47 @@ export default function AndroidApp({
         </button>
       </div>
 
-      {/* content */}
+      {/* content: หน้าสแกน (staff ถูกเลือกแล้วเสมอ) */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-
-        {/* ── แพ็คกิ้ง ── */}
-        {tab === 'pack' && (
-          <>
-            {/* packer selector strip */}
-            <div style={{
-              padding: '8px 12px',
-              borderBottom: '1.5px solid var(--line)',
-              background: 'var(--paper-dark)',
-              display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap',
-            }}>
-              <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', whiteSpace: 'nowrap' }}>
-                พนักงาน:
-              </span>
-              {PACKERS.map(p => {
-                const active = packer?.code === p.code;
-                return (
-                  <button key={p.code} onClick={() => setPacker(active ? null : p)} style={{
-                    padding: '5px 14px',
-                    border: `2px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
-                    borderRadius: 999,
-                    background: active ? 'var(--accent)' : 'white',
-                    color: active ? 'white' : 'var(--ink)',
-                    fontFamily: 'system-ui', fontSize: 15,
-                    cursor: 'pointer',
-                    fontWeight: active ? 700 : 400,
-                    boxShadow: active ? '2px 2px 0 var(--line)' : '1px 1px 0 var(--line)',
-                  }}>
-                    {p.name}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* pack content */}
-            {packer ? (
-              <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
-                <PackScanC
-                  key={`${packer.code}-${Object.keys(catalogByPacker).length}`}
-                  {...screenProps}
-                  catalog={packCatalog}
-                  packer={packer}
-                  setTab={() => {}}
-                  onScanProgress={onScanProgress}
-                  catalogMeta={catalogMeta}
-                />
-              </div>
-            ) : (
-              <div style={{
-                flex: 1, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24,
-              }}>
-                <div style={{ fontSize: 52 }}>👆</div>
-                <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
-                  เลือกชื่อพนักงานก่อน
-                </div>
-                <div style={{ fontFamily: 'system-ui', fontSize: 15, color: 'var(--mute)', textAlign: 'center' }}>
-                  กดปุ่มชื่อพนักงานด้านบนเพื่อดูรายการสินค้าที่ต้องแพ็ค
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ── รับสินค้า ── */}
-        {tab === 'receive' && (
-          <>
-            {/* branch staff selector strip */}
-            <div style={{
-              padding: '8px 12px',
-              borderBottom: '1.5px solid var(--line)',
-              background: 'var(--paper-dark)',
-              display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap',
-            }}>
-              <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', whiteSpace: 'nowrap' }}>
-                พนักงาน:
-              </span>
-              {branch.staff.map(s => {
-                const active = branchStaff?.code === s.code;
-                return (
-                  <button key={s.code} onClick={() => setBranchStaff(active ? null : s)} style={{
-                    padding: '5px 14px',
-                    border: `2px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
-                    borderRadius: 999,
-                    background: active ? 'var(--accent)' : 'white',
-                    color: active ? 'white' : 'var(--ink)',
-                    fontFamily: 'system-ui', fontSize: 15,
-                    cursor: 'pointer',
-                    fontWeight: active ? 700 : 400,
-                    boxShadow: active ? '2px 2px 0 var(--line)' : '1px 1px 0 var(--line)',
-                  }}>
-                    {s.name}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* receive content */}
-            {branchStaff ? (
-              <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                <BranchReceive
-                  {...screenProps}
-                  setTab={() => {}}
-                  branchStaff={branchStaff}
-                  setBranchStaff={setBranchStaff}
-                  isAndroid={true}
-                  branch={branch.code}
-                />
-              </div>
-            ) : (
-              <div style={{
-                flex: 1, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24,
-              }}>
-                <div style={{ fontSize: 52 }}>👆</div>
-                <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
-                  เลือกชื่อพนักงานก่อน
-                </div>
-                <div style={{ fontFamily: 'system-ui', fontSize: 15, color: 'var(--mute)', textAlign: 'center' }}>
-                  กดปุ่มชื่อพนักงานด้านบนเพื่อเริ่มรับสินค้า
-                </div>
-              </div>
-            )}
-          </>
+        {isWarehouse ? (
+          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
+            <PackScanC
+              key={`${packer.code}-${Object.keys(catalogByPacker).length}`}
+              {...screenProps}
+              catalog={packCatalog}
+              packer={packer}
+              setTab={() => {}}
+              onScanProgress={onScanProgress}
+              catalogMeta={catalogMeta}
+            />
+          </div>
+        ) : (
+          <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+            <BranchReceive
+              {...screenProps}
+              setTab={() => {}}
+              branchStaff={branchStaff}
+              setBranchStaff={setBranchStaff}
+              isAndroid={true}
+              branch={branch.code}
+            />
+          </div>
         )}
       </div>
 
-      {/* bottom tab bar */}
+      {/* bottom bar: ป้ายโหมด (แพ็คกิ้ง/รับสินค้า) */}
       <div style={{
         display: 'flex', flexShrink: 0,
         height: 56,
         borderTop: '2px solid var(--line)',
         background: 'var(--paper-dark)',
+        alignItems: 'center', justifyContent: 'center',
       }}>
-        {availableTabs.map(t => (
-          <button key={t.k} onClick={() => setAndroidTab(t.k)} style={{
-            flex: 1,
-            border: 'none',
-            borderTop: `3px solid ${tab === t.k ? 'var(--accent)' : 'transparent'}`,
-            background: tab === t.k ? 'var(--accent-soft)' : 'transparent',
-            fontFamily: 'system-ui', fontSize: 17,
-            color: tab === t.k ? 'var(--accent)' : 'var(--mute)',
-            cursor: 'pointer',
-            fontWeight: tab === t.k ? 700 : 400,
-            transition: 'all 0.1s',
-          }}>
-            {t.label}
-          </button>
-        ))}
+        <span style={{
+          fontFamily: 'system-ui', fontSize: 17, fontWeight: 700, color: 'var(--accent)',
+        }}>
+          {isWarehouse ? '📦 แพ็คกิ้ง' : '📥 รับสินค้า'}
+        </span>
       </div>
     </div>
   );
