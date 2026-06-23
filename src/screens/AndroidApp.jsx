@@ -9,7 +9,7 @@ const resolveLoc = (code) => code === 'WAREHOUSE' ? WAREHOUSE : getBranch(code);
 
 // สไตล์ปุ่มการ์ดใหญ่ (หน้าเลือกที่ทำงาน / เลือกพนักงาน)
 const cardBtn = {
-  padding: '16px 20px',
+  padding: '9px 16px',
   border: '2px solid var(--line)',
   borderRadius: 14,
   background: 'white',
@@ -17,18 +17,18 @@ const cardBtn = {
   cursor: 'pointer',
   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
 };
-// container เต็มจอ — เลื่อนได้ถ้าเนื้อหาสูงเกินจอ (เครื่อง 800×480) กันปุ่มล่าง (← เปลี่ยนที่ทำงาน) ถูกตัด
+// container เต็มจอ — ปุ่มถูกย่อให้พอดีจอ 800×480 (ไม่ต้องเลื่อน); overflow auto เหลือไว้เป็น fallback กันพนักงานเยอะผิดปกติ
 const fullScreen = {
   position: 'fixed', inset: 0,
   overflowY: 'auto',
   background: 'var(--paper)',
   display: 'flex', flexDirection: 'column',
 };
-// กล่องเนื้อหา — margin:auto จัดกึ่งกลางเมื่อพอดีจอ, ยุบเป็น 0 + scroll เมื่อสูงเกิน (เลี่ยง bug justify-center ที่ตัดด้านบน)
+// กล่องเนื้อหา — margin:auto จัดกึ่งกลาง; ถ้าสูงเกินจอจริง ๆ จะ scroll ได้ (ไม่ตัดด้านบนแบบ justify-center)
 const pickerInner = {
   margin: 'auto',
   display: 'flex', flexDirection: 'column',
-  alignItems: 'center', gap: 16, padding: 24,
+  alignItems: 'center', gap: 10, padding: '14px 24px',
   width: '100%', boxSizing: 'border-box',
 };
 
@@ -67,15 +67,15 @@ export default function AndroidApp({
     return (
       <div style={fullScreen}>
         <div style={pickerInner}>
-        <div style={{ fontSize: 52 }}>📍</div>
-        <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
+        <div style={{ fontSize: 34 }}>📍</div>
+        <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--ink)' }}>
           เลือกที่ทำงาน
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 320 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 320 }}>
           {/* WAREHOUSE — แพ็คกิ้ง */}
           <button className="loc-btn" onClick={() => selectBranch(WAREHOUSE)}
             style={{ ...cardBtn, border: '2px solid var(--accent)', background: 'var(--accent-soft)' }}>
-            <span style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>
+            <span style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>
               📦 WAREHOUSE
             </span>
             <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--accent)' }}>
@@ -89,7 +89,7 @@ export default function AndroidApp({
           {BRANCHES.map((b, i) => (
             <button key={b.code} className="loc-btn" onClick={() => selectBranch(b)}
               style={{ ...cardBtn, animationDelay: `${(i + 1) * 70}ms` }}>
-              <span style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--ink)' }}>
+              <span style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>
                 {b.name}
               </span>
               <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)' }}>
@@ -108,21 +108,21 @@ export default function AndroidApp({
     return (
       <div style={fullScreen}>
         <div style={pickerInner}>
-        <div style={{ fontSize: 52 }}>👤</div>
-        <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
+        <div style={{ fontSize: 34 }}>👤</div>
+        <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--ink)' }}>
           เลือกพนักงาน
         </div>
         <div style={{
-          fontFamily: 'system-ui', fontSize: 15, fontWeight: 700, color: 'var(--accent)',
-          background: 'var(--accent-soft)', padding: '4px 14px', borderRadius: 999,
+          fontFamily: 'system-ui', fontSize: 13, fontWeight: 700, color: 'var(--accent)',
+          background: 'var(--accent-soft)', padding: '3px 12px', borderRadius: 999,
         }}>
           {isWarehouse ? '📦 WAREHOUSE · แพ็คกิ้ง' : `🏢 สาขา ${branch.name} · รับสินค้า`}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 320, marginTop: 4 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 320, marginTop: 0 }}>
           {staffList.map((s, i) => (
             <button key={s.code} className="loc-btn" onClick={() => setStaff(s)}
               style={{ ...cardBtn, animationDelay: `${i * 60}ms` }}>
-              <span style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--ink)' }}>
+              <span style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>
                 {s.name}
               </span>
               {s.role === 'pharmacist' && (
@@ -137,10 +137,10 @@ export default function AndroidApp({
           ))}
         </div>
         <button onClick={changeBranch} style={{
-          marginTop: 8,
-          padding: '8px 18px',
+          marginTop: 4,
+          padding: '6px 16px',
           border: '1.5px solid var(--line)', borderRadius: 999, background: 'white',
-          fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)', cursor: 'pointer',
+          fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', cursor: 'pointer',
         }}>
           ← เปลี่ยนที่ทำงาน
         </button>
