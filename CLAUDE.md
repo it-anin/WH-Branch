@@ -78,7 +78,7 @@ const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, ite
 [
   { code: 'EMP-01', name: 'มุก' },
   { code: 'EMP-02', name: 'แล็ค' },
-  // { code: 'EMP-03', name: 'N/A' },   // ปิดชั่วคราว — เต้ ออกแล้ว, เปิดกลับเมื่อมีคนใหม่
+  { code: 'EMP-03', name: 'พี' },     // เปิดสล็อตเดิม (เต้ ออกแล้ว) ให้พนักงานใหม่ — ใช้ procedural avatar (ยังไม่มี sprite)
   { code: 'EMP-04', name: 'ตั๋ง' },
 ]
 ```

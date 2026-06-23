@@ -313,7 +313,7 @@ const GT_OUTLINE = '#2e2b3d', GT_SKIN = '#f4cfa6', GT_PANTS = '#2a3548', GT_SHOE
 const PACKER_STYLES = {
   'EMP-01': { hair: '#caa056', hood: '#1c2a4a', glasses: true },   // มุก — ผมบลอนด์ + แว่น + ฮู้ดน้ำเงิน
   'EMP-02': { hair: '#1a1a1a', hood: '#1f1f1f', hat: '#a92020' },  // แล็ค — ผมดำ + แก๊ปแดง + ฮู้ดดำ
-  'EMP-03': { hair: '#3a2a1f', hood: '#2c4a2a' },                  // N/A — ผมน้ำตาลเข้ม + ฮู้ดเขียว
+  'EMP-03': { hair: '#3a2a1f', hood: '#2c4a2a' },                  // พี — ผมน้ำตาลเข้ม + ฮู้ดเขียว (procedural — ยังไม่มี sprite)
   'EMP-04': { hair: '#5b3a22', hood: '#1e5aa0' },                  // ตั๋ง — ผมน้ำตาล + ฮู้ดฟ้า
 };
 
