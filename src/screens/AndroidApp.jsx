@@ -17,11 +17,19 @@ const cardBtn = {
   cursor: 'pointer',
   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
 };
+// container เต็มจอ — เลื่อนได้ถ้าเนื้อหาสูงเกินจอ (เครื่อง 800×480) กันปุ่มล่าง (← เปลี่ยนที่ทำงาน) ถูกตัด
 const fullScreen = {
   position: 'fixed', inset: 0,
-  display: 'flex', flexDirection: 'column',
-  alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24,
+  overflowY: 'auto',
   background: 'var(--paper)',
+  display: 'flex', flexDirection: 'column',
+};
+// กล่องเนื้อหา — margin:auto จัดกึ่งกลางเมื่อพอดีจอ, ยุบเป็น 0 + scroll เมื่อสูงเกิน (เลี่ยง bug justify-center ที่ตัดด้านบน)
+const pickerInner = {
+  margin: 'auto',
+  display: 'flex', flexDirection: 'column',
+  alignItems: 'center', gap: 16, padding: 24,
+  width: '100%', boxSizing: 'border-box',
 };
 
 export default function AndroidApp({
@@ -58,6 +66,7 @@ export default function AndroidApp({
   if (!branch) {
     return (
       <div style={fullScreen}>
+        <div style={pickerInner}>
         <div style={{ fontSize: 52 }}>📍</div>
         <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
           เลือกที่ทำงาน
@@ -89,6 +98,7 @@ export default function AndroidApp({
             </button>
           ))}
         </div>
+        </div>
       </div>
     );
   }
@@ -97,6 +107,7 @@ export default function AndroidApp({
   if (!currentStaff) {
     return (
       <div style={fullScreen}>
+        <div style={pickerInner}>
         <div style={{ fontSize: 52 }}>👤</div>
         <div style={{ fontFamily: 'system-ui', fontSize: 26, fontWeight: 700, color: 'var(--ink)' }}>
           เลือกพนักงาน
@@ -133,6 +144,7 @@ export default function AndroidApp({
         }}>
           ← เปลี่ยนที่ทำงาน
         </button>
+        </div>
       </div>
     );
   }
