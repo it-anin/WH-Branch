@@ -236,10 +236,13 @@ return newId;
 **Box ID format:** `BX-{DDMM}-{NNNN}` เช่น `BX-0206-0001` (วันที่ 2 มิ.ย. ลังที่ 1) — `NNNN` reset ทุกวันที่ counter key เปลี่ยน. **ลังเก่าก่อน 1 มิ.ย. 2026** จะมี format เก่า `BX-{MMDD}-{NNNN}` — ระบบยังอ่านได้ปกติเพราะใช้ exact match ตรง box.id ไม่มี logic ที่ parse วัน/เดือนจากตัวเลข
 
 ### `applyBarcodeMap(items, map)`
-Logic 3 ระดับ (key = `sku__unit`):
-1. `sku__unit` ตรงกับ map → ใช้ barcode จาก map ✓
-2. SKU อยู่ใน map แต่ unit ไม่ตรง → `barcode: ''` (ป้องกัน wrong unit match) ✓
-3. SKU ไม่มีใน map เลย → ใช้ barcode เดิมจาก ColC (fallback) ✓
+**Merge ไม่ใช่ replace** (key = `sku__unit`) — ผลคือ `item.barcode` มักเป็น **comma-separated หลายตัว**:
+1. เก็บ barcode เดิมของ item จาก ColC (ถ้ามี)
+2. รวม `map[sku__unit]` (barcode ที่ unit ตรงเป๊ะ)
+3. รวม `skuBarcodes[sku]` — **ทุก barcode ของ SKU นั้นจาก barcode map ไม่จำกัด unit** (กวาดทุก key ที่ `key.split('__')[0] === sku` ไม่ว่า unit ส่วนหลังจะเป็นอะไร)
+4. `mergeBarcodes(...)` dedupe + join `,` → ได้ `item.barcode` สุดท้าย (ถ้าไม่มีตัวไหนเลยทั้ง 3 ทาง → คง field เดิมไว้)
+
+**ผลกระทบ:** `item.barcode` **ไม่ใช่ค่าเดียวที่ตรงกับ unit เป๊ะอีกต่อไป** — เป็น "รายการ barcode ที่เป็นไปได้" สำหรับ SKU นั้น ใช้กับ `matchBarcode()` (`src/data.js`) ตอนสแกนเท่านั้น (match bare SKU หรือ barcode ตัวใดตัวหนึ่งในลิสต์) — **ห้ามใช้ `item.barcode` ตรงๆ เป็นค่า export** ต้องใช้ `scannedBarcode` แทน (ดูบรรทัดด้านล่าง)
 
 **สำคัญ:** unit ใน barcode map (ColG) **ต้องตรงกับ unit ในรายการเบิก (ColE)** ทุกตัวอักษร เช่น `กล่อง`, `ชิ้น`, `10ชิ้น` — ถ้า ColG ว่างเปล่า key จะเป็น `sku__` ซึ่งไม่ match กับ catalog → barcode ว่าง
 
@@ -421,6 +424,14 @@ open → packing → closed → exported → received
   - in-session: `doClose()` หัก `need -= got` + ตัดตัวที่ `got >= need` ออก — สอดคล้องกับ initializer (catalog total − packed ทั้งหมด)
 - **`barcode` field ใน item card ต้องแสดงเสมอ** — ใช้ยืนยัน barcode ก่อนสแกน ห้ามลบออกจาก card rendering
 - **`c.exp` ใน item card** — แสดงบรรทัด `EXP: {exp}` (สีส้ม accent) ใต้ barcode เฉพาะเมื่อมีค่า (กรอกผ่าน "✎ ใส่ LOT เอง" เท่านั้น — ดู *LOT Selection*)
+- **`item.barcode` อาจเป็น comma-separated หลายตัวต่อ SKU+unit** (ผลจาก `applyBarcodeMap` ที่ merge ColC + ทุก barcode ของ SKU นั้นจาก barcode map ไม่จำกัด unit — ดู *applyBarcodeMap* ด้านบน) — `matchBarcode(item, val)` (`src/data.js`) match ได้ทั้ง bare SKU หรือ barcode ตัวใดตัวหนึ่งในลิสต์ ดังนั้น `item.barcode` **ใช้ได้แค่ตอน match สแกน ไม่ใช่ค่าที่ควร export**
+- **`scannedBarcode` field** — capture บาร์โค้ดตัวจริงที่พนักงานสแกน (ต่าง SKU เดียวกันอาจสแกนด้วยบาร์โค้ดต่างตัวกันได้ถ้ามีหลายตัวใน `item.barcode`) เก็บคู่กับ `got`/`lot`/`exp` บน item — resolve ใน `processBarcode` ก่อนเข้า LOT logic:
+  ```js
+  const scannedBarcode = catMatch.barcode.split(',').map(b => b.trim()).includes(barcode)
+    ? barcode
+    : (catMatch.barcode.split(',')[0]?.trim() || '');
+  ```
+  ส่งผ่าน `applyScan`/`pendingLot` ไปจนถึง `doClose()` (auto-survive ผ่าน spread `{ ...it, qty: it.got }` ไม่ต้องแก้ `doClose`) → ใช้แทน `item.barcode` ตอน export (ดู *Outbound — ⇩ ส่งออกไฟล์ Text* และ *⇩ ส่งออกรายการลังทั้งหมด*) ด้วย fallback `scannedBarcode || barcode || ''` กันลังเก่า/ไม่มีค่า
 - Barcode lookup ใช้ `catalog` prop (ไม่ใช่ local `items`) เพื่อให้ unit validation ทำงานถูกต้อง
 - **Optimistic UI:** `setItems(newItems)` เรียกก่อน `await createNewBox()` — UI อัพทันที Firestore sync ใน background
 - `handleBarcode`: validate barcode → `setItems` ทันที → `createNewBox()` ถ้าไม่มี activeBoxId → `onScanProgress`
@@ -452,18 +463,19 @@ open → packing → closed → exported → received
 - **`getAvailableLots(sku)`**: filter LOT ที่ `qty − usage > 0` พร้อมคำนวณ `remaining`
 - **`processBarcode` flow:**
   1. validate SKU/barcode → match item
-  2. ถ้า `allLots.length === 0` (SKU ไม่มีใน lotMap) → สแกนปกติไม่มี LOT
-  3. ถ้า `availableLots.length === 0` (LOT หมดทั้งหมด) → **block scan** + toast `⚠ LOT หมดทั้งหมด สต็อกไม่พอ`
-  4. ถ้า `match.lot` ยังอยู่ใน availableLots → ใช้ต่อไม่ popup
-  5. Android + `>1 available` → `setPendingLot({match, lots: availableLots})` → popup เด้ง
-  6. ไม่งั้น auto-pick `availableLots[0].lot`
-- **`applyScan(match, lot, resetLot=false, exp='')`**: เพิ่ม `got+1`, set `item.lot` (ถ้า resetLot=true จะ overwrite LOT เดิม กรณีสลับเพราะ LOT หมด), set `item.exp` เฉพาะเมื่อมี `exp` ส่งมา (จาก manual entry เท่านั้น — LOT ที่เลือกจาก list ไม่มี exp)
+  2. resolve `scannedBarcode` (ดู *`scannedBarcode` field* ด้านบน) — ทำก่อนเข้า LOT logic เสมอ ไม่ว่า SKU จะมี LOT หรือไม่
+  3. ถ้า `allLots.length === 0` (SKU ไม่มีใน lotMap) → สแกนปกติไม่มี LOT
+  4. ถ้า `availableLots.length === 0` (LOT หมดทั้งหมด) → **block scan** + toast `⚠ LOT หมดทั้งหมด สต็อกไม่พอ`
+  5. ถ้า `match.lot` ยังอยู่ใน availableLots → ใช้ต่อไม่ popup
+  6. Android + `>1 available` → `setPendingLot({match, lots: availableLots, scannedBarcode})` → popup เด้ง
+  7. ไม่งั้น auto-pick `availableLots[0].lot`
+- **`applyScan(match, lot, resetLot=false, exp='', scannedBarcode='')`**: เพิ่ม `got+1`, set `item.lot` (ถ้า resetLot=true จะ overwrite LOT เดิม กรณีสลับเพราะ LOT หมด), set `item.exp` เฉพาะเมื่อมี `exp` ส่งมา (จาก manual entry เท่านั้น — LOT ที่เลือกจาก list ไม่มี exp), set `item.scannedBarcode` เฉพาะเมื่อมีค่าส่งมา
 - **Popup UI** (`pendingLot` state, render ผ่าน `createPortal` → `document.body`) — 2 โหมดสลับด้วย `manualLotMode`:
-  - **โหมดเลือกจาก list (default):** แสดง SKU + ชื่อสินค้า + ปุ่ม LOT แต่ละตัว (`lot` + `เหลือ N`) → คลิก → `handleLotSelect(lot)` → `applyScan(match, lot, true)` → ปิด popup, scan complete
+  - **โหมดเลือกจาก list (default):** แสดง SKU + ชื่อสินค้า + ปุ่ม LOT แต่ละตัว (`lot` + `เหลือ N`) → คลิก → `handleLotSelect(lot)` → อ่าน `scannedBarcode` จาก `pendingLot` → `applyScan(match, lot, true, '', scannedBarcode)` → ปิด popup, scan complete
     - ปุ่ม **"✎ ใส่ LOT เอง"** → `setManualLotMode(true)` สลับไปฟอร์มกรอกเอง
     - ปุ่ม "ยกเลิก" (ไม่นับ scan) → `closeLotPopup()`
   - **โหมดใส่ LOT เอง (`manualLotMode=true`):** ฟอร์ม LOT (text input) + Exp พ.ศ. 3 ช่อง DD/MM/YYYY (ทุกช่องเป็น numeric input, digit-only filter + length cap ผ่าน `.replace(/[^0-9]/g,'').slice(n)`) — **ไม่ใช้ dropdown เดือนแบบเดิม (เคยเป็น `<select>` ชื่อเดือนไทย ลบ `THAI_MONTHS` ออกไปแล้ว)**
-    - `handleManualLotConfirm()`: validate LOT ต้องไม่ว่าง; Exp ต้องกรอกครบทั้ง 3 ช่องหรือไม่กรอกเลย (กรอกบางช่อง → toast error) → ประกอบเป็น `DD/MM/YYYY` (zero-pad D/M ด้วย `.padStart(2,'0')`) → `applyScan(match, lot, true, exp)`
+    - `handleManualLotConfirm()`: validate LOT ต้องไม่ว่าง; Exp ต้องกรอกครบทั้ง 3 ช่องหรือไม่กรอกเลย (กรอกบางช่อง → toast error) → ประกอบเป็น `DD/MM/YYYY` (zero-pad D/M ด้วย `.padStart(2,'0')`) → อ่าน `scannedBarcode` จาก `pendingLot` → `applyScan(match, lot, true, exp, scannedBarcode)`
     - ปุ่ม "← กลับ" → `setManualLotMode(false)` (กลับไป list, ไม่ปิด popup)
   - **`closeLotPopup()` ไม่เคลียร์ฟอร์ม manual entry** (`manualLot`/`manualExpD`/`manualExpM`/`manualExpY` คงค่าเดิมไว้ข้าม SKU/scan) — ของจริงมักแพ็คจากลอตเดียวกันหลาย SKU ต่อเนื่อง ครั้งถัดไปกด "✎ ใส่ LOT เอง" จะเห็นค่าล่าสุดเดิมพร้อมยืนยัน ไม่ต้องพิมพ์ซ้ำ; ฟอร์มจะเคลียร์ก็ต่อเมื่อ component remount เท่านั้น (สลับพนักงาน/catalog — ดู `key` prop ที่ AndroidApp.jsx)
 - **`processBarcode` block ขณะ `pendingLot !== null`** — กันสแกนซ้ำขณะรอเลือก LOT
@@ -639,6 +651,7 @@ $img = New-Object System.Drawing.Bitmap 'public\characters\emp-03\S.png'
 - **selectedId:** useState lazy init — เลือก `activeBoxId` เฉพาะเมื่ออยู่ใน closedBoxes (กันเลือกลัง open ใหม่หลังปิดลัง) ไม่งั้น fallback `closedBoxes[0]` (ลังปิดล่าสุด)
   - **คลิกการ์ดลัง = set `selectedId` เท่านั้น ไม่แตะ `activeBoxId`** — ป้องกัน activeBoxId ของการแพ็คถูกเปลี่ยนเป็นลังที่ปิดแล้ว (เคยเป็นบั๊ก: สแกนต่อจะลงลังที่ปิดไปแล้ว)
 - ปุ่ม "⇩ ส่งออกไฟล์ Text" → export `.txt` แบบ TSV ไม่มี header: `barcode\tจำนวนสินค้า\tทุนสินค้า\t\t\t\t\t\tLOT\tEXP`
+  - **Barcode source priority:** `item.scannedBarcode` (บาร์โค้ดตัวจริงที่สแกนลงลังนี้ — ดู *`scannedBarcode` field* ใน PackScanC) → fallback `item.barcode` (ค่าจาก catalog ซึ่งอาจเป็น comma-separated หลายตัว — ดู *applyBarcodeMap* — ใช้เฉพาะกรณีลังเก่าก่อนมี field นี้) → ว่าง
   - ทุนสินค้า = `costMap[sku__unit]` (0 ถ้ายังไม่ import cost map); active เมื่อ status `closed`/`exported`
   - **LOT format:** หลัง cost มี **6 TABs** (สร้าง 5 column ว่างให้ตรงโครงสร้าง POS) แล้วตามด้วย LOT
   - **LOT source priority:** `item.lot` (LOT ที่พนักงาน Android เลือกตอนสแกน) → fallback `lotMap[sku][0]?.lot` (LOT ตัวแรก, สำหรับลังที่ pack จาก desktop) → ว่าง
@@ -651,9 +664,10 @@ $img = New-Object System.Drawing.Bitmap 'public\characters\emp-03\S.png'
   - **เหตุผลที่ต้องแยก:** เดิมใช้ trick `visibility:hidden` ซ่อนทั้งหน้า + `position:fixed` โชว์เฉพาะ label ตอนพิมพ์ — แต่ `visibility:hidden` ไม่ลบ element ออกจาก layout (ยังกินความสูงอยู่) ทำให้หน้า Outbound ที่ยาว (รายการลังซ้าย/ตาราง) ดัน print pagination ออกมาหลายสิบแผ่น และ Chrome จะ repeat element `position:fixed` ซ้ำทุกแผ่นที่ paginate ออกมา (ของเดิมเลยได้ 11 แผ่น ตัวอักษรทับกันมั่ว)
   - **วิธีแก้:** `styles.css` → `@media print { #root { display: none !important; } .print-only-label { display: flex !important; } }` — `display:none` ลบ `#root` ออกจาก layout จริง (ความสูง = 0 ไม่ paginate) ส่วน `.print-only-label` (portal, อยู่นอก `#root`) ไม่ถูกกระทบ จึงเหลือ element เดียวในหน้าพิมพ์ → ออกแผ่นเดียวพอดี
   - **`@page { size: 90mm 65mm; margin: 0; }`** กำหนดขนาดกระดาษจริงตรงกับ label sticker (เผื่อ driver/OS ไม่ได้ตั้ง default ตรงขนาดเครื่องพิมพ์ TSC TTP-244 Pro)
-- **ปุ่ม "⇩ ส่งออกรายการลังทั้งหมด"** (frame-header ขวา, เดิมชื่อ "Export Excel") — export **ทุกลังที่ปิดแล้ว** เป็นไฟล์ `.xls` HTML table:
+- **ปุ่ม "⇩ ส่งออกรายการลังทั้งหมด"** (frame-header ขวา, เดิมชื่อ "Export Excel") — export **ทุกลังที่ปิดแล้ว** เป็นไฟล์ `.xlsx` จริงผ่าน SheetJS (`aoa_to_sheet` + `book_new` + `writeFile`) — **ไม่ใช่ HTML-table trick แบบเดิมแล้ว**:
   - คอลัมน์: เลขที่ลังสินค้า / เลขที่เอกสาร / SKU / ชื่อสินค้า / Barcode / หน่วย / จำนวน / พนักงานแพ็คสินค้า / วันที่ส่งสินค้า (DD/MM/YYYY)
-  - Font: Anuphan, column width กำหนดด้วย `<col width>` + inline style บน cell; active เมื่อมี closedBoxes ≥ 1
+  - **Barcode column source:** `l.scannedBarcode || l.barcode || ''` (เดียวกับ ⇩ ส่งออกไฟล์ Text — ดู *`scannedBarcode` field*)
+  - Column width กำหนดด้วย `ws['!cols']` (array ของ `{wch}`); ไฟล์ชื่อ `all_boxes_{DD-MM-YYYY}.xlsx`; active เมื่อมี closedBoxes ≥ 1
 - **อนุมัติเอกสาร:** ต้องกรอก **เลขที่เอกสาร** ก่อน → บันทึก `box.pos` + status → `exported`
 - ปุ่ม 🔥 ล้าง Firestore ทั้งหมด → เรียก `clearFirestore()` จาก App.jsx
 - **Tab badge:** ปุ่ม tab Outbound แสดง badge ส้มนับ `boxes.filter(b => b.status === 'closed').length` (ลังรออนุมัติเอกสาร)

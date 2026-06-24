@@ -414,11 +414,16 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     const match = items.find(it => it.sku === catMatch.sku && it.unit === catMatch.unit);
     if (!match || match.got >= match.need) { showToast('⚠ ครบแล้ว', 'error'); return; }
 
+    // catMatch.barcode อาจเป็น comma-separated หลายตัวต่อ SKU (ดู matchBarcode ใน data.js) — เก็บตัวที่สแกนจริงไว้ export
+    const scannedBarcode = catMatch.barcode.split(',').map(b => b.trim()).includes(barcode)
+      ? barcode
+      : (catMatch.barcode.split(',')[0]?.trim() || '');
+
     const allLots = lotMap[match.sku] || [];
 
     // SKU ไม่มีใน lotMap → สแกนปกติไม่มี LOT
     if (allLots.length === 0) {
-      await applyScan(match, null);
+      await applyScan(match, null, false, '', scannedBarcode);
       return;
     }
 
@@ -432,18 +437,19 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
 
     // Android: ให้เลือก LOT ทุกครั้งที่สแกน (ทุกชิ้น) เสมอ — ไม่ auto-reuse LOT เดิม/auto-pick อีกต่อไป
     if (isAndroid) {
-      setPendingLot({ match, lots: availableLots });
+      setPendingLot({ match, lots: availableLots, scannedBarcode });
       return;
     }
 
     // Desktop: คงพฤติกรรมเดิม — ใช้ LOT เดิมต่อถ้ายังไม่หมด ไม่งั้นใช้ตัวแรกที่เหลือ (auto, ไม่มี popup)
     const currentValid = match.lot && availableLots.some(l => l.lot === match.lot);
     const autoLot = currentValid ? match.lot : availableLots[0].lot;
-    await applyScan(match, autoLot, !currentValid);
+    await applyScan(match, autoLot, !currentValid, '', scannedBarcode);
   }
 
   // resetLot=true → เปลี่ยน lot ของ item เป็นค่าใหม่ (กรณี LOT เก่าหมด ต้องสลับ); exp = วันหมดอายุ (เฉพาะตอนใส่ LOT เอง — LOT จาก lotMap ไม่มีข้อมูล exp)
-  async function applyScan(match, lot, resetLot = false, exp = '') {
+  // scannedBarcode = บาร์โค้ดตัวจริงที่สแกน เก็บไว้ export (ต่างจาก it.barcode ที่อาจเป็น comma-separated หลายตัวจาก catalog)
+  async function applyScan(match, lot, resetLot = false, exp = '', scannedBarcode = '') {
     const newItems = items.map(it =>
       it.sku === match.sku && it.unit === match.unit
         ? {
@@ -451,6 +457,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
             got: it.got + 1,
             ...(lot && (resetLot || !it.lot) ? { lot } : {}),
             ...(exp && (resetLot || !it.exp) ? { exp } : {}),
+            ...(scannedBarcode ? { scannedBarcode } : {}),
           }
         : it
     );
@@ -472,9 +479,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
 
   async function handleLotSelect(lot) {
     if (!pendingLot) return;
-    const { match } = pendingLot;
+    const { match, scannedBarcode } = pendingLot;
     closeLotPopup();
-    await applyScan(match, lot, true);
+    await applyScan(match, lot, true, '', scannedBarcode);
   }
 
   async function handleManualLotConfirm() {
@@ -485,9 +492,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     const allExp = manualExpD && manualExpM && manualExpY;
     if (anyExp && !allExp) { showToast('⚠ กรุณากรอกวันที่ Exp ให้ครบ', 'error'); return; }
     const exp = allExp ? `${String(manualExpD).padStart(2, '0')}/${String(manualExpM).padStart(2, '0')}/${manualExpY}` : '';
-    const { match } = pendingLot;
+    const { match, scannedBarcode } = pendingLot;
     closeLotPopup();
-    await applyScan(match, lot, true, exp);
+    await applyScan(match, lot, true, exp, scannedBarcode);
   }
 
   // ปัด card ยืนยัน "ของหมด" — แช่ need ไว้ที่ got ปัจจุบัน (กันถูกดึงไปลังถัดไปซ้ำ) + ซ่อนออกจาก checklist
