@@ -191,7 +191,7 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
   );
 }
 
-// Android: card สินค้าปัดได้ — ปัดซ้าย/ขวาเกิน SWIPE_THRESHOLD → ถาม "ของหมดใช่ไหม" → ลบออกจาก checklist
+// Android: card สินค้าปัดได้ — ปัดซ้ายเกิน SWIPE_THRESHOLD → ถาม "ของหมดใช่ไหม" → ลบออกจาก checklist
 function ItemCard({ c, done, partial, onMarkOutOfStock }) {
   const [dragX, setDragX] = useState(0);
   const [confirming, setConfirming] = useState(false);
@@ -203,7 +203,8 @@ function ItemCard({ c, done, partial, onMarkOutOfStock }) {
   }
   function onTouchMove(e) {
     if (!isAndroid || !dragRef.current.dragging) return;
-    setDragX(e.touches[0].clientX - dragRef.current.x);
+    // ปัดซ้ายอย่างเดียว — clamp ไม่ให้ลากไปทางขวา
+    setDragX(Math.min(0, e.touches[0].clientX - dragRef.current.x));
   }
   function onTouchEnd() {
     if (!isAndroid || !dragRef.current.dragging) return;
