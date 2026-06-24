@@ -588,6 +588,41 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
         )}
       </div>
 
+      {/* render เฉพาะตอนพิมพ์ (.print-only-label display:none ปกติ, display:flex ใน @media print) —
+          แยกออกจาก #root ทั้งหมดผ่าน portal เพื่อให้ #root ถูกซ่อนด้วย display:none ตอนพิมพ์ได้
+          โดยไม่กระทบ element นี้ → เหลือ element เดียวใน printable flow → ออกแผ่นเดียวพอดี 90×65mm */}
+      {activeBox && createPortal(
+        <div className="print-only-label" style={{
+          width: '90mm', height: '65mm',
+          position: 'fixed', top: 0, left: 0,
+          padding: '8mm', boxSizing: 'border-box',
+          background: 'white', fontFamily: 'JetBrains Mono',
+          flexDirection: 'column', justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px dashed var(--line)', paddingBottom: 8 }}>
+            <div>
+              <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700 }}>คลังสินค้า · WH-01</div>
+              <div style={{ fontSize: 10, color: 'var(--mute)' }}>packed {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontFamily: 'system-ui', fontSize: 16, fontWeight: 700 }}>{activeBox.id}</div>
+              {activeBox.status === 'exported' && activeBox.pos && activeBox.pos !== '—' && (
+                <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700 }}>เลขที่เอกสาร: {activeBox.pos}</div>
+              )}
+            </div>
+          </div>
+          <div style={{ textAlign: 'center', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <SketchyBarcode value={activeBox.id} width={280} height={56} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, fontSize: 11, borderTop: '1px dashed var(--line)', paddingTop: 8 }}>
+            <div>SKU: <b>{activeBox.skuCount ?? 0}</b></div>
+            <div>ชิ้น: <b>{activeBox.totalQty ?? 0}</b></div>
+            {activeBox.packer && <div>โดย: <b>{activeBox.packer.name}</b></div>}
+          </div>
+        </div>,
+        document.body
+      )}
+
       {confirmDeleteId && deletingBox && createPortal(
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,

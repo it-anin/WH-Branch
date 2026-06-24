@@ -213,21 +213,6 @@ export default function AndroidApp({
           </div>
         )}
       </div>
-
-      {/* bottom bar: ป้ายโหมด (แพ็คกิ้ง/รับสินค้า) */}
-      <div style={{
-        display: 'flex', flexShrink: 0,
-        height: 56,
-        borderTop: '2px solid var(--line)',
-        background: 'var(--paper-dark)',
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        <span style={{
-          fontFamily: 'system-ui', fontSize: 17, fontWeight: 700, color: 'var(--accent)',
-        }}>
-          {isWarehouse ? '📦 แพ็คกิ้ง' : '📥 รับสินค้า'}
-        </span>
-      </div>
     </div>
   );
 }

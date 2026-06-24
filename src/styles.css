@@ -310,18 +310,24 @@ button:active:not(:disabled):not(.no-press) {
   }
 }
 
+@page {
+  size: 90mm 65mm;
+  margin: 0;
+}
+
+/* element พิเศษ render ผ่าน portal เฉพาะตอนพิมพ์ (ดู .print-only-label ใน BoxClosedLabel.jsx) —
+   ไม่ใช้ trick "visibility:hidden ทุกอย่าง + show .print-label" แบบเดิม เพราะ element ที่ถูกซ่อนด้วย
+   visibility ยังกินพื้นที่ใน layout อยู่ → หน้าอื่นที่ยาวมาก (รายการลังซ้าย/ตาราง) ดันให้ print
+   ออกมาหลายสิบแผ่นพร้อม .print-label (position:fixed) ซ้ำทุกแผ่น แทนที่จะออกแผ่นเดียว
+   ใช้ display:none ซ่อนทั้งแอป (#root) ตอนพิมพ์แทน — ลบออกจาก layout เลย ไม่เหลือความสูงให้ paginate */
+.print-only-label {
+  display: none;
+}
+
 @media print {
-  * { visibility: hidden !important; }
-  .print-label, .print-label * { visibility: visible !important; }
-  .print-label {
-    position: fixed !important;
-    top: 0; left: 0;
-    width: 90mm; height: 65mm;
-    padding: 8mm !important;
-    border: none !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    box-sizing: border-box !important;
+  #root { display: none !important; }
+  .print-only-label {
+    display: flex !important;
   }
 }
 

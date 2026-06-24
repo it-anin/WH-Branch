@@ -102,7 +102,7 @@ export const ALL_BRANCH_STAFF = ...  // flatten ทุกสาขา (+ branch 
     - **สาขา (SRC/KKL/SSS)** → โหมดรับสินค้า
   - **ขั้น 2 เลือกพนักงาน:** `staffList = isWarehouse ? PACKERS : branch.staff`; `currentStaff/setStaff = isWarehouse ? packer/setPacker : branchStaff/setBranchStaff` (packer = lifted ที่ App.jsx, branchStaff = local) — เภสัชมี tag 💊; ปุ่ม "← เปลี่ยนที่ทำงาน" → `changeBranch`
     - **staff ไม่ persist** — `selectBranch`/`changeBranch` ล้าง packer+branchStaff เสมอ → reload แล้วต้องเลือกพนักงานใหม่ทุกครั้ง (location ยังจำได้)
-  - **ขั้น 3 หน้าสแกน:** PackScanC (warehouse) / BranchReceive (`branch={branch.code}`); header โชว์ ที่ทำงาน + 👤 พนักงาน + ปุ่ม "เปลี่ยน" (`setStaff(null)` → กลับขั้น 2); bottom bar = ป้ายโหมดเฉย ๆ (ไม่มี tab switching แล้ว)
+  - **ขั้น 3 หน้าสแกน:** PackScanC (warehouse) / BranchReceive (`branch={branch.code}`); header โชว์ ที่ทำงาน + 👤 พนักงาน + ปุ่ม "เปลี่ยน" (`setStaff(null)` → กลับขั้น 2) — ไม่มี bottom bar / tab switching แล้ว (เคยมีป้ายโหมด "📦 แพ็คกิ้ง"/"📥 รับสินค้า" ใต้จอ ลบออกแล้วเพราะซ้ำซ้อนกับ header)
 - **เดิม** เคย hardcode `BRANCH_STAFF` (BR-01..BR-05) ซ้ำใน BranchReceive.jsx + AndroidApp.jsx — ย้ายมา `branches.js` แล้ว (BranchReceive import `ALL_BRANCH_STAFF`, AndroidApp import `BRANCHES`)
 
 ### กรองลังตามสาขา (Android receive)
@@ -150,7 +150,7 @@ src/
     ├── PackScanC.jsx            # Tab: แพ็คกิ้ง — Checklist (variant เดียวที่ใช้)
     ├── BoxClosedLabel.jsx       # Tab: Outbound (รายการส่งสินค้า) — สติกเกอร์ + ค้นหาข้ามลัง + filter สถานะ/พนักงาน + แก้ไขลังมีปัญหา
     ├── BranchReceive.jsx        # Tab: รับสินค้า (สาขา) — ยืนยันรับลัง
-    ├── AndroidApp.jsx           # Android-only UI — 2 tabs (แพ็คกิ้ง + รับสินค้า) full-screen portrait
+    ├── AndroidApp.jsx           # Android-only UI — flow 3 ขั้น (เลือกที่ทำงาน→พนักงาน→สแกน) full-screen portrait
     ├── PackScanA.jsx            # (unused — ลบออกจาก routing แล้ว)
     ├── PackScanB.jsx            # (unused — ลบออกจาก routing แล้ว)
     ├── ExportPOS.jsx            # (unused — ลบออกจาก routing แล้ว)
@@ -420,6 +420,7 @@ open → packing → closed → exported → received
 - **Init `items` หักของที่แพ็คไปแล้ว:** useState initializer คำนวณ `need = catalog.qty − จำนวนที่พนักงานคนนี้แพ็คไปแล้ว` (รวมจาก `itemsByBox` ของลัง status `closed`/`exported`/`received` ที่ `packer.code` ตรงกัน) แล้ว `.filter(need > 0)` — กันสินค้าที่ลงลังครบแล้วโผล่ซ้ำหลัง remount (สลับแท็บ) / reload
   - in-session: `doClose()` หัก `need -= got` + ตัดตัวที่ `got >= need` ออก — สอดคล้องกับ initializer (catalog total − packed ทั้งหมด)
 - **`barcode` field ใน item card ต้องแสดงเสมอ** — ใช้ยืนยัน barcode ก่อนสแกน ห้ามลบออกจาก card rendering
+- **`c.exp` ใน item card** — แสดงบรรทัด `EXP: {exp}` (สีส้ม accent) ใต้ barcode เฉพาะเมื่อมีค่า (กรอกผ่าน "✎ ใส่ LOT เอง" เท่านั้น — ดู *LOT Selection*)
 - Barcode lookup ใช้ `catalog` prop (ไม่ใช่ local `items`) เพื่อให้ unit validation ทำงานถูกต้อง
 - **Optimistic UI:** `setItems(newItems)` เรียกก่อน `await createNewBox()` — UI อัพทันที Firestore sync ใน background
 - `handleBarcode`: validate barcode → `setItems` ทันที → `createNewBox()` ถ้าไม่มี activeBoxId → `onScanProgress`
@@ -456,12 +457,15 @@ open → packing → closed → exported → received
   4. ถ้า `match.lot` ยังอยู่ใน availableLots → ใช้ต่อไม่ popup
   5. Android + `>1 available` → `setPendingLot({match, lots: availableLots})` → popup เด้ง
   6. ไม่งั้น auto-pick `availableLots[0].lot`
-- **`applyScan(match, lot, resetLot=false)`**: เพิ่ม `got+1`, set `item.lot` (ถ้า resetLot=true จะ overwrite LOT เดิม กรณีสลับเพราะ LOT หมด)
-- **Popup UI** (`pendingLot` state, render ผ่าน `createPortal` → `document.body`):
-  - แสดง SKU + ชื่อสินค้า
-  - ปุ่ม LOT แต่ละตัว — แสดง `lot` + `เหลือ N` (จำนวนคงเหลือ)
-  - คลิก → `handleLotSelect(lot)` → `applyScan(match, lot, true)` → ปิด popup, scan complete
-  - มีปุ่ม "ยกเลิก" (ไม่นับ scan)
+- **`applyScan(match, lot, resetLot=false, exp='')`**: เพิ่ม `got+1`, set `item.lot` (ถ้า resetLot=true จะ overwrite LOT เดิม กรณีสลับเพราะ LOT หมด), set `item.exp` เฉพาะเมื่อมี `exp` ส่งมา (จาก manual entry เท่านั้น — LOT ที่เลือกจาก list ไม่มี exp)
+- **Popup UI** (`pendingLot` state, render ผ่าน `createPortal` → `document.body`) — 2 โหมดสลับด้วย `manualLotMode`:
+  - **โหมดเลือกจาก list (default):** แสดง SKU + ชื่อสินค้า + ปุ่ม LOT แต่ละตัว (`lot` + `เหลือ N`) → คลิก → `handleLotSelect(lot)` → `applyScan(match, lot, true)` → ปิด popup, scan complete
+    - ปุ่ม **"✎ ใส่ LOT เอง"** → `setManualLotMode(true)` สลับไปฟอร์มกรอกเอง
+    - ปุ่ม "ยกเลิก" (ไม่นับ scan) → `closeLotPopup()`
+  - **โหมดใส่ LOT เอง (`manualLotMode=true`):** ฟอร์ม LOT (text input) + Exp พ.ศ. 3 ช่อง DD/MM/YYYY (ทุกช่องเป็น numeric input, digit-only filter + length cap ผ่าน `.replace(/[^0-9]/g,'').slice(n)`) — **ไม่ใช้ dropdown เดือนแบบเดิม (เคยเป็น `<select>` ชื่อเดือนไทย ลบ `THAI_MONTHS` ออกไปแล้ว)**
+    - `handleManualLotConfirm()`: validate LOT ต้องไม่ว่าง; Exp ต้องกรอกครบทั้ง 3 ช่องหรือไม่กรอกเลย (กรอกบางช่อง → toast error) → ประกอบเป็น `DD/MM/YYYY` (zero-pad D/M ด้วย `.padStart(2,'0')`) → `applyScan(match, lot, true, exp)`
+    - ปุ่ม "← กลับ" → `setManualLotMode(false)` (กลับไป list, ไม่ปิด popup)
+  - **`closeLotPopup()` ไม่เคลียร์ฟอร์ม manual entry** (`manualLot`/`manualExpD`/`manualExpM`/`manualExpY` คงค่าเดิมไว้ข้าม SKU/scan) — ของจริงมักแพ็คจากลอตเดียวกันหลาย SKU ต่อเนื่อง ครั้งถัดไปกด "✎ ใส่ LOT เอง" จะเห็นค่าล่าสุดเดิมพร้อมยืนยัน ไม่ต้องพิมพ์ซ้ำ; ฟอร์มจะเคลียร์ก็ต่อเมื่อ component remount เท่านั้น (สลับพนักงาน/catalog — ดู `key` prop ที่ AndroidApp.jsx)
 - **`processBarcode` block ขณะ `pendingLot !== null`** — กันสแกนซ้ำขณะรอเลือก LOT
 
 ## ZoneAssign — Logic สำคัญ
@@ -638,11 +642,15 @@ $img = New-Object System.Drawing.Bitmap 'public\characters\emp-03\S.png'
   - ทุนสินค้า = `costMap[sku__unit]` (0 ถ้ายังไม่ import cost map); active เมื่อ status `closed`/`exported`
   - **LOT format:** หลัง cost มี **6 TABs** (สร้าง 5 column ว่างให้ตรงโครงสร้าง POS) แล้วตามด้วย LOT
   - **LOT source priority:** `item.lot` (LOT ที่พนักงาน Android เลือกตอนสแกน) → fallback `lotMap[sku][0]?.lot` (LOT ตัวแรก, สำหรับลังที่ pack จาก desktop) → ว่าง
-  - **EXP column:** อีก 1 TAB ถัดจาก LOT → `item.exp` (วันหมดอายุ พ.ศ. `DD/เดือนไทย/YYYY` — กรอกได้เฉพาะตอนพนักงาน Android เลือก "✎ ใส่ LOT เอง"; LOT จาก lotMap ไม่มี exp ไม่มี fallback → ว่าง)
-  - ตัวอย่าง (มี exp): `8859243302790\t4\t8.49\t\t\t\t\t\t10012026\t22/มิถุนายน/2569`
+  - **EXP column:** อีก 1 TAB ถัดจาก LOT → `item.exp` (วันหมดอายุ พ.ศ. `DD/MM/YYYY` ตัวเลขทั้งหมด — กรอกได้เฉพาะตอนพนักงาน Android เลือก "✎ ใส่ LOT เอง"; LOT จาก lotMap ไม่มี exp ไม่มี fallback → ว่าง)
+  - ตัวอย่าง (มี exp): `8859243302790\t4\t8.49\t\t\t\t\t\t10012026\t22/06/2569`
   - ตัวอย่าง (ไม่มี exp): `8859243302790\t4\t8.49\t\t\t\t\t\t10012026\t`
   - **กันส่งซ้ำ:** กดแล้ว set `box.textExported = true` (sync Firestore) → ปุ่ม disable + เปลี่ยนเป็น "✓ ส่งออกไฟล์ Text แล้ว" ถาวร จนกว่าจะกด **Clear · เริ่มวันถัดไป** (clearBoxes ลบ box → flag หาย)
-- ปุ่ม "🖨 พิมพ์ใบปิดลัง" → ล็อกจนกว่า `box.status === 'exported'`
+- ปุ่ม "🖨 พิมพ์ใบปิดลัง" → ล็อกจนกว่า `box.status === 'exported'` — `handlePrint()` แค่เรียก `window.print()`
+  - **Print isolation (`.print-only-label`, portal):** สติกเกอร์ที่พิมพ์จริง render แยกจาก preview บนจอ — เป็น element ใหม่ที่ `createPortal` ไปที่ `document.body` ตรงๆ (sibling ของ `#root` ไม่ใช่ลูก) เนื้อหา (sticker JSX) เหมือน preview บนจอทุกอย่างแต่ duplicate ไว้คนละ element โดยตั้งใจ (ไม่ share component — สั้นพอที่ไม่คุ้มทำ abstraction)
+  - **เหตุผลที่ต้องแยก:** เดิมใช้ trick `visibility:hidden` ซ่อนทั้งหน้า + `position:fixed` โชว์เฉพาะ label ตอนพิมพ์ — แต่ `visibility:hidden` ไม่ลบ element ออกจาก layout (ยังกินความสูงอยู่) ทำให้หน้า Outbound ที่ยาว (รายการลังซ้าย/ตาราง) ดัน print pagination ออกมาหลายสิบแผ่น และ Chrome จะ repeat element `position:fixed` ซ้ำทุกแผ่นที่ paginate ออกมา (ของเดิมเลยได้ 11 แผ่น ตัวอักษรทับกันมั่ว)
+  - **วิธีแก้:** `styles.css` → `@media print { #root { display: none !important; } .print-only-label { display: flex !important; } }` — `display:none` ลบ `#root` ออกจาก layout จริง (ความสูง = 0 ไม่ paginate) ส่วน `.print-only-label` (portal, อยู่นอก `#root`) ไม่ถูกกระทบ จึงเหลือ element เดียวในหน้าพิมพ์ → ออกแผ่นเดียวพอดี
+  - **`@page { size: 90mm 65mm; margin: 0; }`** กำหนดขนาดกระดาษจริงตรงกับ label sticker (เผื่อ driver/OS ไม่ได้ตั้ง default ตรงขนาดเครื่องพิมพ์ TSC TTP-244 Pro)
 - **ปุ่ม "⇩ ส่งออกรายการลังทั้งหมด"** (frame-header ขวา, เดิมชื่อ "Export Excel") — export **ทุกลังที่ปิดแล้ว** เป็นไฟล์ `.xls` HTML table:
   - คอลัมน์: เลขที่ลังสินค้า / เลขที่เอกสาร / SKU / ชื่อสินค้า / Barcode / หน่วย / จำนวน / พนักงานแพ็คสินค้า / วันที่ส่งสินค้า (DD/MM/YYYY)
   - Font: Anuphan, column width กำหนดด้วย `<col width>` + inline style บน cell; active เมื่อมี closedBoxes ≥ 1
@@ -896,15 +904,12 @@ webView.evaluateJavascript(
 - ไม่มี topbar, tabs, canvas
 - `--note-display` ตั้งเป็น `none` ตายตัว (Annotation component ไม่ได้ใช้แล้ว)
 
-**AndroidApp.jsx (`src/screens/AndroidApp.jsx`):**
-- Full-screen fixed layout (`position: fixed; inset: 0`)
-- 2 tabs ด้านล่าง (height 56px): 📦 แพ็คกิ้ง / 📥 รับสินค้า
-- Pack tab: packer selector strip — label `"พนักงาน:"` + PackScanC fills remaining height
+**AndroidApp.jsx (`src/screens/AndroidApp.jsx`):** — flow 3 ขั้นเต็มจอ (ดูรายละเอียด logic ที่ section *BRANCHES + พนักงานต่อสาขา* ด้านบน) — **ไม่มี tab/bottom bar แล้ว** (ของเดิมเป็น 2 tabs ด้านล่าง ลบออกไปนานแล้ว)
+- ขั้น 1/2 (`!branch` / `!currentStaff`): full-screen picker (`position: fixed; inset: 0`), การ์ดปุ่มเลือกที่ทำงาน/พนักงาน
+- ขั้น 3 (หน้าสแกน): header แถวเดียว (ที่ทำงาน + 👤 พนักงาน + ปุ่ม "เปลี่ยน") ต่อด้วย content เต็มพื้นที่ที่เหลือ — `isWarehouse ? <PackScanC> : <BranchReceive branch={branch.code}>`
+  - PackScanC ได้ `key={packer.code}-${packCatalog.length}` — remount ทุกครั้งที่สลับพนักงานหรือ catalog เปลี่ยน (ขนาด) เพื่อ reset state ภายใน (รวม manual LOT form — ดู *LOT Selection*)
   - ส่ง `catalogMeta` prop ไปให้ PackScanC เพื่อแสดง Picklist info ใน frame-header
-- Receive tab: branch staff selector strip — label `"พนักงาน:"` + BranchReceive fills remaining height
-  - `branchStaff`/`setBranchStaff` state managed ที่ AndroidApp (controlled mode)
-  - `BRANCH_STAFF` constant ซ้ำไว้ที่ AndroidApp.jsx ด้วย (นอกจาก BranchReceive.jsx)
-  - ถ้ายังไม่เลือกพนักงาน → placeholder "👆 เลือกชื่อพนักงานก่อน" (เดียวกับ pack tab)
+  - BranchReceive ได้ `branchStaff`/`setBranchStaff` (controlled mode, state อยู่ที่ AndroidApp) + `isAndroid={true}`
 - `setTab={() => {}}` — ปิด navigation ที่ไม่เกี่ยว
 - Props: `screenProps, packer, setPacker, PACKERS, catalogByPacker, onScanProgress, catalogMeta`
 

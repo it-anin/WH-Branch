@@ -5,7 +5,6 @@ import { generatePOS, matchBarcode } from '../data.js';
 const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
 const SWIPE_THRESHOLD = 70; // px ก่อนถือว่าเป็นการปัดจริง (กันสะกิดมือโดยไม่ตั้งใจ)
-const THAI_MONTHS = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
 
 function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
   const [selectedId, setSelectedId] = useState(null);
@@ -464,14 +463,11 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     if (onScanProgress && boxId) onScanProgress(boxId, newItems);
   }
 
-  // ปิด popup เลือก/ใส่ LOT — เคลียร์ฟอร์มใส่ LOT เองด้วยเสมอ กันค่าเก่าโผล่ตอนเปิด popup ครั้งถัดไป (คนละ SKU)
+  // ปิด popup เลือก/ใส่ LOT — ไม่เคลียร์ฟอร์ม "ใส่ LOT เอง" (คงค่า LOT/Exp เดิมไว้)
+  // เพราะมักแพ็คจากลอตเดียวกันหลาย SKU ต่อเนื่อง ครั้งถัดไปกด "ใส่ LOT เอง" จะเห็นค่าล่าสุดเดิม ไม่ต้องพิมพ์ใหม่
   function closeLotPopup() {
     setPendingLot(null);
     setManualLotMode(false);
-    setManualLot('');
-    setManualExpD('');
-    setManualExpM('');
-    setManualExpY('');
   }
 
   async function handleLotSelect(lot) {
@@ -488,7 +484,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     const anyExp = manualExpD || manualExpM || manualExpY;
     const allExp = manualExpD && manualExpM && manualExpY;
     if (anyExp && !allExp) { showToast('⚠ กรุณากรอกวันที่ Exp ให้ครบ', 'error'); return; }
-    const exp = allExp ? `${String(manualExpD).padStart(2, '0')}/${manualExpM}/${manualExpY}` : '';
+    const exp = allExp ? `${String(manualExpD).padStart(2, '0')}/${String(manualExpM).padStart(2, '0')}/${manualExpY}` : '';
     const { match } = pendingLot;
     closeLotPopup();
     await applyScan(match, lot, true, exp);
@@ -638,15 +634,14 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                       onChange={e => setManualExpD(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
                       style={{ width: 56, textAlign: 'center', padding: '10px 4px' }}
                     />
-                    <select
+                    <input
                       className="input"
+                      placeholder="MM"
+                      inputMode="numeric"
                       value={manualExpM}
-                      onChange={e => setManualExpM(e.target.value)}
-                      style={{ flex: 1, padding: '10px 4px' }}
-                    >
-                      <option value="">เดือน</option>
-                      {THAI_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
+                      onChange={e => setManualExpM(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+                      style={{ width: 56, textAlign: 'center', padding: '10px 4px' }}
+                    />
                     <input
                       className="input"
                       placeholder="YYYY"
