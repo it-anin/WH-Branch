@@ -3,6 +3,16 @@ import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
 
+// พนักงาน Android กรอก Exp เป็น ค.ศ. (ตรงกับที่พิมพ์บนสินค้าจริง) แต่ไฟล์ Text ต้องเป็น พ.ศ. — แปลงตอน export
+// ปี < 2400 ถือว่าเป็น ค.ศ. (+543) — ลังเก่าก่อนเปลี่ยน label ที่กรอกเป็น พ.ศ. ไว้แล้ว (ปี >= 2400) จะไม่ถูกแปลงซ้ำ
+function toBuddhistExp(exp) {
+  if (!exp) return '';
+  const [d, m, y] = exp.split('/');
+  const yNum = Number(y);
+  if (!yNum) return exp;
+  return yNum < 2400 ? `${d}/${m}/${yNum + 543}` : exp;
+}
+
 // สถานะลังฝั่งรับสินค้า (สาขา) — แสดงเป็น badge ใน card
 function receiveBadge(b) {
   if (b.status === 'received')
@@ -84,17 +94,27 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       return;
     }
     if (boxItems.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังนี้'); return; }
-    const lines = boxItems.map(l => {
+    const lines = boxItems.flatMap(l => {
       const cost = costMap[`${l.sku}__${l.unit}`] ?? 0;
-      // l.lot = LOT ที่พนักงานเลือกตอนสแกน (Android), fallback → LOT ตัวแรกจาก lotMap
-      const lots = lotMap[l.sku] || [];
-      const lot = l.lot || lots[0]?.lot || '';
-      // l.exp = วันหมดอายุ — มีเฉพาะตอนพนักงานใส่ LOT เอง (Android); lotMap ไม่มีข้อมูล exp ให้ fallback
-      const exp = l.exp || '';
-      // l.scannedBarcode = บาร์โค้ดตัวที่สแกนจริง; l.barcode (จาก catalog) อาจเป็น comma-separated หลายตัวต่อ SKU — fallback ไว้กันลังเก่า/ไม่มีค่า
-      const barcode = l.scannedBarcode || l.barcode || '';
+      const fallbackBarcode = l.scannedBarcode || l.barcode || '';
+      const fallbackLots = lotMap[l.sku] || [];
+      // l.scannedLots = breakdown ต่อ LOT จริงที่สแกน (ดู addLotEntry ใน PackScanC) — แยกแถวเมื่อ SKU เดียวกันในลังนี้สแกนคนละ LOT
+      // ลังเก่าก่อน fix นี้ไม่มี l.scannedLots → fallback แถวเดียวด้วย l.lot/l.qty เดิม
+      const rows = (l.scannedLots && l.scannedLots.length > 0)
+        ? l.scannedLots.map(({ lot, qty, exp, scannedBarcode }) => ({
+            barcode: scannedBarcode || fallbackBarcode,
+            qty,
+            lot,
+            exp: toBuddhistExp(exp),
+          }))
+        : [{
+            barcode: fallbackBarcode,
+            qty: l.qty ?? l.got ?? 0,
+            lot: l.lot || fallbackLots[0]?.lot || '',
+            exp: toBuddhistExp(l.exp),
+          }];
       // โครงสร้าง POS: barcode TAB qty TAB cost + 6 TAB + lot TAB exp
-      return `${barcode}\t${l.qty ?? l.got ?? 0}\t${cost}\t\t\t\t\t\t${lot}\t${exp}`;
+      return rows.map(r => `${r.barcode}\t${r.qty}\t${cost}\t\t\t\t\t\t${r.lot}\t${r.exp}`);
     });
     triggerDownload(lines.join('\n'), `${activeBox.id}.txt`, 'text/plain');
     // mark ว่าลังนี้ส่งออก Text แล้ว — disable ปุ่มจนกว่าจะกด Clear (clearBoxes ลบ box → flag หาย)

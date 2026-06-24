@@ -432,6 +432,7 @@ open → packing → closed → exported → received
     : (catMatch.barcode.split(',')[0]?.trim() || '');
   ```
   ส่งผ่าน `applyScan`/`pendingLot` ไปจนถึง `doClose()` (auto-survive ผ่าน spread `{ ...it, qty: it.got }` ไม่ต้องแก้ `doClose`) → ใช้แทน `item.barcode` ตอน export (ดู *Outbound — ⇩ ส่งออกไฟล์ Text* และ *⇩ ส่งออกรายการลังทั้งหมด*) ด้วย fallback `scannedBarcode || barcode || ''` กันลังเก่า/ไม่มีค่า
+- **`scannedLots` field** — breakdown จำนวนจริงต่อ LOT บน item (ต่างจาก `item.lot` ที่เป็นค่าเดียวที่โดน overwrite ทุกครั้งที่สลับ LOT) เก็บเป็น `[{lot, qty, exp, scannedBarcode}]` — สร้าง/อัพเดทใน `addLotEntry()` ที่เรียกจาก `applyScan` ทุกครั้งที่มี `lot` (ไม่ว่า Android popup หรือ Desktop auto-pick): ถ้า LOT นั้นมีอยู่แล้วใน array → `qty += 1`, ไม่งั้น push entry ใหม่ `{lot, qty: 1, exp, scannedBarcode}` — auto-survive เข้า `doClose()`/`itemsByBox` ผ่าน spread เดียวกับ `scannedBarcode` (ไม่ต้องแก้ `doClose`) → ใช้แยกแถวตอน export เมื่อ SKU เดียวกันในลังถูกสแกนคนละ LOT (ดู *Outbound — ⇩ ส่งออกไฟล์ Text*) — ลังเก่าก่อน fix นี้ไม่มี field นี้ → export fallback ไปใช้ `item.lot`/`item.qty` แถวเดียวตามเดิม
 - Barcode lookup ใช้ `catalog` prop (ไม่ใช่ local `items`) เพื่อให้ unit validation ทำงานถูกต้อง
 - **Optimistic UI:** `setItems(newItems)` เรียกก่อน `await createNewBox()` — UI อัพทันที Firestore sync ใน background
 - `handleBarcode`: validate barcode → `setItems` ทันที → `createNewBox()` ถ้าไม่มี activeBoxId → `onScanProgress`
@@ -469,12 +470,13 @@ open → packing → closed → exported → received
   5. ถ้า `match.lot` ยังอยู่ใน availableLots → ใช้ต่อไม่ popup
   6. Android + `>1 available` → `setPendingLot({match, lots: availableLots, scannedBarcode})` → popup เด้ง
   7. ไม่งั้น auto-pick `availableLots[0].lot`
-- **`applyScan(match, lot, resetLot=false, exp='', scannedBarcode='')`**: เพิ่ม `got+1`, set `item.lot` (ถ้า resetLot=true จะ overwrite LOT เดิม กรณีสลับเพราะ LOT หมด), set `item.exp` เฉพาะเมื่อมี `exp` ส่งมา (จาก manual entry เท่านั้น — LOT ที่เลือกจาก list ไม่มี exp), set `item.scannedBarcode` เฉพาะเมื่อมีค่าส่งมา
+- **`applyScan(match, lot, resetLot=false, exp='', scannedBarcode='')`**: เพิ่ม `got+1`, set `item.lot` (ถ้า resetLot=true จะ overwrite LOT เดิม กรณีสลับเพราะ LOT หมด), set `item.exp` เฉพาะเมื่อมี `exp` ส่งมา (จาก manual entry เท่านั้น — LOT ที่เลือกจาก list ไม่มี exp), set `item.scannedBarcode` เฉพาะเมื่อมีค่าส่งมา, **ถ้ามี `lot`** → เรียก `addLotEntry(it.scannedLots, lot, exp, scannedBarcode)` เพิ่ม/รวม qty ใน `item.scannedLots` ด้วย (ดู *`scannedLots` field* ด้านบน) — ทำงานทุกครั้งไม่ว่า resetLot จะเป็นค่าอะไร (ต่าง LOT ไม่ overwrite กัน ไม่เหมือน `item.lot`)
 - **Popup UI** (`pendingLot` state, render ผ่าน `createPortal` → `document.body`) — 2 โหมดสลับด้วย `manualLotMode`:
   - **โหมดเลือกจาก list (default):** แสดง SKU + ชื่อสินค้า + ปุ่ม LOT แต่ละตัว (`lot` + `เหลือ N`) → คลิก → `handleLotSelect(lot)` → อ่าน `scannedBarcode` จาก `pendingLot` → `applyScan(match, lot, true, '', scannedBarcode)` → ปิด popup, scan complete
     - ปุ่ม **"✎ ใส่ LOT เอง"** → `setManualLotMode(true)` สลับไปฟอร์มกรอกเอง
     - ปุ่ม "ยกเลิก" (ไม่นับ scan) → `closeLotPopup()`
-  - **โหมดใส่ LOT เอง (`manualLotMode=true`):** ฟอร์ม LOT (text input) + Exp พ.ศ. 3 ช่อง DD/MM/YYYY (ทุกช่องเป็น numeric input, digit-only filter + length cap ผ่าน `.replace(/[^0-9]/g,'').slice(n)`) — **ไม่ใช้ dropdown เดือนแบบเดิม (เคยเป็น `<select>` ชื่อเดือนไทย ลบ `THAI_MONTHS` ออกไปแล้ว)**
+  - **โหมดใส่ LOT เอง (`manualLotMode=true`):** ฟอร์ม LOT (text input) + **Exp ค.ศ.** 3 ช่อง DD/MM/YYYY (ทุกช่องเป็น numeric input, digit-only filter + length cap ผ่าน `.replace(/[^0-9]/g,'').slice(n)`) — **ไม่ใช้ dropdown เดือนแบบเดิม (เคยเป็น `<select>` ชื่อเดือนไทย ลบ `THAI_MONTHS` ออกไปแล้ว)**
+    - **กรอกเป็น ค.ศ. ตรงกับที่พิมพ์บนสินค้าจริง** (เดิมให้กรอก พ.ศ. — เปลี่ยนเพราะพนักงานต้องแปลงเลขในหัวจากสิ่งที่เห็นบนสินค้า เสี่ยงกรอกผิด) — `item.exp`/`scannedLots[].exp` เก็บค่า ค.ศ. ดิบตามที่กรอกไว้ (ไม่แปลงตรงนี้) → แปลงเป็น พ.ศ. ตอน export แทน (ดู `toBuddhistExp()` ใน *Outbound — ⇩ ส่งออกไฟล์ Text*)
     - `handleManualLotConfirm()`: validate LOT ต้องไม่ว่าง; Exp ต้องกรอกครบทั้ง 3 ช่องหรือไม่กรอกเลย (กรอกบางช่อง → toast error) → ประกอบเป็น `DD/MM/YYYY` (zero-pad D/M ด้วย `.padStart(2,'0')`) → อ่าน `scannedBarcode` จาก `pendingLot` → `applyScan(match, lot, true, exp, scannedBarcode)`
     - ปุ่ม "← กลับ" → `setManualLotMode(false)` (กลับไป list, ไม่ปิด popup)
   - **`closeLotPopup()` ไม่เคลียร์ฟอร์ม manual entry** (`manualLot`/`manualExpD`/`manualExpM`/`manualExpY` คงค่าเดิมไว้ข้าม SKU/scan) — ของจริงมักแพ็คจากลอตเดียวกันหลาย SKU ต่อเนื่อง ครั้งถัดไปกด "✎ ใส่ LOT เอง" จะเห็นค่าล่าสุดเดิมพร้อมยืนยัน ไม่ต้องพิมพ์ซ้ำ; ฟอร์มจะเคลียร์ก็ต่อเมื่อ component remount เท่านั้น (สลับพนักงาน/catalog — ดู `key` prop ที่ AndroidApp.jsx)
@@ -651,12 +653,16 @@ $img = New-Object System.Drawing.Bitmap 'public\characters\emp-03\S.png'
 - **selectedId:** useState lazy init — เลือก `activeBoxId` เฉพาะเมื่ออยู่ใน closedBoxes (กันเลือกลัง open ใหม่หลังปิดลัง) ไม่งั้น fallback `closedBoxes[0]` (ลังปิดล่าสุด)
   - **คลิกการ์ดลัง = set `selectedId` เท่านั้น ไม่แตะ `activeBoxId`** — ป้องกัน activeBoxId ของการแพ็คถูกเปลี่ยนเป็นลังที่ปิดแล้ว (เคยเป็นบั๊ก: สแกนต่อจะลงลังที่ปิดไปแล้ว)
 - ปุ่ม "⇩ ส่งออกไฟล์ Text" → export `.txt` แบบ TSV ไม่มี header: `barcode\tจำนวนสินค้า\tทุนสินค้า\t\t\t\t\t\tLOT\tEXP`
-  - **Barcode source priority:** `item.scannedBarcode` (บาร์โค้ดตัวจริงที่สแกนลงลังนี้ — ดู *`scannedBarcode` field* ใน PackScanC) → fallback `item.barcode` (ค่าจาก catalog ซึ่งอาจเป็น comma-separated หลายตัว — ดู *applyBarcodeMap* — ใช้เฉพาะกรณีลังเก่าก่อนมี field นี้) → ว่าง
+  - **แยกแถวตาม LOT (`item.scannedLots`):** `handleExportBarcode` ใช้ `.flatMap` ไม่ใช่ `.map` — ถ้า SKU+unit นี้ในลังถูกสแกนมากกว่า 1 LOT (เช่น LOT แรกหมดกลางทาง ระบบให้สลับ — ดู *`scannedLots` field* ใน PackScanC) จะแตกเป็น**หลายแถว** แถวละ 1 LOT พร้อม qty ของ LOT นั้นจริง (ไม่รวมกันเป็นแถวเดียวเหมือนเดิม) — cost คอลัมน์เดียวกันทุกแถว (คำนวณจาก `sku__unit` ไม่ผัน LOT)
+    - ตัวอย่าง (SKU เดียว สแกน 3 LOT คนละ 1 ชิ้น): `8850304070993\t1\t54.54\t\t\t\t\t\t106760591` / `...\t106760592` / `...\t106760595` (3 แถวแยกกัน)
+  - **ลังเก่าก่อนมี `scannedLots`** (`item.scannedLots` ว่าง/ไม่มี) → fallback กลับไปแถวเดียวต่อ item เหมือนเดิม (`item.lot`/`item.qty`/`item.exp` ตรงๆ)
+  - **Barcode source priority (ต่อแถว):** ถ้ามี `scannedLots` → `entry.scannedBarcode` ก่อน, ไม่งั้น fallback `item.scannedBarcode` (บาร์โค้ดตัวจริงที่สแกนลงลังนี้ — ดู *`scannedBarcode` field* ใน PackScanC) → fallback `item.barcode` (ค่าจาก catalog ซึ่งอาจเป็น comma-separated หลายตัว — ดู *applyBarcodeMap* — ใช้เฉพาะกรณีลังเก่าก่อนมี field นี้) → ว่าง
   - ทุนสินค้า = `costMap[sku__unit]` (0 ถ้ายังไม่ import cost map); active เมื่อ status `closed`/`exported`
   - **LOT format:** หลัง cost มี **6 TABs** (สร้าง 5 column ว่างให้ตรงโครงสร้าง POS) แล้วตามด้วย LOT
-  - **LOT source priority:** `item.lot` (LOT ที่พนักงาน Android เลือกตอนสแกน) → fallback `lotMap[sku][0]?.lot` (LOT ตัวแรก, สำหรับลังที่ pack จาก desktop) → ว่าง
-  - **EXP column:** อีก 1 TAB ถัดจาก LOT → `item.exp` (วันหมดอายุ พ.ศ. `DD/MM/YYYY` ตัวเลขทั้งหมด — กรอกได้เฉพาะตอนพนักงาน Android เลือก "✎ ใส่ LOT เอง"; LOT จาก lotMap ไม่มี exp ไม่มี fallback → ว่าง)
-  - ตัวอย่าง (มี exp): `8859243302790\t4\t8.49\t\t\t\t\t\t10012026\t22/06/2569`
+  - **LOT source priority:** ถ้ามี `scannedLots` → `entry.lot` ของแต่ละแถว (เสมอมีค่า — set ตอน `addLotEntry`) — ลังเก่าไม่มี `scannedLots` → fallback `item.lot` (LOT ที่พนักงาน Android เลือกตอนสแกน) → fallback `lotMap[sku][0]?.lot` (LOT ตัวแรก, สำหรับลังที่ pack จาก desktop) → ว่าง
+  - **EXP column:** อีก 1 TAB ถัดจาก LOT → ถ้ามี `scannedLots` → `entry.exp` ของแต่ละแถว — ลังเก่าไม่มี `scannedLots` → fallback `item.exp` (วันหมดอายุ `DD/MM/YYYY` ตัวเลขทั้งหมด — กรอกได้เฉพาะตอนพนักงาน Android เลือก "✎ ใส่ LOT เอง"; LOT จาก lotMap ไม่มี exp ไม่มี fallback → ว่าง)
+  - **`toBuddhistExp(exp)` แปลง ค.ศ. → พ.ศ. ก่อน export เสมอ** (ทั้งแถวจาก `scannedLots` และแถว fallback) — พนักงาน Android กรอก Exp เป็น **ค.ศ.** (ตรงกับที่พิมพ์บนสินค้าจริง — ดู *LOT Selection*) แต่ไฟล์ Text ต้องส่งเป็น **พ.ศ.** ตามที่ POS ต้องการ: แยกปี (`y`) ออกจาก `DD/MM/YYYY` → ถ้า `y < 2400` ถือว่าเป็น ค.ศ. → `+543`, ถ้า `y >= 2400` ถือว่าเป็น พ.ศ. อยู่แล้ว (ลังเก่าก่อนเปลี่ยน label ที่กรอก พ.ศ. ไว้ตรงๆ) → ไม่แปลงซ้ำ — ว่างเปล่า (`''`) ผ่านเฉยๆ ไม่แปลง
+  - ตัวอย่าง (มี exp, พนักงานกรอก ค.ศ. `22/06/2026` → export เป็น พ.ศ.): `8859243302790\t4\t8.49\t\t\t\t\t\t10012026\t22/06/2569`
   - ตัวอย่าง (ไม่มี exp): `8859243302790\t4\t8.49\t\t\t\t\t\t10012026\t`
   - **กันส่งซ้ำ:** กดแล้ว set `box.textExported = true` (sync Firestore) → ปุ่ม disable + เปลี่ยนเป็น "✓ ส่งออกไฟล์ Text แล้ว" ถาวร จนกว่าจะกด **Clear · เริ่มวันถัดไป** (clearBoxes ลบ box → flag หาย)
 - ปุ่ม "🖨 พิมพ์ใบปิดลัง" → ล็อกจนกว่า `box.status === 'exported'` — `handlePrint()` แค่เรียก `window.print()`

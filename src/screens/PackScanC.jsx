@@ -447,6 +447,18 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     await applyScan(match, autoLot, !currentValid, '', scannedBarcode);
   }
 
+  // เพิ่ม/รวมจำนวนต่อ LOT จริงบน item (ต่าง LOT ไม่ overwrite กันแบบ it.lot) — ใช้ตอน export แยกแถวเมื่อ SKU เดียวกันในลังนี้สแกนคนละ LOT
+  function addLotEntry(scannedLots, lot, exp, scannedBarcode) {
+    const next = scannedLots ? [...scannedLots] : [];
+    const idx = next.findIndex(l => l.lot === lot);
+    if (idx >= 0) {
+      next[idx] = { ...next[idx], qty: next[idx].qty + 1, ...(exp ? { exp } : {}), ...(scannedBarcode ? { scannedBarcode } : {}) };
+    } else {
+      next.push({ lot, qty: 1, exp: exp || '', scannedBarcode: scannedBarcode || '' });
+    }
+    return next;
+  }
+
   // resetLot=true → เปลี่ยน lot ของ item เป็นค่าใหม่ (กรณี LOT เก่าหมด ต้องสลับ); exp = วันหมดอายุ (เฉพาะตอนใส่ LOT เอง — LOT จาก lotMap ไม่มีข้อมูล exp)
   // scannedBarcode = บาร์โค้ดตัวจริงที่สแกน เก็บไว้ export (ต่างจาก it.barcode ที่อาจเป็น comma-separated หลายตัวจาก catalog)
   async function applyScan(match, lot, resetLot = false, exp = '', scannedBarcode = '') {
@@ -458,6 +470,8 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
             ...(lot && (resetLot || !it.lot) ? { lot } : {}),
             ...(exp && (resetLot || !it.exp) ? { exp } : {}),
             ...(scannedBarcode ? { scannedBarcode } : {}),
+            // scannedLots = breakdown ต่อ LOT จริง — ใช้ export แยกแถวตาม LOT (ดู handleExportBarcode ใน BoxClosedLabel.jsx)
+            ...(lot ? { scannedLots: addLotEntry(it.scannedLots, lot, exp, scannedBarcode) } : {}),
           }
         : it
     );
@@ -631,7 +645,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                   />
                 </div>
                 <div>
-                  <div style={{ fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: 'var(--mute)', marginBottom: 4 }}>Exp (พ.ศ.)</div>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: 'var(--mute)', marginBottom: 4 }}>Exp (ค.ศ.)</div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input
                       className="input"
