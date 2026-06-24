@@ -13,6 +13,27 @@ function toBuddhistExp(exp) {
   return yNum < 2400 ? `${d}/${m}/${yNum + 543}` : exp;
 }
 
+// แตก item เป็นแถวต่อ LOT จริงที่พนักงานแพ็คสแกน (ดู scannedLots ใน PackScanC) — ใช้ร่วมทั้งตารางพรีวิว + ไฟล์ Text ให้ข้อมูลตรงกันเป๊ะ
+// exp คืนค่า ค.ศ. ดิบตามที่กรอก (ยังไม่แปลง พ.ศ. — export ค่อยแปลงเองตอนประกอบบรรทัด); ลังเก่าไม่มี scannedLots → แถวเดียวจาก l.lot/l.qty/l.exp
+function lotRows(l, lotMap) {
+  const fallbackBarcode = l.scannedBarcode || l.barcode || '';
+  const fallbackLots = lotMap[l.sku] || [];
+  if (l.scannedLots && l.scannedLots.length > 0) {
+    return l.scannedLots.map(({ lot, qty, exp, scannedBarcode }) => ({
+      barcode: scannedBarcode || fallbackBarcode,
+      qty,
+      lot,
+      exp: exp || '',
+    }));
+  }
+  return [{
+    barcode: fallbackBarcode,
+    qty: l.qty ?? l.got ?? 0,
+    lot: l.lot || fallbackLots[0]?.lot || '',
+    exp: l.exp || '',
+  }];
+}
+
 // สถานะลังฝั่งรับสินค้า (สาขา) — แสดงเป็น badge ใน card
 function receiveBadge(b) {
   if (b.status === 'received')
@@ -96,25 +117,10 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     if (boxItems.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังนี้'); return; }
     const lines = boxItems.flatMap(l => {
       const cost = costMap[`${l.sku}__${l.unit}`] ?? 0;
-      const fallbackBarcode = l.scannedBarcode || l.barcode || '';
-      const fallbackLots = lotMap[l.sku] || [];
-      // l.scannedLots = breakdown ต่อ LOT จริงที่สแกน (ดู addLotEntry ใน PackScanC) — แยกแถวเมื่อ SKU เดียวกันในลังนี้สแกนคนละ LOT
-      // ลังเก่าก่อน fix นี้ไม่มี l.scannedLots → fallback แถวเดียวด้วย l.lot/l.qty เดิม
-      const rows = (l.scannedLots && l.scannedLots.length > 0)
-        ? l.scannedLots.map(({ lot, qty, exp, scannedBarcode }) => ({
-            barcode: scannedBarcode || fallbackBarcode,
-            qty,
-            lot,
-            exp: toBuddhistExp(exp),
-          }))
-        : [{
-            barcode: fallbackBarcode,
-            qty: l.qty ?? l.got ?? 0,
-            lot: l.lot || fallbackLots[0]?.lot || '',
-            exp: toBuddhistExp(l.exp),
-          }];
-      // โครงสร้าง POS: barcode TAB qty TAB cost + 6 TAB + lot TAB exp
-      return rows.map(r => `${r.barcode}\t${r.qty}\t${cost}\t\t\t\t\t\t${r.lot}\t${r.exp}`);
+      // โครงสร้าง POS: barcode TAB qty TAB cost + 6 TAB + lot TAB exp — exp แปลง ค.ศ.→พ.ศ. ตอนนี้
+      return lotRows(l, lotMap).map(r =>
+        `${r.barcode}\t${r.qty}\t${cost}\t\t\t\t\t\t${r.lot}\t${toBuddhistExp(r.exp)}`
+      );
     });
     triggerDownload(lines.join('\n'), `${activeBox.id}.txt`, 'text/plain');
     // mark ว่าลังนี้ส่งออก Text แล้ว — disable ปุ่มจนกว่าจะกด Clear (clearBoxes ลบ box → flag หาย)
@@ -489,31 +495,44 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   >🗑 ลบลังนี้</button>
                 )}
               </div>
-              <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'hidden', maxHeight: 320, overflowY: 'auto', background: 'white' }}>
-                {boxItems.length > 0 ? (
+              <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'auto', maxHeight: 320, background: 'white' }}>
+                {boxItems.length > 0 ? (() => {
+                  // แตกแถวตาม LOT จริงที่พนักงานแพ็คสแกน (เหมือนไฟล์ Text) — SKU เดียวสแกนคนละ LOT จะได้หลายแถว
+                  const tableRows = boxItems.flatMap(l =>
+                    lotRows(l, lotMap).map(r => ({ ...r, sku: l.sku, name: l.name, unit: l.unit, location: l.location }))
+                  );
+                  const hasExp = tableRows.some(r => r.exp); // โชว์คอลัมน์ Exp เฉพาะเมื่อมีลังที่กรอก exp
+                  return (
                   <table className="tbl" style={{ fontSize: 13 }}>
                     <thead>
                       <tr>
                         <th>SKU</th>
                         <th>ชื่อสินค้า</th>
-                        <th style={{ width: 60 }}>หน่วย</th>
+                        <th style={{ width: 110 }}>Barcode</th>
+                        <th style={{ width: 56 }}>หน่วย</th>
                         <th style={{ width: 55, textAlign: 'center' }}>จำนวน</th>
+                        <th style={{ width: 90 }}>LOT</th>
+                        {hasExp && <th style={{ width: 88 }}>Exp</th>}
                         <th style={{ width: 70 }}>Location</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {boxItems.map(l => (
-                        <tr key={l.sku}>
-                          <td className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</td>
-                          <td style={{ fontFamily: 'JetBrains Mono' }}>{l.name}</td>
-                          <td style={{ fontFamily: 'JetBrains Mono' }}>{l.unit}</td>
-                          <td style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, textAlign: 'center' }}>×{l.qty ?? l.got ?? 0}</td>
-                          <td className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{l.location || '—'}</td>
+                      {tableRows.map((r, i) => (
+                        <tr key={`${r.sku}-${r.lot}-${i}`}>
+                          <td className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{r.sku}</td>
+                          <td style={{ fontFamily: 'JetBrains Mono', whiteSpace: 'nowrap' }}>{r.name}</td>
+                          <td className="mono" style={{ fontSize: 11 }}>{r.barcode || '—'}</td>
+                          <td style={{ fontFamily: 'JetBrains Mono' }}>{r.unit}</td>
+                          <td style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, textAlign: 'center' }}>×{r.qty}</td>
+                          <td className="mono" style={{ fontSize: 11 }}>{r.lot || '—'}</td>
+                          {hasExp && <td className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{r.exp || '—'}</td>}
+                          <td className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{r.location || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                ) : (
+                  );
+                })() : (
                   <div style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--mute)', padding: 10 }}>ไม่มีข้อมูลรายการสินค้า</div>
                 )}
               </div>

@@ -57,6 +57,8 @@ body {
 .tab.active { background: var(--accent); color: white; box-shadow: 3px 3px 0 var(--line); }
 
 .canvas { padding: 24px; max-width: 1600px; margin: 0 auto; }
+/* หน้า Outbound มีตารางหลายคอลัมน์ (ชื่อสินค้า/barcode/LOT/Exp) — ขยาย frame กว้างขึ้นให้ชื่อสินค้าโชว์เต็มแนวนอน */
+.canvas.canvas-wide { max-width: 1920px; }
 
 .screen-label {
   font-family: system-ui, sans-serif; font-size: 22px; font-weight: 700;

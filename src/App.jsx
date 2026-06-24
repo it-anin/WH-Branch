@@ -603,7 +603,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className="canvas">
+      <div className={`canvas${!showAll && tab === 'closed' ? ' canvas-wide' : ''}`}>
         {(showAll || tab === 'flow') && (
           <>
             <div className="screen-label">

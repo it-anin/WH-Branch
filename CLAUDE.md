@@ -641,14 +641,15 @@ $img = New-Object System.Drawing.Bitmap 'public\characters\emp-03\S.png'
 ## Outbound (BoxClosedLabel) — Logic สำคัญ
 - Tab label: **Outbound** (เดิม: Box & Label) — screen-label "รายการส่งสินค้า", frame title: **"เลขที่ลัง"**
 - Global search ข้ามทุก closed box (frame-header) → แผงขวาแสดงตารางผล (maxHeight 450, sticky header)
-- **Layout:** grid `340px 1fr`
+- **Frame กว้างพิเศษ:** App.jsx ใส่ class `canvas-wide` บน `.canvas` เฉพาะ tab `closed` (`!showAll && tab === 'closed'`) → `max-width: 1920px` (ปกติ `.canvas` cap `1600px`) — ขยายให้ตาราง "รายชื่อสินค้าในลัง" ที่มีหลายคอลัมน์โชว์ชื่อสินค้าเต็มแนวนอน (cell ชื่อ `whiteSpace: nowrap`); หน้าอื่นไม่กระทบ
+- **Layout:** grid `440px 1fr`
   - ซ้าย (440px) = การ์ดลัง **grid 3 คอลัมน์** เรียงตาม id น้อย→มาก + **ปุ่ม filter 2 แถว**:
     - สถานะ (`outboundFilter`): ทั้งหมด / รออนุมัติ (`status closed`) / อนุมัติแล้ว (`exported`/`received`) / **🔴 แจ้งปัญหา** (`problemReviewed && !problemResolved`)
     - พนักงานแพ็ค (`packerFilter`): ทุกคน + รายชื่อ packer ที่มีลังจริง (derive จาก closedBoxes)
     - 2 filter ทำงานร่วมกัน → `packerBoxes` (กรอง packer) → count สถานะ → `visibleBoxes`
     - **ปุ่ม "🔴 แจ้งปัญหา"** ใช้สีแดง (`var(--red)`) แทนส้ม + ตัวอักษรแดงเมื่อ inactive และ N > 0 (เรียกความสนใจหัวหน้า)
   - ขวา (detail, grid `1fr 380px`):
-    - คอลัมน์ซ้าย: **"รายชื่อสินค้าในลัง"** ตาราง SKU / ชื่อ / หน่วย / จำนวน / Location (maxHeight 450)
+    - คอลัมน์ซ้าย: **"รายชื่อสินค้าในลัง"** ตาราง SKU / ชื่อ / **Barcode** / หน่วย / จำนวน / **LOT** / **Exp** / Location (maxHeight 320) — **แตกแถวตาม LOT จริง** ผ่าน helper กลาง `lotRows(l, lotMap)` ที่ใช้ร่วมกับไฟล์ Text (`handleExportBarcode`) → ข้อมูล barcode/LOT/qty ในตารางตรงกับที่จะ export เป๊ะ (SKU เดียวสแกนคนละ LOT = หลายแถว); คอลัมน์ **Exp โชว์เฉพาะเมื่อมีลังที่กรอก exp** (`hasExp`) — แสดงเป็น **ค.ศ. ดิบตามที่พนักงานกรอก** (ไม่แปลง พ.ศ. ต่างจากไฟล์ Text ที่แปลงผ่าน `toBuddhistExp`)
     - คอลัมน์ขวา: **"ตัวอย่างสติกเกอร์ติดลัง"** (90×65mm, barcode = Box ID, "คลังสินค้า · WH-01") → ปุ่ม ⇩ ส่งออกไฟล์ Text → แถว [เลขที่เอกสาร input + อนุมัติเอกสาร] → 🖨 พิมพ์ใบปิดลัง
 - **selectedId:** useState lazy init — เลือก `activeBoxId` เฉพาะเมื่ออยู่ใน closedBoxes (กันเลือกลัง open ใหม่หลังปิดลัง) ไม่งั้น fallback `closedBoxes[0]` (ลังปิดล่าสุด)
   - **คลิกการ์ดลัง = set `selectedId` เท่านั้น ไม่แตะ `activeBoxId`** — ป้องกัน activeBoxId ของการแพ็คถูกเปลี่ยนเป็นลังที่ปิดแล้ว (เคยเป็นบั๊ก: สแกนต่อจะลงลังที่ปิดไปแล้ว)
