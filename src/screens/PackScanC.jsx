@@ -5,6 +5,7 @@ import { generatePOS, matchBarcode } from '../data.js';
 const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
 const SWIPE_THRESHOLD = 70; // px ก่อนถือว่าเป็นการปัดจริง (กันสะกิดมือโดยไม่ตั้งใจ)
+const THAI_MONTHS = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
 
 function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
   const [selectedId, setSelectedId] = useState(null);
@@ -282,6 +283,9 @@ function ItemCard({ c, done, partial, onMarkOutOfStock }) {
           {c.lot && (
             <div className="mono" style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>LOT: {c.lot}</div>
           )}
+          {c.exp && (
+            <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>EXP: {c.exp}</div>
+          )}
         </div>
         <div style={{ textAlign: 'right', fontFamily: 'system-ui', fontWeight: 400, fontSize: 15, flexShrink: 0 }}>
           <span style={{ color: '#000' }}>{c.got}</span>
@@ -343,12 +347,17 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const [isClosing, setIsClosing] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [pendingLot, setPendingLot] = useState(null); // { match, lots } — รอเลือก LOT
+  const [manualLotMode, setManualLotMode] = useState(false); // true = แสดงฟอร์มใส่ LOT เอง แทนลิสต์
+  const [manualLot, setManualLot] = useState('');
+  const [manualExpD, setManualExpD] = useState('');
+  const [manualExpM, setManualExpM] = useState('');
+  const [manualExpY, setManualExpY] = useState('');
   const [dismissedSkus, setDismissedSkus] = useState(() => new Set()); // SKU ที่ปัดทำเครื่องหมาย "ของหมด" แล้ว — ซ่อนจาก checklist
   const barcodeRef = useRef(null);
 
-  // Android: คืน focus กลับ barcode input หลัง render — ยกเว้นตอนที่ช่องค้นหาเปิดอยู่
+  // Android: คืน focus กลับ barcode input หลัง render — ยกเว้นตอนที่ช่องค้นหาเปิดอยู่ หรือ popup เลือก/ใส่ LOT เปิดอยู่ (ต้องพิมพ์ในช่องนั้น)
   useEffect(() => {
-    if (isAndroid && !showSearch && barcodeRef.current) barcodeRef.current.focus();
+    if (isAndroid && !showSearch && !pendingLot && barcodeRef.current) barcodeRef.current.focus();
   });
 
   const boxLabel = activeBoxId || 'BX-????';
@@ -434,11 +443,16 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     await applyScan(match, autoLot, !currentValid);
   }
 
-  // resetLot=true → เปลี่ยน lot ของ item เป็นค่าใหม่ (กรณี LOT เก่าหมด ต้องสลับ)
-  async function applyScan(match, lot, resetLot = false) {
+  // resetLot=true → เปลี่ยน lot ของ item เป็นค่าใหม่ (กรณี LOT เก่าหมด ต้องสลับ); exp = วันหมดอายุ (เฉพาะตอนใส่ LOT เอง — LOT จาก lotMap ไม่มีข้อมูล exp)
+  async function applyScan(match, lot, resetLot = false, exp = '') {
     const newItems = items.map(it =>
       it.sku === match.sku && it.unit === match.unit
-        ? { ...it, got: it.got + 1, ...(lot && (resetLot || !it.lot) ? { lot } : {}) }
+        ? {
+            ...it,
+            got: it.got + 1,
+            ...(lot && (resetLot || !it.lot) ? { lot } : {}),
+            ...(exp && (resetLot || !it.exp) ? { exp } : {}),
+          }
         : it
     );
     setItems(newItems);
@@ -450,11 +464,34 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     if (onScanProgress && boxId) onScanProgress(boxId, newItems);
   }
 
+  // ปิด popup เลือก/ใส่ LOT — เคลียร์ฟอร์มใส่ LOT เองด้วยเสมอ กันค่าเก่าโผล่ตอนเปิด popup ครั้งถัดไป (คนละ SKU)
+  function closeLotPopup() {
+    setPendingLot(null);
+    setManualLotMode(false);
+    setManualLot('');
+    setManualExpD('');
+    setManualExpM('');
+    setManualExpY('');
+  }
+
   async function handleLotSelect(lot) {
     if (!pendingLot) return;
     const { match } = pendingLot;
-    setPendingLot(null);
+    closeLotPopup();
     await applyScan(match, lot, true);
+  }
+
+  async function handleManualLotConfirm() {
+    if (!pendingLot) return;
+    const lot = manualLot.trim();
+    if (!lot) { showToast('⚠ กรุณากรอก LOT', 'error'); return; }
+    const anyExp = manualExpD || manualExpM || manualExpY;
+    const allExp = manualExpD && manualExpM && manualExpY;
+    if (anyExp && !allExp) { showToast('⚠ กรุณากรอกวันที่ Exp ให้ครบ', 'error'); return; }
+    const exp = allExp ? `${String(manualExpD).padStart(2, '0')}/${manualExpM}/${manualExpY}` : '';
+    const { match } = pendingLot;
+    closeLotPopup();
+    await applyScan(match, lot, true, exp);
   }
 
   // ปัด card ยืนยัน "ของหมด" — แช่ need ไว้ที่ got ปัจจุบัน (กันถูกดึงไปลังถัดไปซ้ำ) + ซ่อนออกจาก checklist
@@ -541,34 +578,91 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
             width: '100%', maxWidth: 360, maxHeight: '85vh',
             display: 'flex', flexDirection: 'column',
           }}>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>เลือก LOT</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{manualLotMode ? 'ใส่ LOT เอง' : 'เลือก LOT'}</div>
             <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
               SKU: <span className="mono">{pendingLot.match.sku}</span>
             </div>
             <div style={{ fontFamily: 'system-ui', fontSize: 14, marginBottom: 14, color: '#333' }}>
               {pendingLot.match.name}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
-              {pendingLot.lots.map(({ lot, remaining }) => (
+            {!manualLotMode ? (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+                  {pendingLot.lots.map(({ lot, remaining }) => (
+                    <button
+                      key={lot}
+                      className="btn primary"
+                      style={{
+                        fontSize: 18, padding: '14px 18px', fontFamily: 'JetBrains Mono',
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      }}
+                      onClick={() => handleLotSelect(lot)}
+                    >
+                      <span>{lot}</span>
+                      <span style={{ fontSize: 13, opacity: 0.85, fontFamily: 'system-ui' }}>เหลือ {remaining}</span>
+                    </button>
+                  ))}
+                </div>
                 <button
-                  key={lot}
-                  className="btn primary"
-                  style={{
-                    fontSize: 18, padding: '14px 18px', fontFamily: 'JetBrains Mono',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  }}
-                  onClick={() => handleLotSelect(lot)}
-                >
-                  <span>{lot}</span>
-                  <span style={{ fontSize: 13, opacity: 0.85, fontFamily: 'system-ui' }}>เหลือ {remaining}</span>
-                </button>
-              ))}
-            </div>
-            <button
-              className="btn sm ghost"
-              style={{ marginTop: 12 }}
-              onClick={() => setPendingLot(null)}
-            >ยกเลิก</button>
+                  className="btn sm ghost"
+                  style={{ marginTop: 12 }}
+                  onClick={() => setManualLotMode(true)}
+                >✎ ใส่ LOT เอง</button>
+                <button
+                  className="btn sm ghost"
+                  style={{ marginTop: 8 }}
+                  onClick={closeLotPopup}
+                >ยกเลิก</button>
+              </>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+                <div>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: 'var(--mute)', marginBottom: 4 }}>LOT</div>
+                  <input
+                    className="input"
+                    autoFocus
+                    placeholder="พิมพ์ LOT"
+                    value={manualLot}
+                    onChange={e => setManualLot(e.target.value)}
+                    style={{ fontFamily: 'JetBrains Mono' }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: 'var(--mute)', marginBottom: 4 }}>Exp (พ.ศ.)</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      className="input"
+                      placeholder="DD"
+                      inputMode="numeric"
+                      value={manualExpD}
+                      onChange={e => setManualExpD(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+                      style={{ width: 56, textAlign: 'center', padding: '10px 4px' }}
+                    />
+                    <select
+                      className="input"
+                      value={manualExpM}
+                      onChange={e => setManualExpM(e.target.value)}
+                      style={{ flex: 1, padding: '10px 4px' }}
+                    >
+                      <option value="">เดือน</option>
+                      {THAI_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <input
+                      className="input"
+                      placeholder="YYYY"
+                      inputMode="numeric"
+                      value={manualExpY}
+                      onChange={e => setManualExpY(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+                      style={{ width: 70, textAlign: 'center', padding: '10px 4px' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button className="btn sm ghost" style={{ flex: 1 }} onClick={() => setManualLotMode(false)}>← กลับ</button>
+                  <button className="btn primary" style={{ flex: 2 }} onClick={handleManualLotConfirm}>ยืนยัน</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>,
         document.body
