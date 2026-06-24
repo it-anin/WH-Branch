@@ -268,16 +268,6 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
       .filter(l => l.remaining > 0);
   }
 
-  // แปลง LOT (รูปแบบ DDMMYYYY หรือ DD/MM/YYYY) เป็นค่าเทียบวันที่ — ใช้จัดเรียง LOT ล่าสุดไว้บนสุดใน popup
-  // parse ไม่ออก (โค้ด LOT ที่ไม่ใช่รูปแบบวันที่) → คืน -1 กันโดดไปอยู่บนสุดผิดที่
-  function lotDateKey(lot) {
-    let m = String(lot).match(/^(\d{2})(\d{2})(\d{4})$/);
-    if (!m) m = String(lot).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (!m) return -1;
-    const [, dd, mm, yyyy] = m;
-    return Number(yyyy) * 10000 + Number(mm) * 100 + Number(dd);
-  }
-
   // Logic กลาง — ใช้ทั้ง HID keyboard (handleBarcode) และ Broadcast wh-scan (useEffect)
   async function processBarcode(val) {
     if (!val?.trim() || isClosing || pendingLot) return;
@@ -303,19 +293,14 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
       return;
     }
 
-    // LOT ที่เลือกไว้ยังมีสต็อกเหลือไหม
-    const currentValid = match.lot && availableLots.some(l => l.lot === match.lot);
-
-    // Android: ถ้ายังไม่ได้เลือก หรือเลือกไว้แต่หมด และมี LOT ให้เลือกมากกว่า 1 → popup
-    // เรียง LOT ล่าสุด (วันที่มากสุด) ไว้บนสุดเสมอ — ให้ความสำคัญด้านการแสดงผลของ popup เท่านั้น
-    // ไม่กระทบ autoLot fallback ด้านล่าง (กรณี desktop/single-lot ยังใช้ลำดับเดิมจาก lotMap)
-    if (isAndroid && !currentValid && availableLots.length > 1) {
-      const sortedLots = [...availableLots].sort((a, b) => lotDateKey(b.lot) - lotDateKey(a.lot));
-      setPendingLot({ match, lots: sortedLots });
+    // Android: ให้เลือก LOT ทุกครั้งที่สแกน (ทุกชิ้น) เสมอ — ไม่ auto-reuse LOT เดิม/auto-pick อีกต่อไป
+    if (isAndroid) {
+      setPendingLot({ match, lots: availableLots });
       return;
     }
 
-    // ถ้า LOT ปัจจุบันยังใช้ได้ ใช้ต่อ; ไม่งั้นใช้ LOT แรกที่เหลือ
+    // Desktop: คงพฤติกรรมเดิม — ใช้ LOT เดิมต่อถ้ายังไม่หมด ไม่งั้นใช้ตัวแรกที่เหลือ (auto, ไม่มี popup)
+    const currentValid = match.lot && availableLots.some(l => l.lot === match.lot);
     const autoLot = currentValid ? match.lot : availableLots[0].lot;
     await applyScan(match, autoLot, !currentValid);
   }
