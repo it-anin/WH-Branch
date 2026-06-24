@@ -488,10 +488,14 @@ export default function App() {
     setLotMap(map);
     // map = { [sku]: [{lot, qty}, ...] }
     const entries = Object.entries(map).map(([key, lots]) => ({ key, lots }));
-    setDoc(doc(db, 'config', 'lotMap'), { entries, ...(meta ? { _meta: meta } : {}) })
-      .catch(err => console.error('lotMap write failed:', err.code));
     const total = entries.reduce((s, e) => s + (e.lots?.length || 0), 0);
-    showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓`);
+    return setDoc(doc(db, 'config', 'lotMap'), { entries, ...(meta ? { _meta: meta } : {}) })
+      .then(() => showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓`, 'success'))
+      .catch(err => {
+        console.error('lotMap write failed:', err.code);
+        showToast('⚠ Firestore error: ' + err.code, 'error');
+        throw err;
+      });
   }
 
   function distributeCatalog(items) {
@@ -518,7 +522,7 @@ export default function App() {
             const m = (item.location || '').match(/^([A-Za-z]+)/);
             return zones.includes(m ? m[1].toUpperCase() : null);
           })
-        : [];
+        : catalog;
     });
     setCatalogByPacker(result);
     setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });

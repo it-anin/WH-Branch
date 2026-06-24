@@ -16,6 +16,7 @@
 html, body {
   margin: 0;
   padding: 0;
+  overflow-y: scroll; /* กันสกอลล์บาร์โผล่/หายตามความสูง content แต่ละ tab — เคยทำให้ .topbar .tabs (margin-left:auto ชิดขวา) ขยับซ้าย-ขวา */
   background: var(--paper);
   color: var(--ink);
   font-family: system-ui, sans-serif;

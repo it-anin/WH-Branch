@@ -366,6 +366,8 @@ input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bu
 - **{filename}** ใน Barcode — ชื่อไฟล์ไม่มีนามสกุล เช่น `R05.106`
 - วันที่ใน badge ทุกปุ่มมาจาก **`file.lastModified`** (Date Modified จริงของไฟล์ ไม่ใช่วันที่อัปโหลด)
 - badge sync ผ่าน Firestore `_meta` field — **ทุกเครื่องเห็นเหมือนกัน** และยังอยู่หลัง reload (App.jsx อ่าน `catalogMeta` / `barcodeMapMeta` / `costMapMeta` จาก `onSnapshot` → ส่งเป็น `meta` prop ให้แต่ละ component)
+- **ImportLotMap มี progress bar ระหว่างอัปโหลด** (ไฟล์ LOT มักใหญ่ + aggregation 2-pass + Firestore write ก้อนใหญ่ → ช้ากว่าไฟล์อื่น): state `stage` (`reading` 15% → `parsing` 45% → `saving` 75% → `done` 100%) แสดงแถบ progress + label แทนปุ่ม/chip ปกติระหว่างอัปโหลด, ปุ่ม disable กันกดซ้ำ; ใช้ `setTimeout(fn, 0)` คั่นก่อนงาน sync หนัก (parse) เพื่อให้ browser repaint stage label ก่อน freeze
+  - **`handleLotMapImport` (App.jsx) return promise ของ `setDoc`** (ไม่ fire-and-forget แบบไฟล์อื่น) — ให้ ImportLotMap รู้ว่า Firestore เขียนเสร็จจริงเมื่อไหร่ ก่อนโชว์ `done` + toast success
 
 ---
 

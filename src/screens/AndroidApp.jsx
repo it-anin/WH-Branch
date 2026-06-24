@@ -191,7 +191,7 @@ export default function AndroidApp({
         {isWarehouse ? (
           <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
             <PackScanC
-              key={`${packer.code}-${Object.keys(catalogByPacker).length}`}
+              key={`${packer.code}-${packCatalog.length}`}
               {...screenProps}
               catalog={packCatalog}
               packer={packer}
