@@ -597,8 +597,8 @@ export default function App() {
               <span className="num">01</span> Box List
               <span className="desc">— ภาพรวมลังทั้งหมดวันนี้</span>
             </div>
-            <div style={{ marginBottom: 12, marginLeft: -24, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 24 }}>
+            <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <ImportCatalog catalog={catalog} meta={catalogMeta} onImport={(items, meta) => {
                   const updated = Object.keys(barcodeMap).length > 0 ? applyBarcodeMap(items, barcodeMap) : items;
                   setCatalog(updated);
