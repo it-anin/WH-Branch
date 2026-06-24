@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
 
@@ -19,7 +20,7 @@ function receiveBadge(b) {
   return { label: 'สาขา: ยังไม่รับ', bg: '#f0ede8', border: 'var(--line)', color: 'var(--mute)' };
 }
 
-export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, costMap = {}, lotMap = {} }) {
+export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {} }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
@@ -32,6 +33,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const [docNumber, setDocNumber] = useState('');
   const [outboundFilter, setOutboundFilter] = useState('all'); // all | pending | approved
   const [packerFilter, setPackerFilter] = useState('all');     // all | packer.code
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null); // boxId รอยืนยันลบ (ยกเลิกรายการเบิก) — null = ไม่แสดง dialog
 
   // อนุมัติแล้ว = exported/received, รออนุมัติ = closed (ยังไม่ส่ง POS)
   const isApproved = (b) => b.status === 'exported' || b.status === 'received';
@@ -175,6 +177,20 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     setSelectedId(boxId);
     setActiveBoxId(boxId);
     setGlobalSearch('');
+  }
+
+  // ลบลัง — กรณียกเลิกรายการเบิก เฉพาะลังที่ยังไม่ถึงสาขา (closed/exported); ห้ามลบลังที่ received (เสีย audit trail การรับสินค้า)
+  const deletingBox = confirmDeleteId ? boxes.find(b => b.id === confirmDeleteId) || null : null;
+  function requestDelete(boxId) {
+    setConfirmDeleteId(boxId);
+  }
+  function confirmDelete() {
+    if (!confirmDeleteId) return;
+    deleteBox(confirmDeleteId);
+    if (selectedId === confirmDeleteId) setSelectedId(null);
+    if (activeBoxId === confirmDeleteId) setActiveBoxId(null);
+    showToast(`ลบลัง ${confirmDeleteId} แล้ว`, 'success');
+    setConfirmDeleteId(null);
   }
 
   return (
@@ -366,6 +382,14 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   แจ้งโดย: {activeBox.problemBy.name}{activeBox.problemAt ? ` · ${activeBox.problemAt}` : ''}
                 </span>
               )}
+              <div className="spacer" />
+              {(activeBox.status === 'closed' || activeBox.status === 'exported') && (
+                <button
+                  className="btn sm"
+                  style={{ background: 'var(--red)', color: 'white', borderColor: 'var(--red)' }}
+                  onClick={() => requestDelete(activeBox.id)}
+                >🗑 ลบลังนี้</button>
+              )}
             </div>
 
             {activeBox.problemNote && (
@@ -431,7 +455,16 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
             {/* LEFT: รายชื่อสินค้าในลัง */}
             <div>
-              <div className="hand" style={{ fontSize: 20, marginBottom: 6 }}>รายชื่อสินค้าในลัง</div>
+              <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+                <div className="hand" style={{ fontSize: 20 }}>รายชื่อสินค้าในลัง</div>
+                {(activeBox.status === 'closed' || activeBox.status === 'exported') && (
+                  <button
+                    className="btn sm"
+                    style={{ background: 'var(--red)', color: 'white', borderColor: 'var(--red)' }}
+                    onClick={() => requestDelete(activeBox.id)}
+                  >🗑 ลบลังนี้</button>
+                )}
+              </div>
               <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'hidden', maxHeight: 320, overflowY: 'auto', background: 'white' }}>
                 {boxItems.length > 0 ? (
                   <table className="tbl" style={{ fontSize: 13 }}>
@@ -552,6 +585,36 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           </div>
         )}
       </div>
+
+      {confirmDeleteId && deletingBox && createPortal(
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: 'white', borderRadius: 14, padding: '24px 28px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+            textAlign: 'center', minWidth: 280, maxWidth: 340,
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>⚠ ยืนยันลบลัง {deletingBox.id}?</div>
+            <div style={{ fontSize: 14, color: '#555', marginBottom: 4 }}>
+              {deletingBox.skuCount ?? 0} SKU · {deletingBox.totalQty ?? 0} ชิ้น{deletingBox.packer ? ` · แพ็คโดย ${deletingBox.packer.name}` : ''}
+            </div>
+            {deletingBox.textExported && (
+              <div style={{ fontSize: 13, color: '#c0392b', background: '#fde8e8', borderRadius: 8, padding: '8px 10px', margin: '10px 0' }}>
+                ⚠ ลังนี้ส่งออกไฟล์ Text เข้า POS ไปแล้ว — ลบแล้วข้อมูลจะไม่ตรงกับ POS อีกต่อไป
+              </div>
+            )}
+            <div style={{ fontSize: 12, color: 'var(--mute)', margin: '8px 0 20px' }}>ข้อมูลลังและรายการสินค้าจะถูกลบอย่างถาวร ไม่สามารถกู้คืนได้</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="btn sm ghost" onClick={() => setConfirmDeleteId(null)}>ยกเลิก</button>
+              <button className="btn danger sm" onClick={confirmDelete}>ลบลัง</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

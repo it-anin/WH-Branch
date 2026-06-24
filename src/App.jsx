@@ -304,6 +304,33 @@ export default function App() {
     showToast('ล้างข้อมูลแล้ว · เก็บประวัติไว้ 7 วัน');
   }
 
+  // ลบลังเดียว (Outbound) — กรณียกเลิกรายการเบิก; ห้ามลบลังที่สาขารับแล้ว (เสีย audit trail การรับสินค้า)
+  // bypass setBoxes/setItemsByBox wrapper เพราะ setItemsByBox ไม่ deleteDoc ให้ตอน key หายไปจาก object (ต่างจาก setBoxes ที่ diff ให้)
+  function deleteBox(boxId) {
+    const box = boxesRef.current.find(b => b.id === boxId);
+    if (!box || box.status === 'received') return;
+
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'boxes', boxId));
+    batch.delete(doc(db, 'boxItems', boxId));
+    batch.delete(doc(db, 'progress', boxId)); // กันไว้เผื่อหลงเหลือ — ปกติ doClose() ลบไปแล้ว
+    batch.commit();
+
+    boxesRef.current = boxesRef.current.filter(b => b.id !== boxId);
+    _setBoxes(boxesRef.current);
+
+    const nextItems = { ...itemsByBoxRef.current };
+    delete nextItems[boxId];
+    itemsByBoxRef.current = nextItems;
+    _setItemsByBox(nextItems);
+
+    if (receiveBoxIdsRef.current.includes(boxId)) {
+      receiveBoxIdsRef.current = receiveBoxIdsRef.current.filter(id => id !== boxId);
+      _setReceiveBoxIds(receiveBoxIdsRef.current);
+      setDoc(doc(db, 'config', 'receive'), { ids: receiveBoxIdsRef.current });
+    }
+  }
+
   async function clearFirestore() {
     if (!window.confirm(
       'ล้างข้อมูล Firestore ทั้งหมด?\n\n' +
@@ -529,7 +556,7 @@ export default function App() {
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
-  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   if (isAndroidMode) {
     return (
