@@ -4,6 +4,7 @@ import { generatePOS, matchBarcode } from '../data.js';
 
 const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
+const SWIPE_THRESHOLD = 70; // px ก่อนถือว่าเป็นการปัดจริง (กันสะกิดมือโดยไม่ตั้งใจ)
 
 function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
   const [selectedId, setSelectedId] = useState(null);
@@ -190,6 +191,130 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
   );
 }
 
+// Android: card สินค้าปัดได้ — ปัดซ้าย/ขวาเกิน SWIPE_THRESHOLD → ถาม "ของหมดใช่ไหม" → ลบออกจาก checklist
+function ItemCard({ c, done, partial, onMarkOutOfStock }) {
+  const [dragX, setDragX] = useState(0);
+  const [confirming, setConfirming] = useState(false);
+  const dragRef = useRef({ x: 0, dragging: false });
+
+  function onTouchStart(e) {
+    if (!isAndroid || confirming) return;
+    dragRef.current = { x: e.touches[0].clientX, dragging: true };
+  }
+  function onTouchMove(e) {
+    if (!isAndroid || !dragRef.current.dragging) return;
+    setDragX(e.touches[0].clientX - dragRef.current.x);
+  }
+  function onTouchEnd() {
+    if (!isAndroid || !dragRef.current.dragging) return;
+    dragRef.current.dragging = false;
+    setDragX(x => {
+      if (Math.abs(x) > SWIPE_THRESHOLD) {
+        setConfirming(true);
+        return Math.sign(x) * 120;
+      }
+      return 0;
+    });
+  }
+
+  function confirmOutOfStock() {
+    setConfirming(false);
+    onMarkOutOfStock(c.sku);
+  }
+  function cancelOutOfStock() {
+    setConfirming(false);
+    setDragX(0);
+  }
+
+  const revealOpacity = Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1);
+
+  return (
+    <div style={{ position: 'relative', minWidth: 0 }}>
+      {isAndroid && (
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: 10,
+          background: 'var(--red)', color: 'white',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: 'system-ui', fontSize: 13, fontWeight: 700,
+          opacity: revealOpacity,
+        }}>
+          🗑 ของหมด
+        </div>
+      )}
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{
+          display: 'flex', gap: isAndroid ? 8 : 12, padding: isAndroid ? 8 : 12,
+          border: `2px solid ${done ? 'var(--green)' : partial ? 'var(--accent)' : 'var(--line)'}`,
+          borderRadius: 10,
+          background: done ? '#e8f0d8' : partial ? '#fae5b0' : 'white',
+          alignItems: 'center',
+          minWidth: 0, overflow: 'hidden',
+          position: 'relative',
+          transform: isAndroid ? `translateX(${dragX}px)` : undefined,
+          transition: dragRef.current.dragging ? 'none' : 'transform 0.2s',
+        }}
+      >
+        <div style={{
+          width: isAndroid ? 24 : 32, height: isAndroid ? 24 : 32, borderRadius: '50%',
+          border: '2px solid var(--line)', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: done ? 'var(--green)' : 'white',
+          color: 'white', fontSize: isAndroid ? 14 : 20, fontWeight: 700,
+        }}>
+          {done ? '✓' : ''}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="row" style={{ gap: 4 }}>
+            <div className="mono" style={{ fontSize: 10, color: 'var(--mute)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sku}</div>
+            {c.location && (
+              <div className="mono" style={{ fontSize: 10, color: 'var(--ink)', background: 'var(--paper-dark)', borderRadius: 3, padding: '0 4px', flexShrink: 0 }}>{c.location}</div>
+            )}
+          </div>
+          <div style={{ fontFamily: 'system-ui', fontSize: isAndroid ? 13 : 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+          {/* ⚠ barcode ต้องแสดงเสมอทั้ง desktop และ Android — ห้ามลบ พนักงานใช้ยืนยันก่อนสแกน */}
+          {c.barcode && (
+            <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.barcode}</div>
+          )}
+          {c.lot && (
+            <div className="mono" style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>LOT: {c.lot}</div>
+          )}
+        </div>
+        <div style={{ textAlign: 'right', fontFamily: 'system-ui', fontWeight: 400, fontSize: 15, flexShrink: 0 }}>
+          <span style={{ color: '#000' }}>{c.got}</span>
+          <span style={{ fontSize: 15, color: '#000' }}> / {c.need}</span>
+          <div style={{ fontSize: 11, fontFamily: 'system-ui', color: 'var(--mute)' }}>{c.unit}</div>
+        </div>
+      </div>
+
+      {confirming && createPortal(
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: 'white', borderRadius: 14, padding: '24px 28px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+            textAlign: 'center', minWidth: 260, maxWidth: 320,
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>⚠ ยืนยันว่าของหมด?</div>
+            <div style={{ fontSize: 14, color: '#555', marginBottom: 4 }}>{c.name}</div>
+            <div className="mono" style={{ fontSize: 12, color: '#888', marginBottom: 20 }}>{c.sku}</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="btn sm ghost" onClick={cancelOutOfStock}>ยกเลิก</button>
+              <button className="btn danger sm" onClick={confirmOutOfStock}>ของหมด ลบรายการ</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, packer, onScanProgress, catalogMeta, lotMap = {} }) {
   const [items, setItems] = useState(() => {
     // หักจำนวนที่พนักงานคนนี้แพ็คไปแล้ว (จากลังที่ปิด/ส่งออก/รับแล้ว) เพื่อให้สินค้าที่ลงลังครบไม่โผล่ซ้ำหลัง remount/reload
@@ -217,6 +342,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const [isClosing, setIsClosing] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [pendingLot, setPendingLot] = useState(null); // { match, lots } — รอเลือก LOT
+  const [dismissedSkus, setDismissedSkus] = useState(() => new Set()); // SKU ที่ปัดทำเครื่องหมาย "ของหมด" แล้ว — ซ่อนจาก checklist
   const barcodeRef = useRef(null);
 
   // Android: คืน focus กลับ barcode input หลัง render — ยกเว้นตอนที่ช่องค้นหาเปิดอยู่
@@ -225,12 +351,14 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   });
 
   const boxLabel = activeBoxId || 'BX-????';
+  // ซ่อนรายการที่ปัดทำเครื่องหมาย "ของหมด" แล้ว ออกจาก checklist ที่แสดง (ของจริงยังอยู่ใน items เพื่อรักษายอดที่แพ็คไปแล้ว)
+  const visibleItems = items.filter(it => !dismissedSkus.has(it.sku));
   const filtered = search.trim()
-    ? items.filter(it =>
+    ? visibleItems.filter(it =>
         it.name.toLowerCase().includes(search.toLowerCase()) ||
         it.sku.toLowerCase().includes(search.toLowerCase())
       )
-    : items;
+    : visibleItems;
   // Android: ยกสินค้าที่ครบแล้ว (got >= need) ไปท้าย — sort stable เก็บลำดับเดิมในแต่ละกลุ่ม
   const sorted = isAndroid
     ? [...filtered].sort((a, b) => (a.got >= a.need ? 1 : 0) - (b.got >= b.need ? 1 : 0))
@@ -328,6 +456,16 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     await applyScan(match, lot, true);
   }
 
+  // ปัด card ยืนยัน "ของหมด" — แช่ need ไว้ที่ got ปัจจุบัน (กันถูกดึงไปลังถัดไปซ้ำ) + ซ่อนออกจาก checklist
+  // ของที่แพ็คไปแล้ว (got > 0) ยังนับใน packedItems ตอนปิดลังตามปกติ — ไม่เสียยอดที่สแกนไปแล้ว
+  function handleMarkOutOfStock(sku) {
+    const newItems = items.map(it => it.sku === sku ? { ...it, need: it.got } : it);
+    setItems(newItems);
+    setDismissedSkus(prev => new Set(prev).add(sku));
+    if (activeBoxId && onScanProgress) onScanProgress(activeBoxId, newItems);
+    showToast(`⚠ ${sku} ของหมด — ลบออกจากรายการแล้ว`, 'error');
+  }
+
   // ref pattern — ให้ wh-scan listener เสมอเห็น processBarcode ล่าสุด (ไม่ stale)
   const processBarcodeRef = useRef(processBarcode);
   processBarcodeRef.current = processBarcode;
@@ -385,7 +523,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     }
   }
 
-  const doneCount = items.filter(it => it.got >= it.need).length;
+  const doneCount = visibleItems.filter(it => it.got >= it.need).length;
 
   return (
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 580, ...(isAndroid ? { boxShadow: 'none', border: 'none', borderRadius: 0 } : {}) }}>
@@ -478,7 +616,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
           {/* Android: เช็ค X/Y ชิดขวา แทนปุ่มลังที่ปิด */}
           {isAndroid ? (
             <span style={{ fontSize: 11, color: 'var(--mute)', fontFamily: 'system-ui' }}>
-              เช็ค {doneCount}/{items.length}
+              เช็ค {doneCount}/{visibleItems.length}
               {catalogMeta && (
                 <span style={{ marginLeft: 6 }}>
                   · 📋 {catalogMeta.branch ? `Picklist_${catalogMeta.branch}` : 'Picklist'}{catalogMeta.fileDate ? ` ${catalogMeta.fileDate}` : ''}
@@ -496,7 +634,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
         </div>
         {!isAndroid && (
           <div className="row">
-            <span className="mono" style={{ fontSize: 13 }}>เช็ค {doneCount} / {items.length} รายการ</span>
+            <span className="mono" style={{ fontSize: 13 }}>เช็ค {doneCount} / {visibleItems.length} รายการ</span>
           </div>
         )}
       </div>
@@ -585,7 +723,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
               ))}
               <button className="btn sm ghost" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}>ถัดไป →</button>
               <span className="mono" style={{ fontSize: 12, color: 'var(--mute)', marginLeft: 4 }}>
-                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, items.length)} / {items.length} รายการ
+                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, visibleItems.length)} / {visibleItems.length} รายการ
               </span>
             </div>
           )
@@ -596,42 +734,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
             const done = c.got >= c.need;
             const partial = c.got > 0 && c.got < c.need;
             return (
-              <div key={c.sku} style={{
-                display: 'flex', gap: isAndroid ? 8 : 12, padding: isAndroid ? 8 : 12,
-                border: `2px solid ${done ? 'var(--green)' : partial ? 'var(--accent)' : 'var(--line)'}`,
-                borderRadius: 10,
-                background: done ? '#e8f0d8' : partial ? '#fae5b0' : 'white',
-                alignItems: 'center',
-                minWidth: 0, overflow: 'hidden',
-              }}>
-                <div style={{
-                  width: isAndroid ? 24 : 32, height: isAndroid ? 24 : 32, borderRadius: '50%',
-                  border: '2px solid var(--line)', flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: done ? 'var(--green)' : 'white',
-                  color: 'white', fontSize: isAndroid ? 14 : 20, fontWeight: 700,
-                }}>
-                  {done ? '✓' : ''}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="row" style={{ gap: 4 }}>
-                    <div className="mono" style={{ fontSize: 10, color: 'var(--mute)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.sku}</div>
-                    {c.location && (
-                      <div className="mono" style={{ fontSize: 10, color: 'var(--ink)', background: 'var(--paper-dark)', borderRadius: 3, padding: '0 4px', flexShrink: 0 }}>{c.location}</div>
-                    )}
-                  </div>
-                  <div style={{ fontFamily: 'system-ui', fontSize: isAndroid ? 13 : 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-                  {/* ⚠ barcode ต้องแสดงเสมอทั้ง desktop และ Android — ห้ามลบ พนักงานใช้ยืนยันก่อนสแกน */}
-                  {c.barcode && (
-                    <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.barcode}</div>
-                  )}
-                </div>
-                <div style={{ textAlign: 'right', fontFamily: 'system-ui', fontWeight: 400, fontSize: 15, flexShrink: 0 }}>
-                  <span style={{ color: '#000' }}>{c.got}</span>
-                  <span style={{ fontSize: 15, color: '#000' }}> / {c.need}</span>
-                  <div style={{ fontSize: 11, fontFamily: 'system-ui', color: 'var(--mute)' }}>{c.unit}</div>
-                </div>
-              </div>
+              <ItemCard key={c.sku} c={c} done={done} partial={partial} onMarkOutOfStock={handleMarkOutOfStock} />
             );
           })}
         </div>
