@@ -634,11 +634,13 @@ $img = New-Object System.Drawing.Bitmap 'public\characters\emp-03\S.png'
     - คอลัมน์ขวา: **"ตัวอย่างสติกเกอร์ติดลัง"** (90×65mm, barcode = Box ID, "คลังสินค้า · WH-01") → ปุ่ม ⇩ ส่งออกไฟล์ Text → แถว [เลขที่เอกสาร input + อนุมัติเอกสาร] → 🖨 พิมพ์ใบปิดลัง
 - **selectedId:** useState lazy init — เลือก `activeBoxId` เฉพาะเมื่ออยู่ใน closedBoxes (กันเลือกลัง open ใหม่หลังปิดลัง) ไม่งั้น fallback `closedBoxes[0]` (ลังปิดล่าสุด)
   - **คลิกการ์ดลัง = set `selectedId` เท่านั้น ไม่แตะ `activeBoxId`** — ป้องกัน activeBoxId ของการแพ็คถูกเปลี่ยนเป็นลังที่ปิดแล้ว (เคยเป็นบั๊ก: สแกนต่อจะลงลังที่ปิดไปแล้ว)
-- ปุ่ม "⇩ ส่งออกไฟล์ Text" → export `.txt` แบบ TSV ไม่มี header: `barcode\tจำนวนสินค้า\tทุนสินค้า\t\t\t\t\t\tLOT`
+- ปุ่ม "⇩ ส่งออกไฟล์ Text" → export `.txt` แบบ TSV ไม่มี header: `barcode\tจำนวนสินค้า\tทุนสินค้า\t\t\t\t\t\tLOT\tEXP`
   - ทุนสินค้า = `costMap[sku__unit]` (0 ถ้ายังไม่ import cost map); active เมื่อ status `closed`/`exported`
   - **LOT format:** หลัง cost มี **6 TABs** (สร้าง 5 column ว่างให้ตรงโครงสร้าง POS) แล้วตามด้วย LOT
   - **LOT source priority:** `item.lot` (LOT ที่พนักงาน Android เลือกตอนสแกน) → fallback `lotMap[sku][0]?.lot` (LOT ตัวแรก, สำหรับลังที่ pack จาก desktop) → ว่าง
-  - ตัวอย่าง: `8859243302790\t4\t8.49\t\t\t\t\t\t10012026`
+  - **EXP column:** อีก 1 TAB ถัดจาก LOT → `item.exp` (วันหมดอายุ พ.ศ. `DD/เดือนไทย/YYYY` — กรอกได้เฉพาะตอนพนักงาน Android เลือก "✎ ใส่ LOT เอง"; LOT จาก lotMap ไม่มี exp ไม่มี fallback → ว่าง)
+  - ตัวอย่าง (มี exp): `8859243302790\t4\t8.49\t\t\t\t\t\t10012026\t22/มิถุนายน/2569`
+  - ตัวอย่าง (ไม่มี exp): `8859243302790\t4\t8.49\t\t\t\t\t\t10012026\t`
   - **กันส่งซ้ำ:** กดแล้ว set `box.textExported = true` (sync Firestore) → ปุ่ม disable + เปลี่ยนเป็น "✓ ส่งออกไฟล์ Text แล้ว" ถาวร จนกว่าจะกด **Clear · เริ่มวันถัดไป** (clearBoxes ลบ box → flag หาย)
 - ปุ่ม "🖨 พิมพ์ใบปิดลัง" → ล็อกจนกว่า `box.status === 'exported'`
 - **ปุ่ม "⇩ ส่งออกรายการลังทั้งหมด"** (frame-header ขวา, เดิมชื่อ "Export Excel") — export **ทุกลังที่ปิดแล้ว** เป็นไฟล์ `.xls` HTML table:

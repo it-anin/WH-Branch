@@ -89,8 +89,10 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       // l.lot = LOT ที่พนักงานเลือกตอนสแกน (Android), fallback → LOT ตัวแรกจาก lotMap
       const lots = lotMap[l.sku] || [];
       const lot = l.lot || lots[0]?.lot || '';
-      // โครงสร้าง POS: barcode TAB qty TAB cost + 6 TAB + lot
-      return `${l.barcode || ''}\t${l.qty ?? l.got ?? 0}\t${cost}\t\t\t\t\t\t${lot}`;
+      // l.exp = วันหมดอายุ — มีเฉพาะตอนพนักงานใส่ LOT เอง (Android); lotMap ไม่มีข้อมูล exp ให้ fallback
+      const exp = l.exp || '';
+      // โครงสร้าง POS: barcode TAB qty TAB cost + 6 TAB + lot TAB exp
+      return `${l.barcode || ''}\t${l.qty ?? l.got ?? 0}\t${cost}\t\t\t\t\t\t${lot}\t${exp}`;
     });
     triggerDownload(lines.join('\n'), `${activeBox.id}.txt`, 'text/plain');
     // mark ว่าลังนี้ส่งออก Text แล้ว — disable ปุ่มจนกว่าจะกด Clear (clearBoxes ลบ box → flag หาย)
