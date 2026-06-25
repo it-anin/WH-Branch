@@ -335,6 +335,7 @@ input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bu
 
 **ColH → `factorMap`:** `rowsToMap` คืน `{ map, factorMap }` — `factorMap[sku__unit] = factor` (first-wins). **factor ผูกกับ `sku__unit` ไม่ใช่ชื่อหน่วยล้วน** — ใน R05.106 หน่วย `กล่อง` มี factor ตั้งแต่ 1 ถึง 2000 แล้วแต่ SKU, `โหล` ส่วนใหญ่=12 แต่บาง SKU=1 → ห้ามใช้ตารางหน่วยตายตัว. ทุก SKU มีหน่วยฐาน (factor=1) เสมอ. `onImport(map, factorMap, meta)` → `handleBarcodeMapImport` sync `config/factorMap` (array `{key, factor}`)
 - **โมเดลหน่วยฐาน (base-unit) — แก้บั๊ก "สแกนกล่องนับเป็น 1 โหล":** PackScanC คิด `need`/`gotBase` เป็นหน่วยฐาน — `needBase = picklistQty × factor(picklistUnit)`, ทุกสแกน `gotBase += factor(หน่วยของบาร์โค้ดที่สแกนจริง)` (resolve หน่วยจาก `barcodeMap`). ครบเมื่อ `gotBase >= need`. รองรับบาร์โค้ดปนกัน: สแกนบาร์โค้ดโหล +12 / บาร์โค้ดกล่อง +1. แสดงผล `gotBase/need {baseUnit}` (หน่วยฐาน). **`got` ยังเป็นจำนวนครั้งที่สแกน** (แยกจาก gotBase) ไว้ export ตามหน่วยที่สแกนจริง
+- **`STANDARD_UNIT_FACTOR` (PackScanC, module-level fallback):** `{ 'โหล': 12, 'กุรุส': 144 }` — ใช้เฉพาะตอนหน่วย picklist **ไม่มีใน R05.106** (เช่น picklist เรียก "โหล" แต่ R05.106 มีแค่ "กล่อง"=1 ไม่มีแถวโหล → ระบบไม่รู้ว่า 1 โหล = 12). ลำดับ `factorOf`: `factorMap[sku__unit]` (R05.106) ก่อนเสมอ → `STANDARD_UNIT_FACTOR[unit]` → `1`. ปลอดภัยเพราะ R05.106 ชนะ fallback เสมอ + ใส่เฉพาะหน่วยสากลที่คงที่ทุก SKU (โหล=12 เสมอ). เพิ่มหน่วยใหม่ได้ที่ const นี้
 
 ### ไฟล์ 3: Cost Map (ImportCostMap)
 | Col | ข้อมูล |

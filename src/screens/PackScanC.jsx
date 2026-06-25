@@ -6,6 +6,11 @@ const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
 const SWIPE_THRESHOLD = 70; // px ก่อนถือว่าเป็นการปัดจริง (กันสะกิดมือโดยไม่ตั้งใจ)
 
+// หน่วยมาตรฐานสากลที่ตัวคูณคงที่ทุก SKU — ใช้ fallback เฉพาะตอน R05.106 ไม่มี factor ของหน่วยนั้น
+// (เช่น picklist เรียก "โหล" แต่ R05.106 มีแค่ "กล่อง"=1 ไม่มีแถวโหล → ระบบไม่รู้ว่า 1 โหล = 12)
+// ลำดับความสำคัญ: factorMap (R05.106) ก่อนเสมอ → fallback นี้ → 1
+const STANDARD_UNIT_FACTOR = { 'โหล': 12, 'กุรุส': 144 };
+
 function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
   const [selectedId, setSelectedId] = useState(null);
   const [search, setSearch] = useState('');
@@ -322,7 +327,7 @@ function ItemCard({ c, done, partial, onMarkOutOfStock }) {
 export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, packer, onScanProgress, catalogMeta, lotMap = {}, barcodeMap = {}, factorMap = {} }) {
   // โมเดลหน่วยฐาน: need/gotBase คิดเป็น "หน่วยฐาน" (factor=1) ส่วน got = จำนวนครั้งที่สแกน (ไว้ export ตามหน่วยที่สแกนจริง)
   // factorOf(sku, unit) = จำนวนหน่วยฐานต่อ 1 หน่วยนั้น เช่น โหล=12 → สแกนบาร์โค้ดโหล 1 ครั้ง = +12 หน่วยฐาน
-  const factorOf = (sku, unit) => factorMap[`${sku}__${unit}`] ?? 1;
+  const factorOf = (sku, unit) => factorMap[`${sku}__${unit}`] ?? STANDARD_UNIT_FACTOR[unit] ?? 1;
   // หน่วยที่สแกน → resolve จาก barcodeMap (รู้ว่าบาร์โค้ดตัวนี้เป็นหน่วยอะไรของ SKU) เพื่อบวก gotBase ด้วย factor ที่ถูกต้อง
   const skuBarcodeUnit = useMemo(() => {
     const m = {};
@@ -336,7 +341,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   }, [barcodeMap]);
   const [items, setItems] = useState(() => {
     // factorOf/baseUnitOf inline — useState initializer รันก่อน helper ด้านบนถูกผูกใน scope (อ่าน factorMap prop ตรงๆ ได้)
-    const fOf = (sku, unit) => factorMap[`${sku}__${unit}`] ?? 1;
+    const fOf = (sku, unit) => factorMap[`${sku}__${unit}`] ?? STANDARD_UNIT_FACTOR[unit] ?? 1;
     const baseUnitOf = (sku, fallback) => {
       for (const key of Object.keys(factorMap)) {
         if (factorMap[key] !== 1) continue;
