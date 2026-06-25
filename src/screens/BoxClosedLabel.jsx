@@ -17,13 +17,15 @@ function toBuddhistExp(exp) {
 // exp คืนค่า ค.ศ. ดิบตามที่กรอก (ยังไม่แปลง พ.ศ. — export ค่อยแปลงเองตอนประกอบบรรทัด); ลังเก่าไม่มี scannedLots → แถวเดียวจาก l.lot/l.qty/l.exp
 function lotRows(l, lotMap) {
   const fallbackBarcode = l.scannedBarcode || l.barcode || '';
+  const fallbackUnit = l.scannedUnit || l.unit || ''; // หน่วยที่สแกนจริง (เช่นกล่อง) ต่างจากหน่วย picklist (โหล) — ใช้คิดทุน/แสดงหน่วย
   const fallbackLots = lotMap[l.sku] || [];
   if (l.scannedLots && l.scannedLots.length > 0) {
-    return l.scannedLots.map(({ lot, qty, exp, scannedBarcode }) => ({
+    return l.scannedLots.map(({ lot, qty, exp, scannedBarcode, unit }) => ({
       barcode: scannedBarcode || fallbackBarcode,
       qty,
       lot,
       exp: exp || '',
+      unit: unit || fallbackUnit,
     }));
   }
   return [{
@@ -31,6 +33,7 @@ function lotRows(l, lotMap) {
     qty: l.qty ?? l.got ?? 0,
     lot: l.lot || fallbackLots[0]?.lot || '',
     exp: l.exp || '',
+    unit: fallbackUnit,
   }];
 }
 
@@ -115,13 +118,14 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       return;
     }
     if (boxItems.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังนี้'); return; }
-    const lines = boxItems.flatMap(l => {
-      const cost = costMap[`${l.sku}__${l.unit}`] ?? 0;
+    const lines = boxItems.flatMap(l =>
       // โครงสร้าง POS: barcode TAB qty TAB cost + 6 TAB + lot TAB exp — exp แปลง ค.ศ.→พ.ศ. ตอนนี้
-      return lotRows(l, lotMap).map(r =>
-        `${r.barcode}\t${r.qty}\t${cost}\t\t\t\t\t\t${r.lot}\t${toBuddhistExp(r.exp)}`
-      );
-    });
+      // ทุน = costMap[sku__หน่วยที่สแกนจริง] (เช่นสแกนกล่อง → ทุนต่อกล่อง) ไม่ใช่หน่วย picklist
+      lotRows(l, lotMap).map(r => {
+        const cost = costMap[`${l.sku}__${r.unit || l.unit}`] ?? 0;
+        return `${r.barcode}\t${r.qty}\t${cost}\t\t\t\t\t\t${r.lot}\t${toBuddhistExp(r.exp)}`;
+      })
+    );
     triggerDownload(lines.join('\n'), `${activeBox.id}.txt`, 'text/plain');
     // mark ว่าลังนี้ส่งออก Text แล้ว — disable ปุ่มจนกว่าจะกด Clear (clearBoxes ลบ box → flag หาย)
     setBoxes(prev => prev.map(b => b.id === activeBox.id ? { ...b, textExported: true } : b));
@@ -187,7 +191,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
         l.sku,
         l.name,
         l.scannedBarcode || l.barcode || '',
-        l.unit,
+        l.scannedUnit || l.unit,
         l.qty ?? l.got ?? 0,
         b.packer?.name || '',
         dateStr,
@@ -499,7 +503,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 {boxItems.length > 0 ? (() => {
                   // แตกแถวตาม LOT จริงที่พนักงานแพ็คสแกน (เหมือนไฟล์ Text) — SKU เดียวสแกนคนละ LOT จะได้หลายแถว
                   const tableRows = boxItems.flatMap(l =>
-                    lotRows(l, lotMap).map(r => ({ ...r, sku: l.sku, name: l.name, unit: l.unit, location: l.location }))
+                    lotRows(l, lotMap).map(r => ({ ...r, sku: l.sku, name: l.name, unit: r.unit || l.unit, location: l.location }))
                   );
                   const hasExp = tableRows.some(r => r.exp); // โชว์คอลัมน์ Exp เฉพาะเมื่อมีลังที่กรอก exp
                   return (

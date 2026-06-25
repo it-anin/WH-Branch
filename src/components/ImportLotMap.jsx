@@ -1,21 +1,24 @@
 import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 
-// ColA(0)=LOT  ColB(1)=SKU  ColF(5)=qty
-// รวม qty ของแต่ละ (SKU, LOT) ทั้งหมด → เก็บเฉพาะ LOT ที่ยอดรวม > 0 (ของจริงเหลือ)
-function rowsToMap(rows) {
-  // Pass 1: รวม qty ต่อ (sku, lot)
-  const totals = {}; // { [sku]: { [lot]: sumQty } }
+// ColA(0)=LOT  ColB(1)=SKU  ColF(5)=qty  ColG(6)=หน่วย (ตรงกับ R05.106 ColG)
+// แปลง qty → หน่วยฐานด้วย factorMap ตั้งแต่ import (qty × factor(sku__unit)) → lotMap เก็บ qty เป็นหน่วยฐานเลย
+// ⚠ ไม่เก็บ unit ต่อ lot — ไฟล์นี้ ~27k LOT entries, เก็บ unit ต่อแถวทำให้ config/lotMap เกินลิมิต Firestore 1MB (invalid-argument)
+function rowsToMap(rows, factorMap = {}) {
+  // Pass 1: รวม qty (หน่วยฐาน) ต่อ (sku, lot)
+  const totals = {}; // { [sku]: { [lot]: sumBaseQty } }
   rows.slice(1).forEach(vals => {
     const lot = String(vals[0] ?? '').trim();
     const sku = String(vals[1] ?? '').trim();
     const qty = parseFloat(String(vals[5] ?? '').replace(/,/g, '')) || 0;
+    const unit = String(vals[6] ?? '').trim();
     if (!sku || !lot) return;
+    const factor = factorMap[`${sku}__${unit}`] ?? 1; // ไม่มี factor (ยังไม่ import R05.106) → 1 = ใช้ qty ตามเดิม
     if (!totals[sku]) totals[sku] = {};
-    totals[sku][lot] = (totals[sku][lot] || 0) + qty;
+    totals[sku][lot] = (totals[sku][lot] || 0) + qty * factor;
   });
 
-  // Pass 2: เก็บเฉพาะ LOT ที่ sum > 0 พร้อม qty คงเหลือเริ่มต้น
+  // Pass 2: เก็บเฉพาะ LOT ที่ sum > 0 (qty คงเหลือเป็นหน่วยฐาน)
   const map = {};
   Object.entries(totals).forEach(([sku, lots]) => {
     Object.entries(lots).forEach(([lot, qty]) => {
@@ -28,11 +31,11 @@ function rowsToMap(rows) {
   return map;
 }
 
-function parseWorkbook(input, type) {
+function parseWorkbook(input, type, factorMap) {
   const wb = XLSX.read(input, { type, cellDates: false, raw: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
-  return rowsToMap(rows);
+  return rowsToMap(rows, factorMap);
 }
 
 // label + % ต่อขั้น — ไฟล์ LOT มี aggregation pass + Firestore write ก้อนใหญ่ ใช้เวลานาน ต้องโชว์สถานะ
@@ -43,7 +46,7 @@ const STAGE = {
   done:    { label: '✅ เสร็จสมบูรณ์', pct: 100 },
 };
 
-export default function ImportLotMap({ matchCount, meta, onImport }) {
+export default function ImportLotMap({ matchCount, meta, onImport, factorMap = {} }) {
   const fileRef = useRef(null);
   const [uploadedAt, setUploadedAt] = useState(null);
   const [stage, setStage] = useState(null); // null = ไม่ได้กำลังอัปโหลด
@@ -60,13 +63,13 @@ export default function ImportLotMap({ matchCount, meta, onImport }) {
       setStage('parsing');
       // setTimeout ปล่อยให้ browser repaint แถบ progress ก่อนเริ่ม parse+aggregate (sync blocking)
       setTimeout(() => {
-        const map = parseWorkbook(ev.target.result, isCsv ? 'string' : 'array');
+        const map = parseWorkbook(ev.target.result, isCsv ? 'string' : 'array', factorMap);
         if (Object.keys(map).length === 0) {
           setStage(null);
           alert('ไม่พบข้อมูล LOT กรุณาตรวจสอบรูปแบบไฟล์\n(ColA=LOT, ColB=SKU)');
           return;
         }
-        const d = new Date(file.lastModified);
+        const d = new Date(); // วันที่อัปโหลดจริง (ไม่ใช่ file.lastModified ที่เป็นวันแก้ไขไฟล์)
         const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 
         setStage('saving');

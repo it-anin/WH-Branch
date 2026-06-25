@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { generatePOS, matchBarcode } from '../data.js';
 
@@ -287,9 +287,9 @@ function ItemCard({ c, done, partial, onMarkOutOfStock }) {
           )}
         </div>
         <div style={{ textAlign: 'right', fontFamily: 'system-ui', fontWeight: 400, fontSize: 15, flexShrink: 0 }}>
-          <span style={{ color: '#000' }}>{c.got}</span>
+          <span style={{ color: '#000' }}>{c.gotBase ?? 0}</span>
           <span style={{ fontSize: 15, color: '#000' }}> / {c.need}</span>
-          <div style={{ fontSize: 11, fontFamily: 'system-ui', color: 'var(--mute)' }}>{c.unit}</div>
+          <div style={{ fontSize: 11, fontFamily: 'system-ui', color: 'var(--mute)' }}>{c.baseUnit || c.unit}</div>
         </div>
       </div>
 
@@ -319,24 +319,53 @@ function ItemCard({ c, done, partial, onMarkOutOfStock }) {
   );
 }
 
-export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, packer, onScanProgress, catalogMeta, lotMap = {} }) {
+export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, packer, onScanProgress, catalogMeta, lotMap = {}, barcodeMap = {}, factorMap = {} }) {
+  // โมเดลหน่วยฐาน: need/gotBase คิดเป็น "หน่วยฐาน" (factor=1) ส่วน got = จำนวนครั้งที่สแกน (ไว้ export ตามหน่วยที่สแกนจริง)
+  // factorOf(sku, unit) = จำนวนหน่วยฐานต่อ 1 หน่วยนั้น เช่น โหล=12 → สแกนบาร์โค้ดโหล 1 ครั้ง = +12 หน่วยฐาน
+  const factorOf = (sku, unit) => factorMap[`${sku}__${unit}`] ?? 1;
+  // หน่วยที่สแกน → resolve จาก barcodeMap (รู้ว่าบาร์โค้ดตัวนี้เป็นหน่วยอะไรของ SKU) เพื่อบวก gotBase ด้วย factor ที่ถูกต้อง
+  const skuBarcodeUnit = useMemo(() => {
+    const m = {};
+    for (const key of Object.keys(barcodeMap)) {
+      const idx = key.indexOf('__');
+      const sku = key.slice(0, idx), unit = key.slice(idx + 2);
+      if (!m[sku]) m[sku] = {};
+      (barcodeMap[key] || []).forEach(bc => { if (!(bc in m[sku])) m[sku][bc] = unit; });
+    }
+    return m;
+  }, [barcodeMap]);
   const [items, setItems] = useState(() => {
-    // หักจำนวนที่พนักงานคนนี้แพ็คไปแล้ว (จากลังที่ปิด/ส่งออก/รับแล้ว) เพื่อให้สินค้าที่ลงลังครบไม่โผล่ซ้ำหลัง remount/reload
-    const packed = {};
+    // factorOf/baseUnitOf inline — useState initializer รันก่อน helper ด้านบนถูกผูกใน scope (อ่าน factorMap prop ตรงๆ ได้)
+    const fOf = (sku, unit) => factorMap[`${sku}__${unit}`] ?? 1;
+    const baseUnitOf = (sku, fallback) => {
+      for (const key of Object.keys(factorMap)) {
+        if (factorMap[key] !== 1) continue;
+        const idx = key.indexOf('__');
+        if (key.slice(0, idx) === sku) return key.slice(idx + 2);
+      }
+      return fallback;
+    };
+    // หักจำนวนที่พนักงานคนนี้แพ็คไปแล้ว (หน่วยฐาน) จากลังที่ปิด/ส่งออก/รับแล้ว — ลังใหม่เก็บ gotBase, ลังเก่า fallback qty×factor(หน่วย picklist)
+    const packedBase = {};
     boxes.forEach(b => {
       if (b.packer?.code !== packer?.code) return;
       if (!(b.status === 'closed' || b.status === 'exported' || b.status === 'received')) return;
       (itemsByBox[b.id] || []).forEach(it => {
         const key = `${it.sku}__${it.unit}`;
-        packed[key] = (packed[key] || 0) + (it.qty ?? it.got ?? 0);
+        const base = it.gotBase ?? ((it.qty ?? it.got ?? 0) * fOf(it.sku, it.unit));
+        packedBase[key] = (packedBase[key] || 0) + base;
       });
     });
     return catalog
-      .map(c => ({
-        sku: c.sku, barcode: c.barcode, name: c.name, unit: c.unit,
-        need: c.qty - (packed[`${c.sku}__${c.unit}`] || 0),
-        got: 0, location: c.location || '',
-      }))
+      .map(c => {
+        const needBase = c.qty * fOf(c.sku, c.unit) - (packedBase[`${c.sku}__${c.unit}`] || 0);
+        return {
+          sku: c.sku, barcode: c.barcode, name: c.name, unit: c.unit,
+          need: needBase, got: 0, gotBase: 0,
+          baseUnit: baseUnitOf(c.sku, c.unit),
+          location: c.location || '',
+        };
+      })
       .filter(it => it.need > 0);
   });
   const [page, setPage] = useState(0);
@@ -368,14 +397,15 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
         it.sku.toLowerCase().includes(search.toLowerCase())
       )
     : visibleItems;
-  // Android: ยกสินค้าที่ครบแล้ว (got >= need) ไปท้าย — sort stable เก็บลำดับเดิมในแต่ละกลุ่ม
+  // Android: ยกสินค้าที่ครบแล้ว (gotBase >= need) ไปท้าย — sort stable เก็บลำดับเดิมในแต่ละกลุ่ม
   const sorted = isAndroid
-    ? [...filtered].sort((a, b) => (a.got >= a.need ? 1 : 0) - (b.got >= b.need ? 1 : 0))
+    ? [...filtered].sort((a, b) => (a.gotBase >= a.need ? 1 : 0) - (b.gotBase >= b.need ? 1 : 0))
     : filtered;
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   const pageItems = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
-  // คำนวณยอด LOT ที่ถูกใช้ไปแล้ว (key = sku__lot) จากทุกลังที่ปิด + ลังปัจจุบัน
+  // คำนวณยอด LOT ที่ถูกใช้ไปแล้ว (key = sku__lot, หน่วยฐาน) จากทุกลังที่ปิด + ลังปัจจุบัน
+  // คูณ factor ของหน่วยที่สแกนจริง — สแกนบาร์โค้ดโหล 1 ครั้งหักสต็อก LOT เท่า factor (เช่น 12) ไม่ใช่ 1
   function calcLotUsage() {
     const usage = {};
     boxes.forEach(b => {
@@ -383,20 +413,23 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
       (itemsByBox[b.id] || []).forEach(it => {
         if (it.lot) {
           const key = `${it.sku}__${it.lot}`;
-          usage[key] = (usage[key] || 0) + (it.qty ?? it.got ?? 0);
+          // คูณ factor เฉพาะลังใหม่ที่มี scannedUnit — ลังเก่า (it.unit = หน่วย picklist, ไม่มี scannedUnit) ใช้ factor=1 ตามพฤติกรรมเดิม กัน overcount
+          const f = it.scannedUnit ? factorOf(it.sku, it.scannedUnit) : 1;
+          usage[key] = (usage[key] || 0) + (it.qty ?? it.got ?? 0) * f;
         }
       });
     });
     items.forEach(it => {
       if (it.lot && it.got > 0) {
         const key = `${it.sku}__${it.lot}`;
-        usage[key] = (usage[key] || 0) + it.got;
+        const f = it.scannedUnit ? factorOf(it.sku, it.scannedUnit) : 1;
+        usage[key] = (usage[key] || 0) + it.got * f;
       }
     });
     return usage;
   }
 
-  // คืน LOT ที่ยังเหลือสต็อก > 0 (พร้อมจำนวนคงเหลือ)
+  // คืน LOT ที่ยังเหลือสต็อก > 0 — qty ใน lotMap เป็นหน่วยฐานแล้ว (แปลงตั้งแต่ import ดู ImportLotMap), usage ก็หน่วยฐาน
   function getAvailableLots(sku) {
     const lots = lotMap[sku] || [];
     const usage = calcLotUsage();
@@ -412,18 +445,22 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     const catMatch = catalog.find(it => matchBarcode(it, barcode));
     if (!catMatch) { showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
     const match = items.find(it => it.sku === catMatch.sku && it.unit === catMatch.unit);
-    if (!match || match.got >= match.need) { showToast('⚠ ครบแล้ว', 'error'); return; }
+    if (!match || match.gotBase >= match.need) { showToast('⚠ ครบแล้ว', 'error'); return; }
 
     // catMatch.barcode อาจเป็น comma-separated หลายตัวต่อ SKU (ดู matchBarcode ใน data.js) — เก็บตัวที่สแกนจริงไว้ export
     const scannedBarcode = catMatch.barcode.split(',').map(b => b.trim()).includes(barcode)
       ? barcode
       : (catMatch.barcode.split(',')[0]?.trim() || '');
 
+    // หน่วยของบาร์โค้ดที่สแกนจริง (อาจต่างจากหน่วย picklist เช่นสแกนกล่องแต่ picklist เป็นโหล) → ใช้บวก gotBase ด้วย factor ที่ถูกต้อง + คิดทุน/หน่วยตอน export
+    const scannedUnit = skuBarcodeUnit[catMatch.sku]?.[barcode] || catMatch.unit;
+    const factor = factorOf(catMatch.sku, scannedUnit);
+
     const allLots = lotMap[match.sku] || [];
 
     // SKU ไม่มีใน lotMap → สแกนปกติไม่มี LOT
     if (allLots.length === 0) {
-      await applyScan(match, null, false, '', scannedBarcode);
+      await applyScan(match, null, false, '', scannedBarcode, scannedUnit, factor);
       return;
     }
 
@@ -437,41 +474,43 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
 
     // Android: ให้เลือก LOT ทุกครั้งที่สแกน (ทุกชิ้น) เสมอ — ไม่ auto-reuse LOT เดิม/auto-pick อีกต่อไป
     if (isAndroid) {
-      setPendingLot({ match, lots: availableLots, scannedBarcode });
+      setPendingLot({ match, lots: availableLots, scannedBarcode, scannedUnit, factor });
       return;
     }
 
     // Desktop: คงพฤติกรรมเดิม — ใช้ LOT เดิมต่อถ้ายังไม่หมด ไม่งั้นใช้ตัวแรกที่เหลือ (auto, ไม่มี popup)
     const currentValid = match.lot && availableLots.some(l => l.lot === match.lot);
     const autoLot = currentValid ? match.lot : availableLots[0].lot;
-    await applyScan(match, autoLot, !currentValid, '', scannedBarcode);
+    await applyScan(match, autoLot, !currentValid, '', scannedBarcode, scannedUnit, factor);
   }
 
   // เพิ่ม/รวมจำนวนต่อ LOT จริงบน item (ต่าง LOT ไม่ overwrite กันแบบ it.lot) — ใช้ตอน export แยกแถวเมื่อ SKU เดียวกันในลังนี้สแกนคนละ LOT
-  function addLotEntry(scannedLots, lot, exp, scannedBarcode) {
+  function addLotEntry(scannedLots, lot, exp, scannedBarcode, unit) {
     const next = scannedLots ? [...scannedLots] : [];
     const idx = next.findIndex(l => l.lot === lot);
     if (idx >= 0) {
-      next[idx] = { ...next[idx], qty: next[idx].qty + 1, ...(exp ? { exp } : {}), ...(scannedBarcode ? { scannedBarcode } : {}) };
+      next[idx] = { ...next[idx], qty: next[idx].qty + 1, ...(exp ? { exp } : {}), ...(scannedBarcode ? { scannedBarcode } : {}), ...(unit ? { unit } : {}) };
     } else {
-      next.push({ lot, qty: 1, exp: exp || '', scannedBarcode: scannedBarcode || '' });
+      next.push({ lot, qty: 1, exp: exp || '', scannedBarcode: scannedBarcode || '', unit: unit || '' });
     }
     return next;
   }
 
   // resetLot=true → เปลี่ยน lot ของ item เป็นค่าใหม่ (กรณี LOT เก่าหมด ต้องสลับ); exp = วันหมดอายุ (เฉพาะตอนใส่ LOT เอง — LOT จาก lotMap ไม่มีข้อมูล exp)
   // scannedBarcode = บาร์โค้ดตัวจริงที่สแกน เก็บไว้ export (ต่างจาก it.barcode ที่อาจเป็น comma-separated หลายตัวจาก catalog)
-  async function applyScan(match, lot, resetLot = false, exp = '', scannedBarcode = '') {
+  async function applyScan(match, lot, resetLot = false, exp = '', scannedBarcode = '', scannedUnit = '', factor = 1) {
     const newItems = items.map(it =>
       it.sku === match.sku && it.unit === match.unit
         ? {
             ...it,
-            got: it.got + 1,
+            got: it.got + 1,                      // จำนวนครั้งที่สแกน (ไว้ export ตามหน่วยที่สแกน)
+            gotBase: (it.gotBase || 0) + factor,  // ความคืบหน้าหน่วยฐาน (เทียบกับ need)
             ...(lot && (resetLot || !it.lot) ? { lot } : {}),
             ...(exp && (resetLot || !it.exp) ? { exp } : {}),
             ...(scannedBarcode ? { scannedBarcode } : {}),
+            ...(scannedUnit ? { scannedUnit } : {}),  // หน่วยที่สแกนจริง — ใช้คิดทุน/หน่วยตอน export (ลังไม่มี LOT)
             // scannedLots = breakdown ต่อ LOT จริง — ใช้ export แยกแถวตาม LOT (ดู handleExportBarcode ใน BoxClosedLabel.jsx)
-            ...(lot ? { scannedLots: addLotEntry(it.scannedLots, lot, exp, scannedBarcode) } : {}),
+            ...(lot ? { scannedLots: addLotEntry(it.scannedLots, lot, exp, scannedBarcode, scannedUnit) } : {}),
           }
         : it
     );
@@ -493,9 +532,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
 
   async function handleLotSelect(lot) {
     if (!pendingLot) return;
-    const { match, scannedBarcode } = pendingLot;
+    const { match, scannedBarcode, scannedUnit, factor } = pendingLot;
     closeLotPopup();
-    await applyScan(match, lot, true, '', scannedBarcode);
+    await applyScan(match, lot, true, '', scannedBarcode, scannedUnit, factor);
   }
 
   async function handleManualLotConfirm() {
@@ -506,15 +545,15 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     const allExp = manualExpD && manualExpM && manualExpY;
     if (anyExp && !allExp) { showToast('⚠ กรุณากรอกวันที่ Exp ให้ครบ', 'error'); return; }
     const exp = allExp ? `${String(manualExpD).padStart(2, '0')}/${String(manualExpM).padStart(2, '0')}/${manualExpY}` : '';
-    const { match, scannedBarcode } = pendingLot;
+    const { match, scannedBarcode, scannedUnit, factor } = pendingLot;
     closeLotPopup();
-    await applyScan(match, lot, true, exp, scannedBarcode);
+    await applyScan(match, lot, true, exp, scannedBarcode, scannedUnit, factor);
   }
 
   // ปัด card ยืนยัน "ของหมด" — แช่ need ไว้ที่ got ปัจจุบัน (กันถูกดึงไปลังถัดไปซ้ำ) + ซ่อนออกจาก checklist
   // ของที่แพ็คไปแล้ว (got > 0) ยังนับใน packedItems ตอนปิดลังตามปกติ — ไม่เสียยอดที่สแกนไปแล้ว
   function handleMarkOutOfStock(sku) {
-    const newItems = items.map(it => it.sku === sku ? { ...it, need: it.got } : it);
+    const newItems = items.map(it => it.sku === sku ? { ...it, need: it.gotBase } : it);
     setItems(newItems);
     setDismissedSkus(prev => new Set(prev).add(sku));
     if (activeBoxId && onScanProgress) onScanProgress(activeBoxId, newItems);
@@ -557,10 +596,11 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     ));
     setItemsByBox(prev => ({ ...prev, [closingBoxId]: packedItems }));
     if (onScanProgress) onScanProgress(closingBoxId, []);
+    // ของที่ยังไม่ครบ (หน่วยฐาน) → ยกไปลังถัดไป เหลือ need = needBase − gotBase, reset ตัวนับสแกน/LOT ของลังใหม่
     setItems(prev =>
       prev
-        .filter(it => it.got < it.need)
-        .map(it => ({ ...it, need: it.need - it.got, got: 0 }))
+        .filter(it => it.gotBase < it.need)
+        .map(it => ({ ...it, need: it.need - it.gotBase, got: 0, gotBase: 0, scannedLots: undefined }))
     );
     setPage(0);
     setSearch('');
@@ -570,7 +610,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   }
 
   function handleCloseBox() {
-    const allDone = items.every(it => it.got >= it.need);
+    const allDone = items.every(it => it.gotBase >= it.need);
     if (allDone) {
       doClose();
     } else {
@@ -578,7 +618,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     }
   }
 
-  const doneCount = visibleItems.filter(it => it.got >= it.need).length;
+  const doneCount = visibleItems.filter(it => it.gotBase >= it.need).length;
 
   return (
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 580, ...(isAndroid ? { boxShadow: 'none', border: 'none', borderRadius: 0 } : {}) }}>
@@ -842,8 +882,8 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
 
         <div style={{ display: 'grid', gridTemplateColumns: isAndroid ? '1fr' : '1fr 1fr', gap: isAndroid ? 6 : 12 }}>
           {pageItems.map((c) => {
-            const done = c.got >= c.need;
-            const partial = c.got > 0 && c.got < c.need;
+            const done = c.gotBase >= c.need;
+            const partial = c.gotBase > 0 && c.gotBase < c.need;
             return (
               <ItemCard key={c.sku} c={c} done={done} partial={partial} onMarkOutOfStock={handleMarkOutOfStock} />
             );

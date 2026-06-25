@@ -59,7 +59,7 @@ export default function ImportCostMap({ matchCount, meta, onImport }) {
         alert('ไม่พบข้อมูล Cost กรุณาตรวจสอบรูปแบบไฟล์\n(ColA=SKU, ColB=ราคาทุน)');
         return;
       }
-      const d = new Date(file.lastModified);
+      const d = new Date(); // วันที่อัปโหลดจริง (ไม่ใช่ file.lastModified ที่เป็นวันแก้ไขไฟล์)
       const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
       setUploadedAt(fd);
       onImport(map, { fileDate: fd });

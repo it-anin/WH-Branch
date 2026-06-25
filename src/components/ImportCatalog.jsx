@@ -105,7 +105,7 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
       }
       const b = extractBranch(file.name);
       setBranch(b);
-      const d = new Date(file.lastModified);
+      const d = new Date(); // วันที่อัปโหลดจริง (ไม่ใช่ file.lastModified ที่เป็นวันแก้ไขไฟล์)
       const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
       setFileDate(fd);
       onImport(items, { branch: b, fileDate: fd });

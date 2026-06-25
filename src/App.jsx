@@ -160,6 +160,12 @@ export default function App() {
         setCostMapMeta(null);
       }
     }, onErr('costMap'));
+    const unsubFactorMap = onSnapshot(doc(db, 'config', 'factorMap'), snap => {
+      if (snap.exists()) {
+        const entries = snap.data().entries || [];
+        setFactorMap(Object.fromEntries(entries.map(e => [e.key, e.factor])));
+      }
+    }, onErr('factorMap'));
     const unsubLotMap = onSnapshot(doc(db, 'config', 'lotMap'), snap => {
       if (snap.exists()) {
         const entries = snap.data().entries || [];
@@ -182,7 +188,7 @@ export default function App() {
         .sort((a, b) => new Date(b.clearedAt) - new Date(a.clearedAt));
       setHistory(data);
     }, onErr('history'));
-    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); unsubLotMap(); unsubZone(); unsubHistory(); };
+    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); unsubFactorMap(); unsubLotMap(); unsubZone(); unsubHistory(); };
   }, []);
 
   function setBoxes(updater) {
@@ -349,6 +355,7 @@ export default function App() {
       batch.delete(doc(db, 'config', 'catalogByPacker'));
       batch.delete(doc(db, 'config', 'receive'));
       batch.delete(doc(db, 'config', 'costMap'));
+      batch.delete(doc(db, 'config', 'factorMap'));
       batch.delete(doc(db, 'config', 'lotMap'));
       await batch.commit();
       boxesRef.current = [];
@@ -360,6 +367,7 @@ export default function App() {
       setCatalog([]);
       setCatalogByPacker({});
       setBarcodeMap({});
+      setFactorMap({});
       setCostMap({});
       setLotMap({});
       setHistory([]);
@@ -405,6 +413,7 @@ export default function App() {
 
   const [catalogByPacker, setCatalogByPacker] = useState({});
   const [barcodeMap, setBarcodeMap] = useState({});
+  const [factorMap, setFactorMap] = useState({}); // {sku__unit: ตัวคูณหน่วยฐาน} จาก R05.106 ColH — ใช้แปลงหน่วย picklist↔หน่วยที่สแกน
   const [costMap, setCostMap] = useState({});
   const [lotMap, setLotMap] = useState({});
   const [catalogMeta, setCatalogMeta] = useState(null);
@@ -484,12 +493,20 @@ export default function App() {
     });
   }
 
-  function handleBarcodeMapImport(map, meta) {
+  function handleBarcodeMapImport(map, importedFactorMap, meta) {
     setBarcodeMap(map);
     const mapEntries = Object.entries(map).map(([key, barcodes]) => ({ key, barcodes }));
     setDoc(doc(db, 'config', 'barcodeMap'), { entries: mapEntries, ...(meta ? { _meta: meta } : {}) })
       .catch(err => console.error('barcodeMap write failed:', err.code));
+    // ตัวคูณหน่วยฐาน (ColH) มากับไฟล์เดียวกัน — sync เป็น config/factorMap (array format กัน index limit เหมือน costMap)
+    if (importedFactorMap && Object.keys(importedFactorMap).length > 0) {
+      setFactorMap(importedFactorMap);
+      const factorEntries = Object.entries(importedFactorMap).map(([key, factor]) => ({ key, factor }));
+      setDoc(doc(db, 'config', 'factorMap'), { entries: factorEntries })
+        .catch(err => console.error('factorMap write failed:', err.code));
+    }
     const updated = applyBarcodeMap(catalog, map);
+    const matched = updated.filter(it => it.barcode).length; // จำนวนรายการเบิกที่ได้ barcode หลัง merge
     setCatalog(updated);
     setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(catalogMeta ? { _meta: catalogMeta } : {}) });
     setCatalogByPacker(prev => {
@@ -556,7 +573,7 @@ export default function App() {
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
-  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   if (isAndroidMode) {
     return (
@@ -656,6 +673,7 @@ export default function App() {
                 matchCount={Object.keys(lotMap).length}
                 meta={lotMapMeta}
                 onImport={handleLotMapImport}
+                factorMap={factorMap}
               />
             </div>
             <BoxList {...screenProps} />
