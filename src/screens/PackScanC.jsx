@@ -5,6 +5,7 @@ import { generatePOS, matchBarcode } from '../data.js';
 const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
 const SWIPE_THRESHOLD = 70; // px ก่อนถือว่าเป็นการปัดจริง (กันสะกิดมือโดยไม่ตั้งใจ)
+const HOLD_MS = 3000; // Android: ค้างหน้าสินค้าที่สแกนครบไว้ที่ตำแหน่งเดิมกี่ ms ก่อนจางหาย/เลื่อนไปท้าย list (ให้พนักงานเช็คก่อนสแกนตัวถัดไป)
 
 // หน่วยมาตรฐานสากลที่ตัวคูณคงที่ทุก SKU — ใช้ fallback เฉพาะตอน R05.106 ไม่มี factor ของหน่วยนั้น
 // (เช่น picklist เรียก "โหล" แต่ R05.106 มีแค่ "กล่อง"=1 ไม่มีแถวโหล → ระบบไม่รู้ว่า 1 โหล = 12)
@@ -209,7 +210,8 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
 }
 
 // Android: card สินค้าปัดได้ — ปัดซ้ายเกิน SWIPE_THRESHOLD → ถาม "ของหมดใช่ไหม" → ลบออกจาก checklist
-function ItemCard({ c, done, partial, onMarkOutOfStock }) {
+// settled = ครบแล้วและพ้นช่วงค้างหน้าตรวจสอบ (HOLD_MS) แล้ว — เริ่มจางลง ก่อนถูกเลื่อนไปท้าย list
+function ItemCard({ c, done, partial, settled, onMarkOutOfStock }) {
   const [dragX, setDragX] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const dragRef = useRef({ x: 0, dragging: false });
@@ -272,7 +274,8 @@ function ItemCard({ c, done, partial, onMarkOutOfStock }) {
           minWidth: 0, overflow: 'hidden',
           position: 'relative',
           transform: isAndroid ? `translateX(${dragX}px)` : undefined,
-          transition: dragRef.current.dragging ? 'none' : 'transform 0.2s',
+          opacity: settled ? 0.5 : 1,
+          transition: (dragRef.current.dragging ? '' : 'transform 0.2s') + ', opacity 0.8s ease',
         }}
       >
         <div style={{
@@ -398,6 +401,10 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const [manualExpM, setManualExpM] = useState('');
   const [manualExpY, setManualExpY] = useState('');
   const [dismissedSkus, setDismissedSkus] = useState(() => new Set()); // SKU ที่ปัดทำเครื่องหมาย "ของหมด" แล้ว — ซ่อนจาก checklist
+  // Android: sku__unit ที่สแกนครบแล้วแต่ยังอยู่ในช่วงค้างหน้าตรวจสอบ (HOLD_MS) — กันไม่ให้ sort เลื่อนไปท้าย list ทันที
+  const [holdingSkus, setHoldingSkus] = useState(() => new Set());
+  const holdTimeoutsRef = useRef({});
+  useEffect(() => () => { Object.values(holdTimeoutsRef.current).forEach(clearTimeout); }, []);
   const barcodeRef = useRef(null);
 
   // Android: คืน focus กลับ barcode input หลัง render — ยกเว้นตอนที่ช่องค้นหาเปิดอยู่ หรือ popup เลือก/ใส่ LOT เปิดอยู่ (ต้องพิมพ์ในช่องนั้น)
@@ -415,8 +422,13 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
       )
     : visibleItems;
   // Android: ยกสินค้าที่ครบแล้ว (gotBase >= need) ไปท้าย — sort stable เก็บลำดับเดิมในแต่ละกลุ่ม
+  // ระหว่างค้างหน้าตรวจสอบ (holdingSkus, HOLD_MS แรกหลังครบ) ยังไม่ถูกเลื่อน — อยู่ตำแหน่งเดิมให้เช็คก่อน
   const sorted = isAndroid
-    ? [...filtered].sort((a, b) => (a.gotBase >= a.need ? 1 : 0) - (b.gotBase >= b.need ? 1 : 0))
+    ? [...filtered].sort((a, b) => {
+        const aSettled = a.gotBase >= a.need && !holdingSkus.has(`${a.sku}__${a.unit}`);
+        const bSettled = b.gotBase >= b.need && !holdingSkus.has(`${b.sku}__${b.unit}`);
+        return (aSettled ? 1 : 0) - (bSettled ? 1 : 0);
+      })
     : filtered;
   const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
   const pageItems = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -516,6 +528,16 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   // resetLot=true → เปลี่ยน lot ของ item เป็นค่าใหม่ (กรณี LOT เก่าหมด ต้องสลับ); exp = วันหมดอายุ (เฉพาะตอนใส่ LOT เอง — LOT จาก lotMap ไม่มีข้อมูล exp)
   // scannedBarcode = บาร์โค้ดตัวจริงที่สแกน เก็บไว้ export (ต่างจาก it.barcode ที่อาจเป็น comma-separated หลายตัวจาก catalog)
   async function applyScan(match, lot, resetLot = false, exp = '', scannedBarcode = '', scannedUnit = '', factor = 1) {
+    // ตรวจ "เพิ่งครบ" (ก่อนสแกนนี้ยังไม่ครบ, หลังสแกนนี้ครบ) → เริ่มค้างหน้าไว้ที่ตำแหน่งเดิม HOLD_MS ก่อนค่อยๆ จาง/เลื่อนไปท้าย
+    if (isAndroid && (match.gotBase || 0) < match.need && (match.gotBase || 0) + factor >= match.need) {
+      const key = `${match.sku}__${match.unit}`;
+      setHoldingSkus(prev => new Set(prev).add(key));
+      clearTimeout(holdTimeoutsRef.current[key]);
+      holdTimeoutsRef.current[key] = setTimeout(() => {
+        setHoldingSkus(prev => { const next = new Set(prev); next.delete(key); return next; });
+        delete holdTimeoutsRef.current[key];
+      }, HOLD_MS);
+    }
     const newItems = items.map(it =>
       it.sku === match.sku && it.unit === match.unit
         ? {
@@ -621,6 +643,10 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     );
     setPage(0);
     setSearch('');
+    // เคลียร์ "ค้างหน้าตรวจสอบ" ทั้งหมด — ลังใหม่ need/got reset แล้ว ไม่มีรายการไหนค้างต่อข้ามลัง
+    Object.values(holdTimeoutsRef.current).forEach(clearTimeout);
+    holdTimeoutsRef.current = {};
+    setHoldingSkus(new Set());
     await createNewBox();
     showToast(`ปิดลัง ${closingBoxId} แล้ว ✓`, 'success');
     setIsClosing(false);
@@ -901,8 +927,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
           {pageItems.map((c) => {
             const done = c.gotBase >= c.need;
             const partial = c.gotBase > 0 && c.gotBase < c.need;
+            const settled = isAndroid && done && !holdingSkus.has(`${c.sku}__${c.unit}`);
             return (
-              <ItemCard key={c.sku} c={c} done={done} partial={partial} onMarkOutOfStock={handleMarkOutOfStock} />
+              <ItemCard key={c.sku} c={c} done={done} partial={partial} settled={settled} onMarkOutOfStock={handleMarkOutOfStock} />
             );
           })}
         </div>

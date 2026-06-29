@@ -555,19 +555,24 @@ export default function App() {
     setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
   }
 
-  function handleZoneAssign(assignments) {
-    setZoneAssignments(assignments);
-    setDoc(doc(db, 'config', 'zoneAssignments'), { assignments });
+  function computeCatalogByPacker(items, assignments) {
     const result = {};
     PACKERS.forEach(p => {
       const zones = assignments[p.code] || [];
       result[p.code] = zones.length > 0
-        ? catalog.filter(item => {
+        ? items.filter(item => {
             const m = (item.location || '').match(/^([A-Za-z]+)/);
             return zones.includes(m ? m[1].toUpperCase() : null);
           })
-        : catalog;
+        : items;
     });
+    return result;
+  }
+
+  function handleZoneAssign(assignments) {
+    setZoneAssignments(assignments);
+    setDoc(doc(db, 'config', 'zoneAssignments'), { assignments });
+    const result = computeCatalogByPacker(catalog, assignments);
     setCatalogByPacker(result);
     setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
     showToast('บันทึกโซนแล้ว ✓', 'success');
@@ -653,6 +658,10 @@ export default function App() {
                   setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(meta ? { _meta: meta } : {}) })
                     .then(() => console.log('Firestore catalog saved', updated.length, 'items'))
                     .catch(err => { console.error('Firestore catalog write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code); });
+                  // ใช้โซนที่กำหนดไว้เดิมกับ Picklist ใหม่ทันที — ไม่ต้องเข้าไปกดบันทึกโซนซ้ำทุกครั้งที่อัปโหลด
+                  const result = computeCatalogByPacker(updated, zoneAssignments);
+                  setCatalogByPacker(result);
+                  setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
                   showToast(`นำเข้าแล้ว ${items.length} รายการ ✓`);
                 }} />
                 <button className="btn sm" style={{ minWidth: 240 }} onClick={() => setShowZoneAssign(true)}>

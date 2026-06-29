@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { matchBarcode } from '../data.js';
 import { ALL_BRANCH_STAFF } from '../branches.js';
 
 // Desktop staff filter dropdown ใช้รายชื่อรวมทุกสาขา; Android ใช้ staff ของสาขาที่เลือก (controlled mode)
 const BRANCH_STAFF = ALL_BRANCH_STAFF;
+const SWIPE_THRESHOLD = 70; // px ก่อนถือว่าเป็นการปัดจริง (กันสะกิดมือโดยไม่ตั้งใจ) — ใช้ปัดลบรายการที่สแกนเกิน (Android)
 
 const statusLabel = {
   open:     'เปิด',
@@ -34,6 +36,104 @@ function compressImage(file, maxW = 800, quality = 0.7) {
     reader.onerror = () => resolve(null);
     reader.readAsDataURL(file);
   });
+}
+
+// Android: แถวสินค้าที่สแกนแล้ว ปัดซ้ายเกิน SWIPE_THRESHOLD → ถามยืนยัน → ลบรายการสแกน (เลิกนับ) กรณียิงเกิน/ผิด ให้สแกนใหม่
+function ScannedItemRow({ l, count, over, onRemove }) {
+  const [dragX, setDragX] = useState(0);
+  const [confirming, setConfirming] = useState(false);
+  const dragRef = useRef({ x: 0, dragging: false });
+
+  function onTouchStart(e) {
+    if (confirming) return;
+    dragRef.current = { x: e.touches[0].clientX, dragging: true };
+  }
+  function onTouchMove(e) {
+    if (!dragRef.current.dragging) return;
+    // ปัดซ้ายอย่างเดียว — clamp ไม่ให้ลากไปทางขวา
+    setDragX(Math.min(0, e.touches[0].clientX - dragRef.current.x));
+  }
+  function onTouchEnd() {
+    if (!dragRef.current.dragging) return;
+    dragRef.current.dragging = false;
+    setDragX(x => {
+      if (Math.abs(x) > SWIPE_THRESHOLD) {
+        setConfirming(true);
+        return -120;
+      }
+      return 0;
+    });
+  }
+
+  function confirmRemove() {
+    setConfirming(false);
+    onRemove(l.sku);
+  }
+  function cancelRemove() {
+    setConfirming(false);
+    setDragX(0);
+  }
+
+  const revealOpacity = Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: 8,
+        background: 'var(--red)', color: 'white',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'system-ui', fontSize: 13, fontWeight: 700,
+        opacity: revealOpacity,
+      }}>
+        🗑 ลบรายการที่สแกน
+      </div>
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 12px', borderRadius: 8,
+          background: over ? '#fff3cd' : '#e8f0d8',
+          position: 'relative',
+          transform: `translateX(${dragX}px)`,
+          transition: dragRef.current.dragging ? 'none' : 'transform 0.2s',
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
+          <div style={{ fontFamily: 'system-ui', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</div>
+        </div>
+        <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', flexShrink: 0 }}>{l.unit}</div>
+        <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: over ? '#e67e22' : 'var(--ink)', minWidth: 28, textAlign: 'center', flexShrink: 0 }}>
+          {count}
+        </div>
+      </div>
+      {confirming && createPortal(
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: 'white', borderRadius: 14, padding: '24px 28px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+            textAlign: 'center', minWidth: 260, maxWidth: 320,
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>⚠ ลบรายการที่สแกน?</div>
+            <div style={{ fontSize: 14, color: '#555', marginBottom: 4 }}>{l.name}</div>
+            <div className="mono" style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>{l.sku}</div>
+            <div style={{ fontSize: 13, color: 'var(--mute)', marginBottom: 20 }}>เลิกนับ {count} ชิ้นที่สแกนไว้ — สแกนใหม่ได้</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="btn sm ghost" onClick={cancelRemove}>ยกเลิก</button>
+              <button className="btn danger sm" onClick={confirmRemove}>ลบรายการ</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
 }
 
 function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onInspect, onClick }) {
@@ -489,6 +589,17 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setScanError('');
     setLastScannedSku(match.sku);
     setScanCounts(prev => ({ ...prev, [match.sku]: current + 1 }));
+  }
+
+  // Android: ปัดลบรายการที่สแกนแล้ว (กรณียิงเกิน/ผิด) — เลิกนับ SKU นี้ทั้งหมด ให้สแกนใหม่
+  function handleRemoveScan(sku) {
+    setScanCounts(prev => {
+      const next = { ...prev };
+      delete next[sku];
+      return next;
+    });
+    if (lastScannedSku === sku) setLastScannedSku(null);
+    showToast(`ลบรายการสแกน ${sku} แล้ว — สแกนใหม่ได้`, 'error');
   }
 
 const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
@@ -1040,9 +1151,24 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                           <div style={{ padding: '20px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', textAlign: 'center', fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)' }}>
                             ยิงบาร์โค้ดสินค้าเพื่อเริ่มตรวจสอบ
                           </div>
+                        ) : isAndroid ? (
+                          <>
+                            <div style={{ fontFamily: 'system-ui', fontSize: 11, color: 'var(--mute)', marginBottom: 6 }}>
+                              ← ปัดซ้ายรายการที่สแกนเกิน/ผิด เพื่อลบแล้วสแกนใหม่
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' }}>
+                              {scannedItems.map((l) => {
+                                const needed = l.qty ?? l.got ?? 0;
+                                const count = scanCounts[l.sku] || 0;
+                                return (
+                                  <ScannedItemRow key={l.sku} l={l} count={count} over={count > needed} onRemove={handleRemoveScan} />
+                                );
+                              })}
+                            </div>
+                          </>
                         ) : (
-                          <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: isAndroid ? 360 : 300, overflowY: 'auto' }}>
-                            <table className="tbl" style={{ fontSize: isAndroid ? 13 : 14 }}>
+                          <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 300, overflowY: 'auto' }}>
+                            <table className="tbl" style={{ fontSize: 14 }}>
                               <thead style={{ position: 'sticky', top: 0 }}>
                                 <tr>
                                   <th>SKU / ชื่อ</th>
