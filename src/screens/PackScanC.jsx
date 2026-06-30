@@ -510,7 +510,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
 
     // ทุก LOT หมด → block scan
     if (availableLots.length === 0) {
-      showToast('⚠ LOT หมดทั้งหมด สต็อกไม่พอ', 'error');
+      showToast('⚠ LOT นี้สินค้าหมด', 'error');
       return;
     }
 
@@ -615,7 +615,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     setItems(newItems);
     setDismissedSkus(prev => new Set(prev).add(sku));
     if (activeBoxId && onScanProgress) onScanProgress(activeBoxId, newItems);
-    showToast(`⚠ ${sku} ของหมด — ลบออกจากรายการแล้ว`, 'error');
+    showToast('ลบออกจากรายการแล้ว', 'error');
   }
 
   // ref pattern — ให้ wh-scan listener เสมอเห็น processBarcode ล่าสุด (ไม่ stale)

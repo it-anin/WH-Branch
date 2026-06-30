@@ -599,7 +599,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       return next;
     });
     if (lastScannedSku === sku) setLastScannedSku(null);
-    showToast(`ลบรายการสแกน ${sku} แล้ว — สแกนใหม่ได้`, 'error');
+    showToast('ลบออกจากรายการแล้ว', 'error');
   }
 
 const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
