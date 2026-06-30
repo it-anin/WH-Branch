@@ -1,13 +1,15 @@
 import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 
-// ColA(0)=SKU  ColD(3)=unit  ColJ(9)=cost
+// R05.105 — ColB(1)=SKU  ColE(4)=unit  ColF(5)=filter (เอาเฉพาะแถวที่ = 4 → ราคาทุน)  ColH(7)=cost
 function rowsToMap(rows) {
   const map = {};
   rows.slice(1).forEach(vals => {
-    const sku  = String(vals[0] ?? '').trim();
-    const unit = String(vals[3] ?? '').trim();
-    const cost = parseFloat(String(vals[9] ?? '').replace(/,/g, ''));
+    const filterCode = String(vals[5] ?? '').trim();
+    if (filterCode !== '4') return; // เฉพาะแถวราคาทุน (ColF = 4) — แถวอื่นเป็นราคาประเภทอื่น ไม่เอา
+    const sku  = String(vals[1] ?? '').trim();
+    const unit = String(vals[4] ?? '').trim();
+    const cost = parseFloat(String(vals[7] ?? '').replace(/,/g, ''));
     if (sku && unit && !isNaN(cost)) map[`${sku}__${unit}`] = cost;
   });
   return map;
@@ -56,7 +58,7 @@ export default function ImportCostMap({ matchCount, meta, onImport }) {
     reader.onload = (ev) => {
       const map = isXLSX ? parseXLSX(ev.target.result) : parseCSV(ev.target.result);
       if (Object.keys(map).length === 0) {
-        alert('ไม่พบข้อมูล Cost กรุณาตรวจสอบรูปแบบไฟล์\n(ColA=SKU, ColB=ราคาทุน)');
+        alert('ไม่พบข้อมูล Cost กรุณาตรวจสอบรูปแบบไฟล์\n(ColB=SKU, ColE=หน่วย, ColF=4, ColH=ราคาทุน)');
         return;
       }
       const d = new Date(); // วันที่อัปโหลดจริง (ไม่ใช่ file.lastModified ที่เป็นวันแก้ไขไฟล์)
@@ -73,7 +75,7 @@ export default function ImportCostMap({ matchCount, meta, onImport }) {
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
       <button className={`btn sm${displayUploadedAt ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
-        {displayUploadedAt ? '✅ อัปโหลดไฟล์ Price แล้ว' : '⇑ อัปโหลดไฟล์ Price'}
+        {displayUploadedAt ? '✅ อัปโหลดไฟล์ R05.105 แล้ว' : '⇑ อัปโหลดไฟล์ R05.105'}
       </button>
       {displayUploadedAt && (
         <span className="chip ok" style={{ fontFamily: 'system-ui', fontSize: 13 }}>

@@ -137,7 +137,7 @@ src/
 ├── components/
 │   ├── ImportCatalog.jsx        # Upload รายการเบิก (.csv/.xlsx)
 │   ├── ImportBarcodeMap.jsx     # Upload barcode map (.xlsx เท่านั้น — .csv ทำเลข 0 นำหน้าหาย)
-│   ├── ImportCostMap.jsx        # Upload ราคาทุน (.csv/.xlsx) — ColA=SKU, ColD=unit, ColJ=cost
+│   ├── ImportCostMap.jsx        # Upload ราคาทุน R05.105 (.csv/.xlsx) — ColB=SKU, ColE=unit, ColF=4(filter), ColH=cost
 │   ├── ImportLotMap.jsx         # Upload LOT (.csv/.xlsx) — ColA=LOT, ColB=SKU, ColF=qty
 │   ├── ZoneAssign.jsx           # Modal กำหนดโซน (desktop only) — checkbox table packer × zone
 │   ├── Toast.jsx                # Fixed-bottom toast overlay
@@ -254,7 +254,7 @@ return newId;
 - **เหตุผล:** ไฟล์ R05.106 (CSV ที่ extension `.106`) มีชื่อสินค้ามีเครื่องหมาย `"` (นิ้ว/inch) เช่น `NIPRO 18G x 1"` และมี `,` ในชื่อด้วย — custom CSV parser เดิมจะดูด column ที่เหลือเข้าเป็น field เดียว ทำให้ unit/barcode หาย
 - **LOT file** ใช้ `{raw: false}` เพิ่ม → SheetJS คืน formatted text แทน raw datetime serial (เช่น LOT `"01/02/2026"` แทน `45669`)
 - **อาการเดิม (ก่อนแก้):** barcode/unit ไม่ขึ้นในหน้าแพ็คกิ้ง, debug `__wh.sku('SKU')` จะเห็น key = `sku__` (unit ว่าง), `barcode: ''` ใน catalog
-- **`splitCSVLine` ที่ยังเหลือใน ImportCostMap.jsx** — แก้ `"` กลางฟิลด์เป็น literal เช่นกัน แต่ไฟล์ Price ปกติเป็น `.xlsx` ทำให้ไม่ค่อยกระทบ
+- **`splitCSVLine` ที่ยังเหลือใน ImportCostMap.jsx** — แก้ `"` กลางฟิลด์เป็น literal เช่นกัน แต่ไฟล์ R05.105 ปกติเป็น `.xlsx` ทำให้ไม่ค่อยกระทบ
 - **⚠ ImportBarcodeMap บังคับ `.xlsx` เท่านั้น** (ต่างจาก ImportCatalog/ImportLotMap ที่ยังรับ CSV ได้): `accept=".xlsx"` + guard ใน `handleFile` (`/\.xlsx$/i.test(file.name)` ไม่ผ่าน → alert + return) — **เหตุผล:** ไฟล์ `.csv`/`.106` ดิบทำให้**เลข 0 นำหน้า**ของ barcode/SKU หาย (เช่น `0123456` → `123456`); ไฟล์ `.xlsx` ที่ผู้ใช้ save (cell เป็น text) คงเลข 0 ไว้ — `accept` เป็นแค่ filter ของ picker (เลี่ยงด้วย "All files" ได้) จึงต้อง guard ซ้ำในโค้ด
 
 ### `handleBarcodeMapImport(map)`
@@ -340,12 +340,13 @@ input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bu
   - **`UNIT_FACTOR_OVERRIDE`** = `{ '700081__4กล่อง':4, '700352__10กล่อง':100, '100283__แพค10':10 }` — ตัวคูณเฉพาะ SKU (ค่า = จำนวนหน่วยฐานต่อ 1 หน่วย picklist, ยืนยันกับผู้ใช้) เพิ่มได้เมื่อเจอ SKU ใหม่ที่ audit พบ
   - **⚠ ห้าม parse เลขจากชื่อหน่วยอัตโนมัติ** (เช่น "10กล่อง"→10) — ตรวจแล้วใน R05.106 มี ~2% ที่เลขเป็นคำอธิบายไม่ใช่ตัวคูณ (`"แพค10"=1`, `"ซอง5ชิ้น"=1`) → parse จะได้ค่าผิด
 
-### ไฟล์ 3: Cost Map (ImportCostMap)
+### ไฟล์ 3: Cost Map (ImportCostMap) — ไฟล์ R05.105 (เดิม "Price" ยกเลิกแล้ว)
 | Col | ข้อมูล |
 |---|---|
-| A (0) | SKU |
-| D (3) | หน่วย |
-| J (9) | ราคาทุน |
+| B (1) | SKU |
+| E (4) | หน่วย |
+| F (5) | Filter — เอาเฉพาะแถวที่ `= 4` (ราคาทุน) แถวอื่นเป็นราคาประเภทอื่น ข้าม |
+| H (7) | ราคาทุน |
 
 ### ไฟล์ 4: LOT Map (ImportLotMap)
 | Col | ข้อมูล |
@@ -378,7 +379,7 @@ input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bu
 |---|---|---|
 | ImportCatalog | `⇑ อัปโหลดไฟล์ Picklist` (ไม่มีสี) | `✅ อัปโหลดไฟล์ Picklist_XXX แล้ว` (สีส้ม) + badge `✅ รายการเบิก: N รายการ · ไฟล์วันที่ D/M/YYYY` |
 | ImportBarcodeMap | `⇑ อัปโหลดไฟล์ R05.106` (ไม่มีสี) — **รับ `.xlsx` เท่านั้น** (.csv ทำเลข 0 นำหน้าหาย) | `✅ อัปโหลดไฟล์ {filename} แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
-| ImportCostMap | `⇑ อัปโหลดไฟล์ Price` (ไม่มีสี) | `✅ อัปโหลดไฟล์ Price แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
+| ImportCostMap | `⇑ อัปโหลดไฟล์ R05.105` (ไม่มีสี) | `✅ อัปโหลดไฟล์ R05.105 แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
 | ImportLotMap | `⇑ อัปโหลดไฟล์ LOT` (ไม่มีสี) | `✅ อัปโหลดไฟล์ LOT แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
 
 - **XXX** ใน Picklist — parse จาก filename pattern `Picklist_XXX` (regex `picklist[_-]([A-Za-z0-9]+)`) เช่น `Picklist_SRC` → `SRC`
