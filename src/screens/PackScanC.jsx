@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { generatePOS, matchBarcode } from '../data.js';
-import { playScanSuccess } from '../sound.js';
+import { playScanSuccess, playItemComplete } from '../sound.js';
 
 const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
@@ -542,9 +542,11 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   // resetLot=true → เปลี่ยน lot ของ item เป็นค่าใหม่ (กรณี LOT เก่าหมด ต้องสลับ); exp = วันหมดอายุ (เฉพาะตอนใส่ LOT เอง — LOT จาก lotMap ไม่มีข้อมูล exp)
   // scannedBarcode = บาร์โค้ดตัวจริงที่สแกน เก็บไว้ export (ต่างจาก it.barcode ที่อาจเป็น comma-separated หลายตัวจาก catalog)
   async function applyScan(match, lot, resetLot = false, exp = '', scannedBarcode = '', scannedUnit = '', factor = 1) {
-    playScanSuccess();
-    // ตรวจ "เพิ่งครบ" (ก่อนสแกนนี้ยังไม่ครบ, หลังสแกนนี้ครบ) → ค้างหน้าไว้ที่ตำแหน่งเดิม HOLD_MS ก่อน slide-up หาย (EXIT_MS) แล้วค่อยเลื่อนไปท้าย
-    if (isAndroid && (match.gotBase || 0) < match.need && (match.gotBase || 0) + factor >= match.need) {
+    // เพิ่งครบ (ก่อนสแกนนี้ยังไม่ครบ, หลังสแกนนี้ครบพอดี) → เสียง Rising Ding แทน Success Chime ปกติ (ไม่เล่นซ้อนกัน)
+    const justCompleted = (match.gotBase || 0) < match.need && (match.gotBase || 0) + factor >= match.need;
+    if (justCompleted) playItemComplete(); else playScanSuccess();
+    // ค้างหน้าไว้ที่ตำแหน่งเดิม HOLD_MS ก่อน slide-up หาย (EXIT_MS) แล้วค่อยเลื่อนไปท้าย
+    if (isAndroid && justCompleted) {
       const key = `${match.sku}__${match.unit}`;
       setHoldingSkus(prev => new Set(prev).add(key));
       clearTimeout(holdTimeoutsRef.current[key]);

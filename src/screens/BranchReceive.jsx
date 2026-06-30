@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { matchBarcode } from '../data.js';
 import { ALL_BRANCH_STAFF } from '../branches.js';
-import { playScanSuccess } from '../sound.js';
+import { playScanSuccess, playItemComplete } from '../sound.js';
 
 // Desktop staff filter dropdown ใช้รายชื่อรวมทุกสาขา; Android ใช้ staff ของสาขาที่เลือก (controlled mode)
 const BRANCH_STAFF = ALL_BRANCH_STAFF;
@@ -587,7 +587,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     }
 
     const current = scanCounts[match.sku] || 0;
-    playScanSuccess();
+    const needed = match.qty ?? match.got ?? 0;
+    // เพิ่งครบ (ก่อนสแกนนี้ยังไม่ครบ, หลังสแกนนี้ครบพอดี) → เสียง Rising Ding แทน Success Chime ปกติ (ไม่เล่นซ้อนกัน)
+    if (current < needed && current + 1 >= needed) playItemComplete(); else playScanSuccess();
     setScanError('');
     setLastScannedSku(match.sku);
     setScanCounts(prev => ({ ...prev, [match.sku]: current + 1 }));
