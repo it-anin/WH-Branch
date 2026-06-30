@@ -248,6 +248,13 @@ button:active:not(:disabled):not(.no-press) {
 }
 @keyframes skeletonPulse { 0%, 100% { opacity: .45; } 50% { opacity: .9; } }
 
+/* Android PackScanC: การ์ดสินค้าที่ครบแล้ว เลื่อน slide-up หาย หลังค้างหน้า HOLD_MS (ดู EXIT_MS ใน PackScanC.jsx) */
+.item-card-exit { animation: itemSlideUpFade 420ms ease forwards; }
+@keyframes itemSlideUpFade {
+  from { transform: translateY(0); opacity: 1; }
+  to   { transform: translateY(-18px); opacity: 0; }
+}
+
 .section-divider {
   text-align: center; margin: 40px 0 20px;
   font-family: system-ui, sans-serif; font-size: 26px;
