@@ -129,6 +129,14 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
           >
             ⊘ Clear · เริ่มวันถัดไป
           </button>
+          <button
+            className="btn sm ghost"
+            style={{ color: 'var(--red, #c0392b)', borderColor: 'var(--red, #c0392b)' }}
+            onClick={clearFirestore}
+            title="ล้างข้อมูล Firestore ทั้งหมด (boxes, catalog, receive)"
+          >
+            🔥 ล้าง Firestore ทั้งหมด
+          </button>
         </div>
 
         {/* today's box table */}
@@ -148,15 +156,6 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
               <span style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--mute)' }}>
                 ประวัติย้อนหลัง ({history.length} วัน · เก็บไว้ 1 เดือน)
               </span>
-              <div className="spacer" />
-              <button
-                className="btn sm ghost"
-                style={{ color: 'var(--red, #c0392b)', borderColor: 'var(--red, #c0392b)' }}
-                onClick={clearFirestore}
-                title="ล้างข้อมูล Firestore ทั้งหมด (boxes, catalog, receive)"
-              >
-                🔥 ล้าง Firestore ทั้งหมด
-              </button>
             </div>
             {history.map((entry, i) => (
               <HistoryEntry
