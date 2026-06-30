@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { matchBarcode } from '../data.js';
 import { ALL_BRANCH_STAFF } from '../branches.js';
+import { playScanSuccess } from '../sound.js';
 
 // Desktop staff filter dropdown ใช้รายชื่อรวมทุกสาขา; Android ใช้ staff ของสาขาที่เลือก (controlled mode)
 const BRANCH_STAFF = ALL_BRANCH_STAFF;
@@ -586,6 +587,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     }
 
     const current = scanCounts[match.sku] || 0;
+    playScanSuccess();
     setScanError('');
     setLastScannedSku(match.sku);
     setScanCounts(prev => ({ ...prev, [match.sku]: current + 1 }));
