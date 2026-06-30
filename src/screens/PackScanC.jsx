@@ -927,19 +927,13 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
 
         {showCatalogLoading ? (
           <div className="skeleton-list">
-            <div className="skeleton-label">กำลังโหลดรายการสินค้า…</div>
-            <div className="skeleton-scanwrap">
-              {Array.from({ length: 6 }, (_, i) => (
-                <div key={i} className="skeleton-card">
-                  <span className="skeleton-dot" />
-                  <span className="skeleton-lines">
-                    <span className="skeleton-ln w60" />
-                    <span className="skeleton-ln w35" />
-                  </span>
-                  <span className="skeleton-qty" />
-                </div>
-              ))}
+            <div className="skeleton-spinner-row">
+              <span className="skeleton-spinner" />
+              <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)' }}>กำลังโหลดรายการสินค้า…</span>
             </div>
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="skeleton-card" style={{ animationDelay: `${i * 90}ms` }} />
+            ))}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: isAndroid ? '1fr' : '1fr 1fr', gap: isAndroid ? 6 : 12 }}>
