@@ -35,6 +35,7 @@ export default function App() {
   const [activeBoxId, setActiveBoxId] = useState(null);
   const [packer, setPacker] = useState(null);
   const [catalog, setCatalog] = useState([]);
+  const [catalogLoaded, setCatalogLoaded] = useState(false); // true หลังได้ Firestore snapshot ของ catalog ครั้งแรก — แยก "กำลังโหลด" จาก "catalog ว่างจริงๆ"
   const [itemsByBox, _setItemsByBox] = useState({});
   const [history, setHistory] = useState(() => {
     // Migration: ถ้ามี localStorage เก่าหลงเหลือ ใช้เป็น initial — Firestore listener จะ overwrite ทันที
@@ -132,6 +133,7 @@ export default function App() {
       } else {
         setCatalogMeta(null);
       }
+      setCatalogLoaded(true);
     }, onErr('catalog'));
     const unsubCatalogByPacker = onSnapshot(doc(db, 'config', 'catalogByPacker'), snap => {
       if (snap.exists()) setCatalogByPacker(snap.data().assignments || {});
@@ -578,7 +580,7 @@ export default function App() {
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
-  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   if (isAndroidMode) {
     return (

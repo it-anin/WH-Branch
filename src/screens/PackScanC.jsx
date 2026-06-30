@@ -339,7 +339,7 @@ function ItemCard({ c, done, partial, settled, onMarkOutOfStock }) {
   );
 }
 
-export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, packer, onScanProgress, catalogMeta, lotMap = {}, barcodeMap = {}, factorMap = {} }) {
+export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, catalogLoaded = true, packer, onScanProgress, catalogMeta, lotMap = {}, barcodeMap = {}, factorMap = {} }) {
   // โมเดลหน่วยฐาน: need/gotBase คิดเป็น "หน่วยฐาน" (factor=1) ส่วน got = จำนวนครั้งที่สแกน (ไว้ export ตามหน่วยที่สแกนจริง)
   // factorOf(sku, unit) = จำนวนหน่วยฐานต่อ 1 หน่วยนั้น เช่น โหล=12 → สแกนบาร์โค้ดโหล 1 ครั้ง = +12 หน่วยฐาน
   const factorOf = (sku, unit) => lookupFactor(factorMap, sku, unit);
@@ -662,6 +662,8 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   }
 
   const doneCount = visibleItems.filter(it => it.gotBase >= it.need).length;
+  // Android: เพิ่งเปิดแอป catalog ยังไม่มาจาก Firestore (gap ก่อน remount ด้วย key ใหม่ตอน catalog โหลดเสร็จ) — โชว์ skeleton แทนลิสต์ว่างเปล่า
+  const showCatalogLoading = isAndroid && !catalogLoaded && visibleItems.length === 0;
 
   return (
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 580, ...(isAndroid ? { boxShadow: 'none', border: 'none', borderRadius: 0 } : {}) }}>
@@ -810,7 +812,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
           {/* Android: เช็ค X/Y ชิดขวา แทนปุ่มลังที่ปิด */}
           {isAndroid ? (
             <span style={{ fontSize: 11, color: 'var(--mute)', fontFamily: 'system-ui' }}>
-              เช็ค {doneCount}/{visibleItems.length}
+              {showCatalogLoading ? 'กำลังโหลด…' : `เช็ค ${doneCount}/${visibleItems.length}`}
               {catalogMeta && (
                 <span style={{ marginLeft: 6 }}>
                   · 📋 {catalogMeta.branch ? `Picklist_${catalogMeta.branch}` : 'Picklist'}{catalogMeta.fileDate ? ` ${catalogMeta.fileDate}` : ''}
@@ -923,16 +925,28 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
           )
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: isAndroid ? '1fr' : '1fr 1fr', gap: isAndroid ? 6 : 12 }}>
-          {pageItems.map((c) => {
-            const done = c.gotBase >= c.need;
-            const partial = c.gotBase > 0 && c.gotBase < c.need;
-            const settled = isAndroid && done && !holdingSkus.has(`${c.sku}__${c.unit}`);
-            return (
-              <ItemCard key={c.sku} c={c} done={done} partial={partial} settled={settled} onMarkOutOfStock={handleMarkOutOfStock} />
-            );
-          })}
-        </div>
+        {showCatalogLoading ? (
+          <div className="skeleton-list">
+            <div className="skeleton-spinner-row">
+              <span className="skeleton-spinner" />
+              <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)' }}>กำลังโหลดรายการสินค้า…</span>
+            </div>
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="skeleton-card" style={{ animationDelay: `${i * 90}ms` }} />
+            ))}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: isAndroid ? '1fr' : '1fr 1fr', gap: isAndroid ? 6 : 12 }}>
+            {pageItems.map((c) => {
+              const done = c.gotBase >= c.need;
+              const partial = c.gotBase > 0 && c.gotBase < c.need;
+              const settled = isAndroid && done && !holdingSkus.has(`${c.sku}__${c.unit}`);
+              return (
+                <ItemCard key={c.sku} c={c} done={done} partial={partial} settled={settled} onMarkOutOfStock={handleMarkOutOfStock} />
+              );
+            })}
+          </div>
+        )}
 
       </div>
     </div>
