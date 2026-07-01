@@ -192,7 +192,7 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
                             <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
                             <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                           </td>
-                          <td className="num-col" style={{ fontSize: 12 }}>{l.barcode}</td>
+                          <td className="num-col" style={{ fontSize: 12 }}>{l.scannedBarcode || l.barcode || '—'}</td>
                           <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
                           <td style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
                             ×{l.qty ?? l.got ?? 0}
