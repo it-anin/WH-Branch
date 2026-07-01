@@ -37,6 +37,17 @@ function lotRows(l, lotMap) {
   }];
 }
 
+// reverse-lookup barcode → unit สำหรับ SKU นั้น (ใช้ใน edit mode เพื่ออัปเดต unit อัตโนมัติเมื่อสแกน barcode)
+function lookupUnitByBarcode(barcodeMap, sku, barcode) {
+  for (const [key, barcodes] of Object.entries(barcodeMap)) {
+    const [keySku, keyUnit] = key.split('__');
+    if (keySku === sku && Array.isArray(barcodes) && barcodes.includes(barcode)) {
+      return keyUnit || null;
+    }
+  }
+  return null;
+}
+
 // สถานะลังฝั่งรับสินค้า (สาขา) — แสดงเป็น badge ใน card
 function receiveBadge(b) {
   if (b.status === 'received')
@@ -54,7 +65,7 @@ function receiveBadge(b) {
   return { label: 'สาขา: ยังไม่รับ', bg: '#f0ede8', border: 'var(--line)', color: 'var(--mute)' };
 }
 
-export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {} }) {
+export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {}, barcodeMap = {} }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
@@ -545,7 +556,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                     <thead>
                       <tr>
                         <th>SKU / ชื่อสินค้า</th>
-                        <th style={{ width: 56 }}>หน่วย</th>
+                        <th style={{ width: 130 }}>Barcode (สแกนได้)</th>
+                        <th style={{ width: 70 }}>หน่วย</th>
                         <th style={{ width: 72, textAlign: 'center' }}>จำนวน</th>
                         <th style={{ width: 110 }}>LOT</th>
                         <th style={{ width: 100 }}>Exp (ค.ศ.)</th>
@@ -559,7 +571,31 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                             <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>{it.sku}</div>
                             <div style={{ fontFamily: 'system-ui', fontSize: 13 }}>{it.name}</div>
                           </td>
-                          <td style={{ fontFamily: 'system-ui', fontSize: 13 }}>{it.unit}</td>
+                          <td style={{ padding: '4px 6px' }}>
+                            <input
+                              className="input mono"
+                              style={{ width: '100%', padding: '3px 6px', fontSize: 11 }}
+                              value={it.scannedBarcode || it.barcode || ''}
+                              placeholder="สแกน / พิมพ์ barcode"
+                              onChange={e => setEditItems(prev => prev.map((x, i) =>
+                                i === idx ? { ...x, scannedBarcode: e.target.value } : x
+                              ))}
+                              onKeyDown={e => {
+                                if (e.key !== 'Enter') return;
+                                const bc = e.target.value.trim();
+                                if (!bc) return;
+                                const unit = lookupUnitByBarcode(barcodeMap, it.sku, bc);
+                                setEditItems(prev => prev.map((x, i) =>
+                                  i === idx ? { ...x, scannedBarcode: bc, ...(unit ? { unit } : {}) } : x
+                                ));
+                                if (unit) showToast(`หน่วย → ${unit}`, 'success');
+                                else showToast('ไม่พบ barcode ใน R05.106 — barcode บันทึกไว้แต่หน่วยไม่เปลี่ยน');
+                              }}
+                            />
+                          </td>
+                          <td style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>
+                            {it.unit}
+                          </td>
                           <td style={{ textAlign: 'center', padding: '4px 6px' }}>
                             <input
                               type="number"
