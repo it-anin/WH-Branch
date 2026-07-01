@@ -101,6 +101,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const [editItems, setEditItems]   = useState([]);             // สำเนา boxItems สำหรับแก้ไข (ออกจาก editMode = ทิ้ง)
   const [addScan, setAddScan]       = useState('');             // barcode input สำหรับเพิ่มสินค้าใหม่ใน edit mode
   const [addScanErr, setAddScanErr] = useState('');
+  const [boxNote, setBoxNote]       = useState('');             // หมายเหตุต่อลัง — sync กับ box.note ใน Firestore
 
   // อนุมัติแล้ว = exported/received, รออนุมัติ = closed (ยังไม่ส่ง POS)
   const isApproved = (b) => b.status === 'exported' || b.status === 'received';
@@ -260,8 +261,11 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     setConfirmDeleteId(null);
   }
 
-  // ออกจาก editMode เมื่อเปลี่ยนลัง
-  useEffect(() => { setEditMode(false); setEditItems([]); setAddScan(''); setAddScanErr(''); }, [selectedId]);
+  // reset state เมื่อเปลี่ยนลัง
+  useEffect(() => {
+    setEditMode(false); setEditItems([]); setAddScan(''); setAddScanErr('');
+    setBoxNote(boxes.find(b => b.id === selectedId)?.note || '');
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function startEdit() {
     setEditItems(boxItems.map(it => ({ ...it })));
@@ -752,6 +756,25 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   )}
                 </div>
               )}
+
+              {/* หมายเหตุต่อลัง */}
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', marginBottom: 4 }}>หมายเหตุ</div>
+                <textarea
+                  className="input"
+                  placeholder="ใส่หมายเหตุ เช่น สินค้าพิเศษ / คำแนะนำสำหรับสาขา…"
+                  style={{ width: '100%', minHeight: 64, resize: 'vertical', fontSize: 13 }}
+                  value={boxNote}
+                  onChange={e => setBoxNote(e.target.value)}
+                  onBlur={() => {
+                    if (!selectedId) return;
+                    const trimmed = boxNote.trim();
+                    const current = boxes.find(b => b.id === selectedId)?.note || '';
+                    if (trimmed === current) return;
+                    setBoxes(prev => prev.map(b => b.id === selectedId ? { ...b, note: trimmed } : b));
+                  }}
+                />
+              </div>
             </div>
 
             {/* RIGHT: สติกเกอร์ + ปุ่ม */}
