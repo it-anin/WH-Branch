@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
@@ -68,6 +68,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const [outboundFilter, setOutboundFilter] = useState('all'); // all | pending | approved
   const [packerFilter, setPackerFilter] = useState('all');     // all | packer.code
   const [confirmDeleteId, setConfirmDeleteId] = useState(null); // boxId รอยืนยันลบ (ยกเลิกรายการเบิก) — null = ไม่แสดง dialog
+  const [editMode, setEditMode]     = useState(false);          // แก้ไขตารางรายชื่อสินค้าในลัง
+  const [editItems, setEditItems]   = useState([]);             // สำเนา boxItems สำหรับแก้ไข (ออกจาก editMode = ทิ้ง)
 
   // อนุมัติแล้ว = exported/received, รออนุมัติ = closed (ยังไม่ส่ง POS)
   const isApproved = (b) => b.status === 'exported' || b.status === 'received';
@@ -225,6 +227,28 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     if (activeBoxId === confirmDeleteId) setActiveBoxId(null);
     showToast(`ลบลัง ${confirmDeleteId} แล้ว`, 'success');
     setConfirmDeleteId(null);
+  }
+
+  // ออกจาก editMode เมื่อเปลี่ยนลัง
+  useEffect(() => { setEditMode(false); setEditItems([]); }, [selectedId]);
+
+  function startEdit() {
+    setEditItems(boxItems.map(it => ({ ...it })));
+    setEditMode(true);
+  }
+
+  function handleSaveEdit() {
+    if (!selectedId) return;
+    const newItems = editItems.filter(it => (it.qty ?? it.got ?? 0) > 0);
+    const newTotalQty = newItems.reduce((s, it) => s + (it.qty ?? it.got ?? 0), 0);
+    const newSkuCount = newItems.length;
+    setItemsByBox(prev => ({ ...prev, [selectedId]: newItems }));
+    setBoxes(prev => prev.map(b =>
+      b.id === selectedId ? { ...b, totalQty: newTotalQty, skuCount: newSkuCount } : b
+    ));
+    setEditMode(false);
+    setEditItems([]);
+    showToast('บันทึกการแก้ไขแล้ว ✓', 'success');
   }
 
   return (
@@ -489,57 +513,139 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
             {/* LEFT: รายชื่อสินค้าในลัง */}
             <div>
-              <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+              <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6, gap: 8 }}>
                 <div className="hand" style={{ fontSize: 20 }}>รายชื่อสินค้าในลัง</div>
-                {(activeBox.status === 'closed' || activeBox.status === 'exported') && (
-                  <button
-                    className="btn sm"
-                    style={{ background: 'var(--red)', color: 'white', borderColor: 'var(--red)' }}
-                    onClick={() => requestDelete(activeBox.id)}
-                  >🗑 ลบลังนี้</button>
-                )}
+                <div className="row" style={{ gap: 8 }}>
+                  {editMode ? (
+                    <>
+                      <button className="btn sm" onClick={() => { setEditMode(false); setEditItems([]); }}>✕ ยกเลิก</button>
+                      <button className="btn sm primary" onClick={handleSaveEdit}>✓ อนุมัติ</button>
+                    </>
+                  ) : (
+                    <>
+                      {(activeBox.status === 'closed' || activeBox.status === 'exported') && (
+                        <button className="btn sm" onClick={startEdit}>✎ แก้ไข</button>
+                      )}
+                      {(activeBox.status === 'closed' || activeBox.status === 'exported') && (
+                        <button
+                          className="btn sm"
+                          style={{ background: 'var(--red)', color: 'white', borderColor: 'var(--red)' }}
+                          onClick={() => requestDelete(activeBox.id)}
+                        >🗑 ลบลังนี้</button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-              <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'auto', maxHeight: 320, background: 'white' }}>
-                {boxItems.length > 0 ? (() => {
-                  // แตกแถวตาม LOT จริงที่พนักงานแพ็คสแกน (เหมือนไฟล์ Text) — SKU เดียวสแกนคนละ LOT จะได้หลายแถว
-                  const tableRows = boxItems.flatMap(l =>
-                    lotRows(l, lotMap).map(r => ({ ...r, sku: l.sku, name: l.name, unit: r.unit || l.unit, location: l.location }))
-                  );
-                  const hasExp = tableRows.some(r => r.exp); // โชว์คอลัมน์ Exp เฉพาะเมื่อมีลังที่กรอก exp
-                  return (
+
+              {editMode ? (
+                /* ── Edit mode: กรอกแก้ไข qty / LOT / Exp ต่อ item ── */
+                <div style={{ border: '2px solid var(--accent)', borderRadius: 8, overflow: 'auto', maxHeight: 380, background: 'white' }}>
                   <table className="tbl" style={{ fontSize: 13 }}>
                     <thead>
                       <tr>
-                        <th>SKU</th>
-                        <th>ชื่อสินค้า</th>
-                        <th style={{ width: 110 }}>Barcode</th>
+                        <th>SKU / ชื่อสินค้า</th>
                         <th style={{ width: 56 }}>หน่วย</th>
-                        <th style={{ width: 55, textAlign: 'center' }}>จำนวน</th>
-                        <th style={{ width: 90 }}>LOT</th>
-                        {hasExp && <th style={{ width: 88 }}>Exp</th>}
-                        <th style={{ width: 70 }}>Location</th>
+                        <th style={{ width: 72, textAlign: 'center' }}>จำนวน</th>
+                        <th style={{ width: 110 }}>LOT</th>
+                        <th style={{ width: 100 }}>Exp (ค.ศ.)</th>
+                        <th style={{ width: 32 }}></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {tableRows.map((r, i) => (
-                        <tr key={`${r.sku}-${r.lot}-${i}`}>
-                          <td className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{r.sku}</td>
-                          <td style={{ fontFamily: 'JetBrains Mono', whiteSpace: 'nowrap' }}>{r.name}</td>
-                          <td className="mono" style={{ fontSize: 11 }}>{r.barcode || '—'}</td>
-                          <td style={{ fontFamily: 'JetBrains Mono' }}>{r.unit}</td>
-                          <td style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, textAlign: 'center' }}>×{r.qty}</td>
-                          <td className="mono" style={{ fontSize: 11 }}>{r.lot || '—'}</td>
-                          {hasExp && <td className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{r.exp || '—'}</td>}
-                          <td className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{r.location || '—'}</td>
+                      {editItems.map((it, idx) => (
+                        <tr key={`edit-${it.sku}-${idx}`} style={{ background: idx % 2 === 0 ? 'white' : '#fafaf8' }}>
+                          <td>
+                            <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>{it.sku}</div>
+                            <div style={{ fontFamily: 'system-ui', fontSize: 13 }}>{it.name}</div>
+                          </td>
+                          <td style={{ fontFamily: 'system-ui', fontSize: 13 }}>{it.unit}</td>
+                          <td style={{ textAlign: 'center', padding: '4px 6px' }}>
+                            <input
+                              type="number"
+                              min={0}
+                              className="input"
+                              style={{ width: 60, textAlign: 'center', padding: '3px 6px', fontSize: 15, fontWeight: 700 }}
+                              value={it.qty ?? it.got ?? 0}
+                              onChange={e => {
+                                const v = Math.max(0, parseInt(e.target.value) || 0);
+                                setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, qty: v, got: v } : x));
+                              }}
+                            />
+                          </td>
+                          <td style={{ padding: '4px 6px' }}>
+                            <input
+                              className="input"
+                              style={{ width: '100%', padding: '3px 6px', fontSize: 12 }}
+                              value={it.lot || ''}
+                              placeholder="LOT"
+                              onChange={e => setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, lot: e.target.value } : x))}
+                            />
+                          </td>
+                          <td style={{ padding: '4px 6px' }}>
+                            <input
+                              className="input"
+                              style={{ width: '100%', padding: '3px 6px', fontSize: 12 }}
+                              value={it.exp || ''}
+                              placeholder="DD/MM/YYYY"
+                              onChange={e => setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, exp: e.target.value } : x))}
+                            />
+                          </td>
+                          <td style={{ padding: '4px' }}>
+                            <button
+                              style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: 16, padding: '2px 4px' }}
+                              title="ลบแถวนี้"
+                              onClick={() => setEditItems(prev => prev.filter((_, i) => i !== idx))}
+                            >×</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  );
-                })() : (
-                  <div style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--mute)', padding: 10 }}>ไม่มีข้อมูลรายการสินค้า</div>
-                )}
-              </div>
+                </div>
+              ) : (
+                /* ── View mode: ตารางปกติ read-only ── */
+                <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'auto', maxHeight: 320, background: 'white' }}>
+                  {boxItems.length > 0 ? (() => {
+                    const tableRows = boxItems.flatMap(l =>
+                      lotRows(l, lotMap).map(r => ({ ...r, sku: l.sku, name: l.name, unit: r.unit || l.unit, location: l.location }))
+                    );
+                    const hasExp = tableRows.some(r => r.exp);
+                    return (
+                      <table className="tbl" style={{ fontSize: 13 }}>
+                        <thead>
+                          <tr>
+                            <th>SKU</th>
+                            <th>ชื่อสินค้า</th>
+                            <th style={{ width: 110 }}>Barcode</th>
+                            <th style={{ width: 56 }}>หน่วย</th>
+                            <th style={{ width: 55, textAlign: 'center' }}>จำนวน</th>
+                            <th style={{ width: 90 }}>LOT</th>
+                            {hasExp && <th style={{ width: 88 }}>Exp</th>}
+                            <th style={{ width: 70 }}>Location</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tableRows.map((r, i) => (
+                            <tr key={`${r.sku}-${r.lot}-${i}`}>
+                              <td className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{r.sku}</td>
+                              <td style={{ fontFamily: 'JetBrains Mono', whiteSpace: 'nowrap' }}>{r.name}</td>
+                              <td className="mono" style={{ fontSize: 11 }}>{r.barcode || '—'}</td>
+                              <td style={{ fontFamily: 'JetBrains Mono' }}>{r.unit}</td>
+                              <td style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, textAlign: 'center' }}>×{r.qty}</td>
+                              <td className="mono" style={{ fontSize: 11 }}>{r.lot || '—'}</td>
+                              {hasExp && <td className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{r.exp || '—'}</td>}
+                              <td className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{r.location || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    );
+                  })() : (
+                    <div style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--mute)', padding: 10 }}>ไม่มีข้อมูลรายการสินค้า</div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* RIGHT: สติกเกอร์ + ปุ่ม */}
