@@ -843,12 +843,12 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 </div>
               )}
 
-              {/* รายการสินค้าที่ขาด — กรองเฉพาะ SKU ที่ deficit > 0 พร้อมแสดง ต้องมี / รอบแรกได้ / ขาด */}
+              {/* รายการสินค้าที่ต้องรีเช็ค — แสดง SKU ที่ขาด (got < needed) และเกิน (got > needed) */}
               {(() => {
                 const psc = viewingBox.problemScanCounts || {};
-                const missingItems = viewingItems.filter(l => {
+                const problemItems = viewingItems.filter(l => {
                   const needed = l.qty ?? l.got ?? 0;
-                  return (psc[l.sku] || 0) < needed;
+                  return (psc[l.sku] || 0) !== needed;
                 });
                 return (
                   <>
@@ -856,11 +856,11 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                       <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--ink)' }}>
                         รายการสินค้าที่ต้องรีเช็ค
                         <span style={{ fontFamily: 'system-ui', fontSize: 14, fontWeight: 400, color: 'var(--mute)', marginLeft: 8 }}>
-                          {missingItems.length} SKU
+                          {problemItems.length} SKU
                         </span>
                       </div>
                       <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
-                        เฉพาะสินค้าที่พนักงานสาขาสแกนไม่ครบ — เภสัชต้องรีเช็คตามรายการนี้
+                        สินค้าที่สแกนไม่ตรงจำนวน (ขาด หรือ เกิน) — เภสัชต้องรีเช็คตามรายการนี้
                       </div>
                     </div>
                     <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 300, overflowY: 'auto', marginTop: 8, marginBottom: 14 }}>
@@ -871,18 +871,19 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                             <th style={{ width: 60 }}>หน่วย</th>
                             <th style={{ width: 70, textAlign: 'center' }}>ต้องมี</th>
                             <th style={{ width: 80, textAlign: 'center' }}>รอบแรกได้</th>
-                            <th style={{ width: 60, textAlign: 'center' }}>ขาด</th>
+                            <th style={{ width: 70, textAlign: 'center' }}>ผลต่าง</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {missingItems.length === 0 ? (
-                            <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--mute)', fontFamily: 'system-ui', padding: 16 }}>ไม่มีสินค้าขาด</td></tr>
-                          ) : missingItems.map(l => {
+                          {problemItems.length === 0 ? (
+                            <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--mute)', fontFamily: 'system-ui', padding: 16 }}>ไม่พบความผิดปกติ</td></tr>
+                          ) : problemItems.map(l => {
                             const needed = l.qty ?? l.got ?? 0;
                             const got = psc[l.sku] || 0;
-                            const deficit = needed - got;
+                            const diff = got - needed; // บวก = เกิน, ลบ = ขาด
+                            const isOver = diff > 0;
                             return (
-                              <tr key={l.sku} style={{ background: '#fff8f0' }}>
+                              <tr key={l.sku} style={{ background: isOver ? '#fff9e6' : '#fff8f0' }}>
                                 <td>
                                   <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
                                   <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
@@ -890,7 +891,9 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                                 <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
                                 <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 18, fontWeight: 700 }}>{needed}</td>
                                 <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 18, color: 'var(--mute)' }}>{got}</td>
-                                <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: '#e67e22' }}>−{deficit}</td>
+                                <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: isOver ? '#b86000' : '#e67e22' }}>
+                                  {isOver ? `+${diff}` : `−${Math.abs(diff)}`}
+                                </td>
                               </tr>
                             );
                           })}
