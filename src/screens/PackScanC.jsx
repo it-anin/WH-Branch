@@ -401,6 +401,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   const [showHistory, setShowHistory] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [confirmOver, setConfirmOver] = useState(null); // { match, factor, scannedBarcode, scannedUnit } — สแกนเกินจำนวน รอยืนยัน
   const [pendingLot, setPendingLot] = useState(null); // { match, lots } — รอเลือก LOT
   const [manualLotMode, setManualLotMode] = useState(false); // true = แสดงฟอร์มใส่ LOT เอง แทนลิสต์
   const [manualLot, setManualLot] = useState('');
@@ -481,9 +482,37 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
       .filter(l => l.remaining > 0);
   }
 
+  // ส่วน LOT + applyScan หลังจากผ่านการตรวจสอบ over แล้ว — ใช้ร่วมกันทั้ง processBarcode ปกติ และ handleConfirmOver
+  async function proceedScan(match, factor, scannedBarcode, scannedUnit) {
+    const allLots = lotMap[match.sku] || [];
+    if (allLots.length === 0) {
+      await applyScan(match, null, false, '', scannedBarcode, scannedUnit, factor);
+      return;
+    }
+    const availableLots = getAvailableLots(match.sku);
+    if (availableLots.length === 0) {
+      showToast('⚠ LOT นี้สินค้าหมด', 'error');
+      return;
+    }
+    if (isAndroid) {
+      setPendingLot({ match, lots: availableLots, scannedBarcode, scannedUnit, factor });
+      return;
+    }
+    const currentValid = match.lot && availableLots.some(l => l.lot === match.lot);
+    const autoLot = currentValid ? match.lot : availableLots[0].lot;
+    await applyScan(match, autoLot, !currentValid, '', scannedBarcode, scannedUnit, factor);
+  }
+
+  async function handleConfirmOver() {
+    if (!confirmOver) return;
+    const { match, factor, scannedBarcode, scannedUnit } = confirmOver;
+    setConfirmOver(null);
+    await proceedScan(match, factor, scannedBarcode, scannedUnit);
+  }
+
   // Logic กลาง — ใช้ทั้ง HID keyboard (handleBarcode) และ Broadcast wh-scan (useEffect)
   async function processBarcode(val) {
-    if (!val?.trim() || isClosing || pendingLot) return;
+    if (!val?.trim() || isClosing || pendingLot || confirmOver) return;
     const barcode = val.trim();
     const catMatch = catalog.find(it => matchBarcode(it, barcode));
     if (!catMatch) { showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
@@ -499,32 +528,13 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     const scannedUnit = skuBarcodeUnit[catMatch.sku]?.[barcode] || catMatch.unit;
     const factor = factorOf(catMatch.sku, scannedUnit);
 
-    const allLots = lotMap[match.sku] || [];
-
-    // SKU ไม่มีใน lotMap → สแกนปกติไม่มี LOT
-    if (allLots.length === 0) {
-      await applyScan(match, null, false, '', scannedBarcode, scannedUnit, factor);
+    // สแกนแล้วจะเกินจำนวนที่เบิก → หยุดรอยืนยันก่อน
+    if ((match.gotBase || 0) + factor > match.need) {
+      setConfirmOver({ match, factor, scannedBarcode, scannedUnit });
       return;
     }
 
-    const availableLots = getAvailableLots(match.sku);
-
-    // ทุก LOT หมด → block scan
-    if (availableLots.length === 0) {
-      showToast('⚠ LOT นี้สินค้าหมด', 'error');
-      return;
-    }
-
-    // Android: ให้เลือก LOT ทุกครั้งที่สแกน (ทุกชิ้น) เสมอ — ไม่ auto-reuse LOT เดิม/auto-pick อีกต่อไป
-    if (isAndroid) {
-      setPendingLot({ match, lots: availableLots, scannedBarcode, scannedUnit, factor });
-      return;
-    }
-
-    // Desktop: คงพฤติกรรมเดิม — ใช้ LOT เดิมต่อถ้ายังไม่หมด ไม่งั้นใช้ตัวแรกที่เหลือ (auto, ไม่มี popup)
-    const currentValid = match.lot && availableLots.some(l => l.lot === match.lot);
-    const autoLot = currentValid ? match.lot : availableLots[0].lot;
-    await applyScan(match, autoLot, !currentValid, '', scannedBarcode, scannedUnit, factor);
+    await proceedScan(match, factor, scannedBarcode, scannedUnit);
   }
 
   // เพิ่ม/รวมจำนวนต่อ LOT จริงบน item (ต่าง LOT ไม่ overwrite กันแบบ it.lot) — ใช้ตอน export แยกแถวเมื่อ SKU เดียวกันในลังนี้สแกนคนละ LOT
@@ -788,6 +798,38 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                 </div>
               </div>
             )}
+          </div>
+        </div>,
+        document.body
+      )}
+      {confirmOver && createPortal(
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.55)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: 'white', borderRadius: 14, padding: '24px 28px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+            textAlign: 'center', minWidth: 280, maxWidth: 340,
+          }}>
+            <div style={{ fontSize: 22, marginBottom: 6 }}>⚠️</div>
+            <div style={{ fontFamily: 'system-ui', fontSize: 17, fontWeight: 700, marginBottom: 6 }}>
+              สินค้าเกินจำนวนที่เบิก
+            </div>
+            <div style={{ fontFamily: 'system-ui', fontSize: 14, color: '#555', marginBottom: 4 }}>
+              {confirmOver.match.name}
+            </div>
+            <div style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', marginBottom: 16 }}>
+              ต้องการ {confirmOver.match.need} · มีแล้ว {confirmOver.match.gotBase || 0} · สแกนนี้ +{confirmOver.factor}
+              {' '}= <b style={{ color: 'var(--accent)' }}>{(confirmOver.match.gotBase || 0) + confirmOver.factor}</b>
+              {' '}(เกิน {(confirmOver.match.gotBase || 0) + confirmOver.factor - confirmOver.match.need} หน่วย)
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button className="btn sm ghost" onClick={() => setConfirmOver(null)}>ยกเลิก</button>
+              <button className="btn primary sm" style={{ background: 'var(--accent)', borderColor: 'var(--accent)' }}
+                onClick={handleConfirmOver}>ยืนยัน สินค้าเกินที่เบิก</button>
+            </div>
           </div>
         </div>,
         document.body
