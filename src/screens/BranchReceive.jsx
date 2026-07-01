@@ -843,44 +843,61 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 </div>
               )}
 
-              {/* รายการสินค้า — Blind recheck: ไม่แสดงต้องมี/ขาด เพื่อให้ scan ใหม่โดยไม่รู้จำนวน */}
-              <div style={{ marginBottom: 4 }}>
-                <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--ink)' }}>
-                  รายการสินค้าที่ต้องรีเช็ค
-                </div>
-                <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
-                  ผลสแกนรอบแรก (จากพนักงานสาขา)
-                </div>
-              </div>
+              {/* รายการสินค้าที่ขาด — กรองเฉพาะ SKU ที่ deficit > 0 พร้อมแสดง ต้องมี / รอบแรกได้ / ขาด */}
               {(() => {
                 const psc = viewingBox.problemScanCounts || {};
+                const missingItems = viewingItems.filter(l => {
+                  const needed = l.qty ?? l.got ?? 0;
+                  return (psc[l.sku] || 0) < needed;
+                });
                 return (
-                  <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 280, overflowY: 'auto', marginTop: 8, marginBottom: 14 }}>
-                    <table className="tbl" style={{ fontSize: 14 }}>
-                      <thead style={{ position: 'sticky', top: 0 }}>
-                        <tr>
-                          <th>SKU / ชื่อ</th>
-                          <th style={{ width: 60 }}>หน่วย</th>
-                          <th style={{ width: 100, textAlign: 'center' }}>จำนวนที่สแกนได้</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {viewingItems.map(l => {
-                          const got = psc[l.sku] || 0;
-                          return (
-                            <tr key={l.sku}>
-                              <td>
-                                <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                                <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
-                              </td>
-                              <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
-                              <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 22, fontWeight: 700 }}>{got}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                  <>
+                    <div style={{ marginBottom: 4 }}>
+                      <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--ink)' }}>
+                        รายการสินค้าที่ต้องรีเช็ค
+                        <span style={{ fontFamily: 'system-ui', fontSize: 14, fontWeight: 400, color: 'var(--mute)', marginLeft: 8 }}>
+                          {missingItems.length} SKU
+                        </span>
+                      </div>
+                      <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
+                        เฉพาะสินค้าที่พนักงานสาขาสแกนไม่ครบ — เภสัชต้องรีเช็คตามรายการนี้
+                      </div>
+                    </div>
+                    <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 300, overflowY: 'auto', marginTop: 8, marginBottom: 14 }}>
+                      <table className="tbl" style={{ fontSize: 14 }}>
+                        <thead style={{ position: 'sticky', top: 0 }}>
+                          <tr>
+                            <th>SKU / ชื่อ</th>
+                            <th style={{ width: 60 }}>หน่วย</th>
+                            <th style={{ width: 70, textAlign: 'center' }}>ต้องมี</th>
+                            <th style={{ width: 80, textAlign: 'center' }}>รอบแรกได้</th>
+                            <th style={{ width: 60, textAlign: 'center' }}>ขาด</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {missingItems.length === 0 ? (
+                            <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--mute)', fontFamily: 'system-ui', padding: 16 }}>ไม่มีสินค้าขาด</td></tr>
+                          ) : missingItems.map(l => {
+                            const needed = l.qty ?? l.got ?? 0;
+                            const got = psc[l.sku] || 0;
+                            const deficit = needed - got;
+                            return (
+                              <tr key={l.sku} style={{ background: '#fff8f0' }}>
+                                <td>
+                                  <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
+                                  <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
+                                </td>
+                                <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
+                                <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 18, fontWeight: 700 }}>{needed}</td>
+                                <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 18, color: 'var(--mute)' }}>{got}</td>
+                                <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: '#e67e22' }}>−{deficit}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 );
               })()}
 
