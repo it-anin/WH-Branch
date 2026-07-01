@@ -431,8 +431,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
   function handleConfirm() {
     if (!foundBox) return;
-    // recheck: เช็คเฉพาะ verifyItems (เฉพาะ SKU ที่ขาด), normal: เช็คทุก SKU
-    const hasOver = verifyItems.some(l => (scanCounts[l.sku] || 0) > (l.qty ?? l.got ?? 0));
+    // recheck: เช็คเฉพาะ verifyItems (เฉพาะ SKU ที่ขาด) และเทียบกับ deficit (ไม่ใช่ qty เต็ม), normal: เช็คทุก SKU
+    const hasOver = verifyItems.some(l => (scanCounts[l.sku] || 0) > getDeficit(l));
     const result = !allChecked ? 'fail' : hasOver ? 'over' : 'ok';
     setVerifyResult(result);
     setViewingId(null);
@@ -606,7 +606,13 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   }
 
 const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
-  const fullyChecked     = (item) => (scanCounts[item.sku] || 0) >= (item.qty ?? item.got ?? 0);
+  // recheck mode: เภสัชต้องสแกนเฉพาะส่วนที่ขาด (deficit) ไม่ใช่ qty เต็ม — เช่น ขาด 3 ใน 10 → สแกน 3 ก็ครบ
+  const getDeficit      = (item) => {
+    const needed = item.qty ?? item.got ?? 0;
+    if (!recheckMode || !foundBox?.problemScanCounts) return needed;
+    return Math.max(0, needed - (foundBox.problemScanCounts[item.sku] || 0));
+  };
+  const fullyChecked     = (item) => (scanCounts[item.sku] || 0) >= getDeficit(item);
   // recheck: ตรวจเฉพาะ SKU ที่เคยสแกนไม่ครบ (จาก problemScanCounts) — ส่วน normal: ทุก SKU ในลัง
   const verifyItems      = (recheckMode && foundBox?.problemScanCounts)
     ? boxItems.filter(l => (foundBox.problemScanCounts[l.sku] || 0) < (l.qty ?? l.got ?? 0))
@@ -1136,11 +1142,49 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                           style={{ flex: 1 }}
                         />
                       </div>
+                      {scanError && (
+                        <div style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--red)', marginTop: 4 }}>{scanError}</div>
+                      )}
                       {lastScannedSku && !scanError && (
                         <div style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--green)', marginTop: 4 }}>
                           ✓ {boxItems.find(l => l.sku === lastScannedSku)?.name} — ติ๊กแล้ว
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* recheck mode: แสดงรายการสินค้าที่ขาดให้เภสัชเห็นก่อนสแกน */}
+                  {recheckMode && isAndroid && verifyItems.length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: '#e67e22', marginBottom: 6 }}>
+                        🧪 สินค้าที่ต้องรีเช็ค ({doneCount}/{verifyItems.length} SKU)
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 280, overflowY: 'auto' }}>
+                        {verifyItems.map(l => {
+                          const deficit = getDeficit(l);
+                          const myCount = scanCounts[l.sku] || 0;
+                          const done = myCount >= deficit;
+                          return (
+                            <div key={l.sku} style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '7px 10px', borderRadius: 8,
+                              border: `1.5px solid ${done ? 'var(--ok)' : '#e67e22'}`,
+                              background: done ? '#e8f0d8' : '#fff8f0',
+                            }}>
+                              <span style={{ fontSize: 16, width: 22, textAlign: 'center', flexShrink: 0 }}>
+                                {done ? '✓' : '○'}
+                              </span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 600, color: done ? 'var(--ok)' : 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.name}</div>
+                                <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>{l.sku}</div>
+                              </div>
+                              <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 700, textAlign: 'right', flexShrink: 0, color: done ? 'var(--ok)' : '#e67e22' }}>
+                                {myCount}/{deficit} {l.unit}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 
