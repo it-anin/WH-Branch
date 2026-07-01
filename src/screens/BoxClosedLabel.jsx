@@ -48,6 +48,24 @@ function lookupUnitByBarcode(barcodeMap, sku, barcode) {
   return null;
 }
 
+// general scan lookup — รับ barcode หรือ SKU → คืน {sku, unit} หรือ null (ค้นใน barcodeMap ทุก entry)
+function lookupByScan(barcodeMap, catalog, val) {
+  const v = val.trim();
+  if (!v) return null;
+  // 1) ตรงกับ SKU ใน catalog ตรงๆ
+  const byCatalogSku = catalog.find(c => c.sku === v);
+  if (byCatalogSku) return { sku: byCatalogSku.sku, unit: byCatalogSku.unit, name: byCatalogSku.name, location: byCatalogSku.location || '' };
+  // 2) ค้น barcode ใน barcodeMap → ได้ sku__unit → lookup ชื่อจาก catalog
+  for (const [key, barcodes] of Object.entries(barcodeMap)) {
+    if (Array.isArray(barcodes) && barcodes.includes(v)) {
+      const [sku, unit] = key.split('__');
+      const cat = catalog.find(c => c.sku === sku && c.unit === unit) || catalog.find(c => c.sku === sku);
+      return { sku, unit: unit || cat?.unit || '', name: cat?.name || sku, location: cat?.location || '' };
+    }
+  }
+  return null;
+}
+
 // สถานะลังฝั่งรับสินค้า (สาขา) — แสดงเป็น badge ใน card
 function receiveBadge(b) {
   if (b.status === 'received')
@@ -65,7 +83,7 @@ function receiveBadge(b) {
   return { label: 'สาขา: ยังไม่รับ', bg: '#f0ede8', border: 'var(--line)', color: 'var(--mute)' };
 }
 
-export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {}, barcodeMap = {} }) {
+export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {}, barcodeMap = {}, catalog = [] }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
@@ -81,6 +99,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const [confirmDeleteId, setConfirmDeleteId] = useState(null); // boxId รอยืนยันลบ (ยกเลิกรายการเบิก) — null = ไม่แสดง dialog
   const [editMode, setEditMode]     = useState(false);          // แก้ไขตารางรายชื่อสินค้าในลัง
   const [editItems, setEditItems]   = useState([]);             // สำเนา boxItems สำหรับแก้ไข (ออกจาก editMode = ทิ้ง)
+  const [addScan, setAddScan]       = useState('');             // barcode input สำหรับเพิ่มสินค้าใหม่ใน edit mode
+  const [addScanErr, setAddScanErr] = useState('');
 
   // อนุมัติแล้ว = exported/received, รออนุมัติ = closed (ยังไม่ส่ง POS)
   const isApproved = (b) => b.status === 'exported' || b.status === 'received';
@@ -241,16 +261,51 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   }
 
   // ออกจาก editMode เมื่อเปลี่ยนลัง
-  useEffect(() => { setEditMode(false); setEditItems([]); }, [selectedId]);
+  useEffect(() => { setEditMode(false); setEditItems([]); setAddScan(''); setAddScanErr(''); }, [selectedId]);
 
   function startEdit() {
     setEditItems(boxItems.map(it => ({ ...it })));
+    setAddScan(''); setAddScanErr('');
     setEditMode(true);
+  }
+
+  function handleAddByScan(e) {
+    if (e.key !== 'Enter') return;
+    const val = addScan.trim();
+    if (!val) return;
+    const found = lookupByScan(barcodeMap, catalog, val);
+    if (!found) {
+      setAddScanErr(`⚠ ไม่พบ "${val}" ใน Catalog / R05.106`);
+      return;
+    }
+    setAddScanErr('');
+    setAddScan('');
+    const existIdx = editItems.findIndex(it => it.sku === found.sku && (it.unit || '') === (found.unit || ''));
+    if (existIdx >= 0) {
+      // SKU+unit มีอยู่แล้ว → เพิ่ม qty +1
+      setEditItems(prev => prev.map((x, i) =>
+        i === existIdx ? { ...x, qty: (x.qty ?? x.got ?? 0) + 1, got: (x.got ?? 0) + 1 } : x
+      ));
+      showToast(`${found.name} +1 ชิ้น`, 'success');
+    } else {
+      // SKU ใหม่ → เพิ่มแถว
+      setEditItems(prev => [...prev, {
+        sku: found.sku, name: found.name, unit: found.unit,
+        barcode: val, scannedBarcode: val,
+        qty: 1, got: 1, lot: '', exp: '', location: found.location,
+        scannedLots: null,
+      }]);
+      showToast(`เพิ่ม ${found.name} ✓`, 'success');
+    }
   }
 
   function handleSaveEdit() {
     if (!selectedId) return;
-    const newItems = editItems.filter(it => (it.qty ?? it.got ?? 0) > 0);
+    // clear scannedLots — view mode ใช้ lotRows() ซึ่งจะอ่าน qty จาก scannedLots[].qty ก่อน (ไม่ใช่ l.qty)
+    // การล้าง scannedLots ทำให้ view mode ใช้ fallback path (l.qty / l.lot / l.exp) ที่ผู้ใช้เพิ่งแก้ไขไว้
+    const newItems = editItems
+      .filter(it => (it.qty ?? it.got ?? 0) > 0)
+      .map(it => ({ ...it, scannedLots: null }));
     const newTotalQty = newItems.reduce((s, it) => s + (it.qty ?? it.got ?? 0), 0);
     const newSkuCount = newItems.length;
     setItemsByBox(prev => ({ ...prev, [selectedId]: newItems }));
@@ -551,7 +606,21 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
               {editMode ? (
                 /* ── Edit mode: กรอกแก้ไข qty / LOT / Exp ต่อ item ── */
-                <div style={{ border: '2px solid var(--accent)', borderRadius: 8, overflow: 'auto', maxHeight: 380, background: 'white' }}>
+                <>
+                <div style={{ marginBottom: 8 }}>
+                  <div className="row" style={{ gap: 8 }}>
+                    <input
+                      className="input mono"
+                      placeholder="🔍 สแกน Barcode / SKU เพื่อเพิ่มสินค้าใหม่ — กด Enter"
+                      style={{ flex: 1, fontSize: 13 }}
+                      value={addScan}
+                      onChange={e => { setAddScan(e.target.value); setAddScanErr(''); }}
+                      onKeyDown={handleAddByScan}
+                    />
+                  </div>
+                  {addScanErr && <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{addScanErr}</div>}
+                </div>
+                <div style={{ border: '2px solid var(--accent)', borderRadius: 8, overflow: 'auto', maxHeight: 340, background: 'white' }}>
                   <table className="tbl" style={{ fontSize: 13 }}>
                     <thead>
                       <tr>
@@ -639,6 +708,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                     </tbody>
                   </table>
                 </div>
+                </>
               ) : (
                 /* ── View mode: ตารางปกติ read-only ── */
                 <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'auto', maxHeight: 320, background: 'white' }}>
