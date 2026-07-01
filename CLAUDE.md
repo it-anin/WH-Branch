@@ -131,6 +131,7 @@ src/
 ├── App.jsx                      # Root — state, routing, helpers, Firestore sync
 ├── firebase.js                  # Firebase config + db export
 ├── data.js                      # generatePOS, matchBarcode (+ legacy mock data ยังไม่ได้ลบ)
+├── sound.js                     # playScanSuccess() — เสียง "Success Chime" สังเคราะห์สดด้วย Web Audio API (ไม่ใช้ไฟล์เสียง)
 ├── main.jsx                     # React entry
 ├── styles.css                   # Global styles, CSS variables + media query mobile ≤640px
 │
@@ -467,6 +468,7 @@ open → packing → closed → exported → received
 - **ต้องเลือกพนักงานก่อน** ถึงจะเห็นรายการสินค้า — ถ้า `packer === null` แสดง placeholder แทน PackScanC
 - Toast: `'error'` สำหรับ scan ล้มเหลว, `'success'` สำหรับปิดลัง/เปิดลังใหม่สำเร็จ
   - ปิดลังสำเร็จ → `"ปิดลัง BX-xxxx แล้ว ✓"` (ไม่มีข้อความ "เปิดลังใหม่อัตโนมัติ")
+- **เสียงสแกน:** `playScanSuccess()` (`src/sound.js`) เรียกทุกครั้งใน `applyScan()` ตอนสแกนสำเร็จ 1 ชิ้น (ทุกชิ้น ไม่ใช่แค่ตอนครบ) — เสียง "Success Chime" สังเคราะห์สดด้วย Web Audio API ไม่ใช้ไฟล์เสียง (เคยลองแยกเสียง "Rising Ding" เฉพาะตอนครบจำนวน แต่ผู้ใช้ให้กลับไปใช้เสียงเดียวทั้งหมด)
 - **`catalogMeta` prop** — รับจาก AndroidApp → แสดงใน frame-header (Android): `เช็ค X/Y · 📋 Picklist_สาขา วันที่`
 - **Android mode** (`isAndroid` = module-level const จาก `?android=1`):
   - Layout 2 rows: barcode input + ปิดลัง (row 1) / search (row 2) — ไม่ใช้ `.btn.lg` / `.input.big`
@@ -617,6 +619,7 @@ open → packing → closed → exported → received
   - **ไม่มี upper limit** — สแกนเกิน qty ได้ (กรณีสินค้ามาเกิน) → บันทึกจำนวนจริงเสมอ
   - **⚠ ไม่คูณ factor (ตั้งใจ — ต่างจากหน้าแพ็ค):** การรับนับ "ชิ้นจริงในลัง" = จำนวนสแกน เทียบกับ `item.qty` ซึ่ง = จำนวนสแกนของคนแพ็ค (`it.got` ตอน `doClose`) → ตรงกันเสมอไม่ว่าหน่วยไหน (แพ็ค 12 กล่อง qty=12 → สาขาสแกน 12 ครั้ง). **ห้ามแปลงเป็นหน่วยฐาน** — สาขาสแกนได้แค่ของจริง (= จำนวนชิ้น) ไม่ใช่ base unit นามธรรม การคูณ factor จะทำให้เทียบผิด
   - **Blind receiving:** ไม่มีคลิกแถวเพื่อติ๊ก, ไม่มีปุ่ม "ติ๊กครบทั้งหมด" — ติ๊กได้วิธีเดียวคือยิงบาร์โค้ดเท่านั้น
+- **เสียงสแกน:** `playScanSuccess()` (`src/sound.js`) เรียกใน `handleItemScan()` ทุกครั้งที่สแกนสินค้าเจอ (เหมือน PackScanC — ดู *เสียงสแกน* ใน section PackScanC ด้านบน)
 - `fullyChecked(item)` = `scanCounts[sku] >= item.qty`
 - `allChecked` = ทุก item ผ่าน fullyChecked
 - `hasOver` = มี item ใด item หนึ่งที่ `scanCounts[sku] > item.qty` (สแกนเกิน)

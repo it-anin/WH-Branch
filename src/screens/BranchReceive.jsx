@@ -367,12 +367,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       showToast(`⚠ ${boxLabel}รับเข้าสาขาแล้ว`, 'error');
       return;
     }
-    if (box.receivePending) {
-      showToast(`⚠ ${boxLabel}สแกนรับแล้ว · รออนุมัติเอกสาร`, 'error');
-      return;
-    }
+    // เภสัช recheck ต้องเช็คก่อน receivePending — ป้องกันกรณีที่ลังมีทั้ง receivePending=true และ problemReported=true
+    // พร้อมกัน (edge case / Firestore race) ซึ่งจะทำให้เภสัชโดนบล็อกก่อนถึง pharmacist exception
     if (box.problemReported && !box.problemResolved) {
-      // เภสัช (role: pharmacist) สแกนซ้ำได้ → เข้า recheck mode
       if (branchStaff?.role === 'pharmacist' && box.problemType === 'incomplete') {
         setRecheckMode(true);
         startReceive(box);
@@ -380,6 +377,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         return;
       }
       showToast(`⚠ ${boxLabel}แจ้งปัญหาแล้ว · รอเภสัชตรวจสอบ`, 'error');
+      return;
+    }
+    if (box.receivePending) {
+      showToast(`⚠ ${boxLabel}สแกนรับแล้ว · รออนุมัติเอกสาร`, 'error');
       return;
     }
     // ล็อกลัง: ถ้าพนักงานคนอื่นกำลังตรวจอยู่ → บล็อก (ปลดล็อกเมื่อคนนั้นยืนยันรับ/แจ้งปัญหา/ไปลังถัดไป)
