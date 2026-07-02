@@ -250,18 +250,20 @@ function ItemCard({ c, done, partial, exiting, settled, onMarkOutOfStock }) {
   }
 
   const revealOpacity = Math.min(Math.abs(dragX) / SWIPE_THRESHOLD, 1);
+  // แยก 2 กรณี: ยังไม่ได้สแกน = ของหมดจริง (แดง), สแกนไปบ้างแล้ว = ของมีไม่พอ (ส้ม)
+  const hasScanned = (c.gotBase ?? 0) > 0;
 
   return (
     <div style={{ position: 'relative', minWidth: 0 }}>
       {isAndroid && (
         <div style={{
           position: 'absolute', inset: 0, borderRadius: 10,
-          background: 'var(--red)', color: 'white',
+          background: hasScanned ? '#e67e22' : 'var(--red)', color: 'white',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontFamily: 'system-ui', fontSize: 13, fontWeight: 700,
           opacity: revealOpacity,
         }}>
-          🗑 ของหมด
+          {hasScanned ? '⚠ ของไม่พอ' : '🗑 ของหมด'}
         </div>
       )}
       <div
@@ -331,12 +333,18 @@ function ItemCard({ c, done, partial, exiting, settled, onMarkOutOfStock }) {
             boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
             textAlign: 'center', minWidth: 260, maxWidth: 320,
           }}>
-            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>⚠ ยืนยันว่าของหมด?</div>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
+              {hasScanned ? '⚠ ของมีไม่พอใช่ไหม?' : '⚠ ยืนยันว่าของหมด?'}
+            </div>
             <div style={{ fontSize: 14, color: '#555', marginBottom: 4 }}>{c.name}</div>
             <div className="mono" style={{ fontSize: 12, color: '#888', marginBottom: 20 }}>{c.sku}</div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <button className="btn sm ghost" onClick={cancelOutOfStock}>ยกเลิก</button>
-              <button className="btn danger sm" onClick={confirmOutOfStock}>ของหมด ลบรายการ</button>
+              {hasScanned ? (
+                <button className="btn sm" style={{ background: '#e67e22', borderColor: '#e67e22', color: 'white' }} onClick={confirmOutOfStock}>ของไม่พอ สแกนตัวถัดไป</button>
+              ) : (
+                <button className="btn danger sm" onClick={confirmOutOfStock}>ของหมด ลบรายการ</button>
+              )}
             </div>
           </div>
         </div>,
@@ -845,8 +853,8 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
             boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
             textAlign: 'center', minWidth: 260,
           }}>
-            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>⚠ ยังขาดสินค้า</div>
-            <div style={{ fontSize: 14, color: '#555', marginBottom: 20 }}>ต้องการปิดลังเลยไหม?</div>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>⚠ สินค้าไม่ครบ</div>
+            <div style={{ fontSize: 14, color: '#555', marginBottom: 20 }}>ปิดลังเลยไหม?</div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <button className="btn sm ghost" onClick={() => setConfirmClose(false)}>ยกเลิก</button>
               <button className="btn primary sm" onClick={doClose}>ปิดลัง</button>
