@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -12,7 +12,9 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+// ignoreUndefinedProperties: ตัด field ที่เป็น undefined ทิ้งแทนการ throw ทั้ง write
+// (เดิม field undefined เช่น scannedLots ทำให้ setDoc/writeBatch ล้มเงียบ → ลังปิดแล้วไม่ sync ไป Firestore)
+export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
 export const auth = getAuth(app);
 
 // Sign in anonymously on app load — required for Firestore rules (request.auth != null)

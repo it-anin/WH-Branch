@@ -670,7 +670,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     setItems(prev =>
       prev
         .filter(it => it.gotBase < it.need)
-        .map(it => ({ ...it, need: it.need - it.gotBase, got: 0, gotBase: 0, scannedLots: undefined }))
+        .map(it => ({ ...it, need: it.need - it.gotBase, got: 0, gotBase: 0, scannedLots: null }))
     );
     setPage(0);
     setSearch('');
