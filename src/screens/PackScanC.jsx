@@ -631,11 +631,14 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   // ปัด card ยืนยัน "ของหมด" — แช่ need ไว้ที่ got ปัจจุบัน (กันถูกดึงไปลังถัดไปซ้ำ) + ซ่อนออกจาก checklist
   // ของที่แพ็คไปแล้ว (got > 0) ยังนับใน packedItems ตอนปิดลังตามปกติ — ไม่เสียยอดที่สแกนไปแล้ว
   function handleMarkOutOfStock(sku) {
+    const target = items.find(it => it.sku === sku);
+    const hasScanned = (target?.gotBase ?? 0) > 0; // สแกนไปแล้วบางส่วน = ของไม่พอ, ยังไม่สแกน = ของหมด
     const newItems = items.map(it => it.sku === sku ? { ...it, need: it.gotBase } : it);
     setItems(newItems);
     setDismissedSkus(prev => new Set(prev).add(sku));
     if (activeBoxId && onScanProgress) onScanProgress(activeBoxId, newItems);
-    showToast('ลบออกจากรายการแล้ว', 'error');
+    if (hasScanned) showToast('สแกนตัวถัดไป', 'warn');
+    else showToast('ลบออกจากรายการแล้ว', 'error');
   }
 
   // ref pattern — ให้ wh-scan listener เสมอเห็น processBarcode ล่าสุด (ไม่ stale)

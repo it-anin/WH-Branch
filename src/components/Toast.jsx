@@ -2,6 +2,7 @@ const STYLES = {
   default: { background: 'var(--ink)',  color: 'var(--paper)', border: '2px solid var(--line)',        boxShadow: '3px 3px 0 var(--line)' },
   error:   { background: '#c0392b',     color: '#fff',         border: '2px solid #922b21',             boxShadow: '3px 3px 0 #922b21' },
   success: { background: '#2e7d32',     color: '#fff',         border: '2px solid #1b5e20',             boxShadow: '3px 3px 0 #1b5e20' },
+  warn:    { background: '#e67e22',     color: '#fff',         border: '2px solid #b86000',             boxShadow: '3px 3px 0 #b86000' },
 };
 
 export default function Toast({ toasts }) {
