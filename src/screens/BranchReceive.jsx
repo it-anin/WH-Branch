@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { matchBarcode } from '../data.js';
 import { ALL_BRANCH_STAFF } from '../branches.js';
-import { playScanSuccess } from '../sound.js';
+import { playScanSuccess, playBoxScan, playScanFail } from '../sound.js';
 
 // Desktop staff filter dropdown ใช้รายชื่อรวมทุกสาขา; Android ใช้ staff ของสาขาที่เลือก (controlled mode)
 const BRANCH_STAFF = ALL_BRANCH_STAFF;
@@ -147,32 +147,27 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onIns
   const accentState = isActive || isPendingApproval;
   const borderColor = hasProblem ? problemColor : accentState ? 'var(--accent)' : isReceived ? 'var(--green)' : 'var(--line)';
   const bg = hasProblem ? (isIncomplete ? '#fff3cd' : '#fde8e8') : isReceived ? '#edf5e0' : accentState ? 'var(--accent-soft)' : 'white';
-  // คลิก (viewing) = เข้มขึ้น + ยกขึ้น โดยไม่เปลี่ยนสีพื้น
-  const shadow = (isViewing || accentState || hasProblem)
-    ? '3px 3px 0 var(--line)'
-    : isReceived ? '3px 3px 0 #c6dea6' : '1px 1px 0 var(--line)';
-  const shift = (isViewing || accentState) ? 'translate(-1px, -1px)' : 'none';
+  // การ์ดทั้งใบเป็นปุ่ม "กดค้าง" (แบบ 1 คลาสสิก+) — press mechanic อยู่ใน .box-card (styles.css)
+  // pressed = เลือก/กำลังตรวจ/รออนุมัติ → จมลงชนพื้น เงาหาย (is-selected); สี bg/ขอบ ยังคุมตามสถานะด้านล่าง
+  const pressed = isViewing || accentState;
 
   return (
     <div
       onClick={onClick}
+      className={`box-card${pressed ? ' is-selected' : ''}`}
       style={{
         position: 'relative',
         padding: '14px 16px',
-        border: `2px solid ${borderColor}`,
+        border: `1px solid ${borderColor}`,
         borderRadius: 14,
         background: bg,
         opacity: (!isViewing && !accentState && !isReceived && !hasProblem && !problemFixed) ? 0.65 : 1,
         filter: isViewing ? 'brightness(0.9)' : 'none',
-        cursor: 'pointer',
-        boxShadow: shadow,
-        transform: shift,
-        transition: 'all 0.1s',
       }}
     >
       {(() => {
-        const label = isViewing ? ''
-          : hasProblem ? (isIncomplete ? '🔁 สินค้าไม่ครบ · รอรีเช็ค' : '🔴 พบปัญหา · รอตรวจสอบ')
+        // แสดงสถานะเสมอ — ไม่ซ่อนตอนกด/เลือกการ์ด (isViewing) เพื่อให้บรรทัดสถานะไม่หายไป
+        const label = hasProblem ? (isIncomplete ? '🔁 สินค้าไม่ครบ · รอรีเช็ค' : '🔴 พบปัญหา · รอตรวจสอบ')
           : isPendingApproval ? ''
           : problemFixed ? '✓ แก้ไขปัญหาแล้ว · รออนุมัติ'
           : isReceived ? 'เภสัชอนุมัติเอกสารแล้ว ✓'
@@ -324,6 +319,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   }, [staffMenuOpen]);
 
   function startReceive(box) {
+    playBoxScan();
     setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id]);
     // ล็อกลังนี้ให้พนักงานคนนี้ + ปลดล็อกลังเก่าที่ตัวเองถืออยู่ (ถือได้ทีละลัง)
     setBoxes(prev => prev.map(b => {
@@ -351,7 +347,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       b.pos.replace(/\s/g, '').toLowerCase().includes(q.replace(/\s/g, ''))
     );
 
-    if (!box) { setNotFound(true); return; }
+    if (!box) { playScanFail(); setNotFound(true); return; }
 
     // กันสแกนลังซ้ำที่จัดการไปแล้ว — บล็อก ไม่เข้า verify
     setNotFound(false);
@@ -360,10 +356,12 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     const boxLabel = isAndroid ? '' : `ลัง ${box.id} `;
     // กันสแกนลังของสาขาอื่น (ลังไม่มี branch = legacy → ปล่อยผ่าน)
     if (branch && box.branch && box.branch !== branch) {
+      playScanFail();
       showToast(`⚠ ${boxLabel}เป็นของสาขา ${box.branch} ไม่ใช่ ${branch}`, 'error');
       return;
     }
     if (box.status === 'received') {
+      playScanFail();
       showToast(`⚠ ${boxLabel}รับเข้าสาขาแล้ว`, 'error');
       return;
     }
@@ -376,15 +374,18 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         showToast(`🔁 รีเช็คลัง ${box.id}`, 'success');
         return;
       }
+      playScanFail();
       showToast(`⚠ ${boxLabel}แจ้งปัญหาแล้ว · รอเภสัชตรวจสอบ`, 'error');
       return;
     }
     if (box.receivePending) {
+      playScanFail();
       showToast(`⚠ ${boxLabel}สแกนรับแล้ว · รออนุมัติเอกสาร`, 'error');
       return;
     }
     // ล็อกลัง: ถ้าพนักงานคนอื่นกำลังตรวจอยู่ → บล็อก (ปลดล็อกเมื่อคนนั้นยืนยันรับ/แจ้งปัญหา/ไปลังถัดไป)
     if (box.receivingBy && box.receivingBy.code !== branchStaff?.code) {
+      playScanFail();
       showToast(`⚠ พนักงาน ${box.receivingBy.name} กำลังตรวจลังนี้อยู่`, 'error');
       return;
     }
@@ -415,7 +416,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       receivingBy: null, // ปลดล็อก
       updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
     } : b));
-    showToast('แจ้งปัญหาแล้ว · ส่งให้หัวหน้าตรวจสอบ', 'error');
+    showToast('แจ้งปัญหาแล้ว·ส่งให้เภสัชตรวจสอบ', 'error');
     setScanCounts({}); setQuery(''); setNotFound(false);
     setItemScan(''); setLastScannedSku(null); setScanError('');
     setVerifyResult(null); setViewingId(null);
@@ -431,8 +432,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
   function handleConfirm() {
     if (!foundBox) return;
-    // recheck: เช็คเฉพาะ verifyItems (เฉพาะ SKU ที่ขาด) และเทียบกับ deficit (ไม่ใช่ qty เต็ม), normal: เช็คทุก SKU
-    const hasOver = verifyItems.some(l => (scanCounts[l.sku] || 0) > getDeficit(l));
+    // recheck: เช็คเฉพาะ verifyItems (SKU ที่ขาดรอบแรก) แต่เภสัชนับใหม่จาก 0 เทียบ qty เต็ม, normal: เช็คทุก SKU
+    const hasOver = verifyItems.some(l => (scanCounts[l.sku] || 0) > getNeeded(l));
     const result = !allChecked ? 'fail' : hasOver ? 'over' : 'ok';
     setVerifyResult(result);
     setViewingId(null);
@@ -570,18 +571,19 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
     const match = boxItems.find(l => matchBarcode(l, val));
     if (!match) {
+      playScanFail();
       setScanError(`ไม่มี SKU นี้ในลัง`);
       setLastScannedSku(null);
       showToast('⚠ ไม่มี SKU นี้ในลัง', 'error');
       return;
     }
 
-    // recheck mode: บล็อก SKU ที่เคยสแกนครบแล้ว — ตรวจซ้ำเฉพาะที่ขาด
+    // recheck mode: บล็อกเฉพาะ SKU ที่รอบแรกถูกต้องพอดี (count = qty) — ให้ตรวจซ้ำได้ทั้งที่ขาดและเกิน
     if (recheckMode && foundBox?.problemScanCounts) {
       const prevCount = foundBox.problemScanCounts[match.sku] || 0;
       const needed = match.qty ?? match.got ?? 0;
-      if (prevCount >= needed) {
-        setScanError(`SKU นี้สแกนครบแล้วในรอบแรก — ตรวจซ้ำเฉพาะที่ขาด`);
+      if (prevCount === needed) {
+        setScanError(`SKU นี้ถูกต้องแล้วในรอบแรก — ตรวจซ้ำเฉพาะที่ขาด/เกิน`);
         setLastScannedSku(null);
         return;
       }
@@ -606,16 +608,13 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   }
 
 const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
-  // recheck mode: เภสัชต้องสแกนเฉพาะส่วนที่ขาด (deficit) ไม่ใช่ qty เต็ม — เช่น ขาด 3 ใน 10 → สแกน 3 ก็ครบ
-  const getDeficit      = (item) => {
-    const needed = item.qty ?? item.got ?? 0;
-    if (!recheckMode || !foundBox?.problemScanCounts) return needed;
-    return Math.max(0, needed - (foundBox.problemScanCounts[item.sku] || 0));
-  };
-  const fullyChecked     = (item) => (scanCounts[item.sku] || 0) >= getDeficit(item);
-  // recheck: ตรวจเฉพาะ SKU ที่เคยสแกนไม่ครบ (จาก problemScanCounts) — ส่วน normal: ทุก SKU ในลัง
+  // recheck mode: เภสัชนับใหม่จาก 0 ต้องสแกนให้ครบ "เต็มจำนวน" (qty) เสมอ — ไม่หักจำนวนที่ผู้ช่วยนับรอบแรก
+  // (ค่ารอบแรก problemScanCounts เชื่อไม่ได้ จึงให้เภสัชตรวจนับใหม่ทั้งหมดของ SKU ที่ขาด)
+  const getNeeded        = (item) => item.qty ?? item.got ?? 0;
+  const fullyChecked     = (item) => (scanCounts[item.sku] || 0) >= getNeeded(item);
+  // recheck: ตรวจเฉพาะ SKU ที่รอบแรกสแกนไม่ตรงจำนวน (ขาดหรือเกิน — count ≠ qty) — normal: ทุก SKU ในลัง
   const verifyItems      = (recheckMode && foundBox?.problemScanCounts)
-    ? boxItems.filter(l => (foundBox.problemScanCounts[l.sku] || 0) < (l.qty ?? l.got ?? 0))
+    ? boxItems.filter(l => (foundBox.problemScanCounts[l.sku] || 0) !== (l.qty ?? l.got ?? 0))
     : boxItems;
   const allChecked       = verifyItems.length > 0 && verifyItems.every(fullyChecked);
   const doneCount        = verifyItems.filter(fullyChecked).length;
@@ -651,7 +650,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
             )}
             <input
               className="input"
-              placeholder="🔍 ค้นหา SKU / ชื่อ ว่าอยู่ลังไหน…"
+              placeholder="🔍 ค้นหา SKU"
               value={itemSearch}
               onChange={e => setItemSearch(e.target.value)}
               style={{ marginLeft: 12, width: 240 }}
@@ -734,7 +733,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
 
         {/* LEFT: box cards — desktop only, grid 3 คอลัมน์ */}
         {!isAndroid && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, alignContent: 'start', overflowY: 'auto', maxHeight: 520 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, alignContent: 'start', overflowY: 'auto', maxHeight: 520, paddingRight: 12, paddingBottom: 6 }}>
             {approvalBoxes.length === 0 ? (
               <div style={{
                 gridColumn: '1 / -1',
@@ -869,9 +868,9 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                           <tr>
                             <th>SKU / ชื่อ</th>
                             <th style={{ width: 60 }}>หน่วย</th>
-                            <th style={{ width: 70, textAlign: 'center' }}>ต้องมี</th>
-                            <th style={{ width: 80, textAlign: 'center' }}>รอบแรกได้</th>
-                            <th style={{ width: 70, textAlign: 'center' }}>ผลต่าง</th>
+                            <th style={{ width: 80, textAlign: 'center' }}>ของเข้า</th>
+                            <th style={{ width: 80, textAlign: 'center' }}>นับได้</th>
+                            <th style={{ width: 80, textAlign: 'center' }}>เกิน/ขาด</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1002,14 +1001,14 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               </div>
 
               <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 280, overflowY: 'auto', marginBottom: 14 }}>
-                <table className="tbl" style={{ fontSize: 14 }}>
+                <table className="tbl" style={{ fontSize: 12 }}>
                   <thead style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ width: 36 }}>✓</th>
                       <th>SKU / ชื่อ</th>
                       <th style={{ width: 70 }}>หน่วย</th>
-                      {!recheckMode && <th style={{ width: 60, textAlign: 'center' }}>ต้องมี</th>}
-                      <th style={{ width: 70, textAlign: 'center' }}>สแกนแล้ว</th>
+                      {!recheckMode && <th style={{ width: 60, textAlign: 'center' }}>ของเข้า</th>}
+                      <th style={{ width: 70, textAlign: 'center' }}>นับได้</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1069,10 +1068,13 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               ) : (
                 <div style={{ border: '2px solid #e67e22', borderRadius: 12, padding: '14px 16px', background: '#fff3cd', textAlign: 'center' }}>
                   <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: '#b86000' }}>
-                    ✓ {recheckMode ? 'รีเช็คสินค้าแล้ว' : 'ส่งให้หัวหน้ารีเช็คสินค้าแล้ว'}
+                    ✓ {recheckMode ? 'รีเช็คสินค้าแล้ว' : 'ส่งให้เภสัชรีเช็คสินค้า'}
                   </div>
                   <div style={{ fontFamily: 'system-ui', fontSize: 14, color: '#b86000', marginTop: 4 }}>
-                    {verifyResult === 'over' ? 'พบสินค้าเกินจำนวน' : 'พบสินค้าไม่ครบ'} · กดปุ่ม [+ ลังถัดไป] เพื่อสแกนลังต่อ
+                    {verifyResult === 'over' ? 'สินค้าเกินจำนวน' : 'สินค้าไม่ครบ'}
+                  </div>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 14, color: '#b86000', marginTop: 4 }}>
+                    กดปุ่ม [+ ลังถัดไป] เพื่อสแกนลังต่อ
                   </div>
                 </div>
               )}
@@ -1173,7 +1175,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                     </div>
                   )}
 
-                  {/* recheck mode: แสดงรายการสินค้าที่ขาดให้เภสัชเห็นก่อนสแกน */}
+                  {/* recheck mode: แสดงรายการสินค้าที่ต้องรีเช็ค (ขาด/เกิน) ให้เภสัชเห็นก่อนสแกน */}
                   {recheckMode && isAndroid && verifyItems.length > 0 && (
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: '#e67e22', marginBottom: 6 }}>
@@ -1181,9 +1183,9 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 280, overflowY: 'auto' }}>
                         {verifyItems.map(l => {
-                          const deficit = getDeficit(l);
+                          const needed = getNeeded(l);
                           const myCount = scanCounts[l.sku] || 0;
-                          const done = myCount >= deficit;
+                          const done = myCount >= needed;
                           return (
                             <div key={l.sku} style={{
                               display: 'flex', alignItems: 'center', gap: 8,
@@ -1199,7 +1201,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                                 <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>{l.sku}</div>
                               </div>
                               <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 700, textAlign: 'right', flexShrink: 0, color: done ? 'var(--ok)' : '#e67e22' }}>
-                                {myCount}/{deficit} {l.unit}
+                                {myCount}/{needed} {l.unit}
                               </div>
                             </div>
                           );

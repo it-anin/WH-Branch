@@ -115,6 +115,24 @@ button:active:not(:disabled):not(.no-press) {
   box-shadow: none !important;
 }
 
+/* ── การ์ดลัง (หน้ารับสินค้า Desktop) — ปุ่ม "กดค้าง" แบบคลาสสิก+ (แบบ 1)
+   ทั้งใบเป็นปุ่มกด: พัก = เงาแข็ง, hover = ยกขึ้น, กด/เลือกอยู่ (.is-selected) = จมลงชนพื้น เงาหาย
+   สี bg/ขอบ/opacity ยังคุมด้วย inline style ตามสถานะลัง (ส้ม/แดง/เขียว) เหมือนเดิม */
+.box-card {
+  cursor: pointer;
+  transition: transform .1s ease, box-shadow .1s ease;
+  box-shadow: 4px 4px 0 var(--line);
+}
+.box-card:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 var(--line);
+}
+.box-card:active,
+.box-card.is-selected {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 var(--line);
+}
+
 /* หน้า "เลือกที่ทำงาน" (Android): ปุ่มการ์ดใหญ่ — เด้งเข้าตอนโผล่ (ไล่ทีละใบด้วย animationDelay)
    + กดยุบเงาชัดขึ้นด้วยการย่อตัวเล็กน้อย (2px translate เฉย ๆ ดูไม่ออกบนการ์ดใหญ่) */
 .loc-btn { animation: locIn .32s cubic-bezier(.2,.8,.2,1) both; }

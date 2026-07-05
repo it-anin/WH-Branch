@@ -330,7 +330,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           <div className="spacer" />
           <input
             className="input"
-            placeholder="🔍 ค้นหาสินค้าข้ามทุกลัง…"
+            placeholder="🔍 ค้นหาสินค้าทุกลัง"
             style={{ width: 240 }}
             value={globalSearch}
             onChange={e => setGlobalSearch(e.target.value)}
@@ -352,7 +352,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
         <div style={{
           borderRight: '1.5px solid var(--line)',
           padding: '14px 10px',
-          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, alignContent: 'start',
+          display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, alignContent: 'start',
           overflowY: 'auto', maxHeight: 600,
           background: 'var(--paper-dark)',
         }}>
@@ -415,7 +415,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 onClick={() => { setSelectedId(b.id); setGlobalSearch(''); }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  padding: '12px 8px', gap: 5,
+                  padding: '12px 8px', gap: 5, minWidth: 0,
                   border: `2px solid ${hasProblem ? 'var(--red)' : active ? 'var(--accent)' : 'var(--line)'}`,
                   borderRadius: 12,
                   background: hasProblem ? '#fde8e8' : active ? 'var(--accent-soft)' : 'white',
@@ -446,7 +446,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 {(() => {
                   const rb = receiveBadge(b);
                   return (
-                    <span className="chip" style={{ fontSize: 9, padding: '1px 6px', background: rb.bg, borderColor: rb.border, color: rb.color, fontWeight: 700, marginTop: 1, whiteSpace: 'nowrap' }}>{rb.label}</span>
+                    <span className="chip" style={{ fontSize: 9, padding: '1px 6px', background: rb.bg, borderColor: rb.border, color: rb.color, fontWeight: 700, marginTop: 1, whiteSpace: 'normal', textAlign: 'center', maxWidth: '100%', lineHeight: 1.2 }}>{rb.label}</span>
                   );
                 })()}
               </button>
