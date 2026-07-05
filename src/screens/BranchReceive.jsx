@@ -16,6 +16,11 @@ const statusLabel = {
   received: 'รับสินค้าแล้ว',
 };
 
+// หน่วยที่แสดง — ใช้หน่วยที่สแกนจริง (scannedUnit เช่น "กล่อง") ถ้ามี ไม่งั้น fallback หน่วย picklist (unit เช่น "โหล")
+// สำคัญ: qty ของ boxItem ถูกบันทึกเป็น "จำนวนครั้งสแกน" ตามหน่วยที่สแกน จึงต้องคู่กับ scannedUnit ไม่ใช่ unit
+// (เช่น สแกน 12 กล่อง → qty=12 คู่กับ "กล่อง" ไม่ใช่ "โหล") — ตรงกับที่ BoxClosedLabel ใช้อยู่
+const unitOf = (l) => l?.scannedUnit || l?.unit || '';
+
 // ย่อรูปหลักฐาน → base64 JPEG (กว้างสุด ~800px) เพื่อเก็บลง Firestore (1 doc ≤ 1MB)
 function compressImage(file, maxW = 800, quality = 0.7) {
   return new Promise((resolve) => {
@@ -105,7 +110,7 @@ function ScannedItemRow({ l, count, over, onRemove }) {
           <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
           <div style={{ fontFamily: 'system-ui', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</div>
         </div>
-        <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', flexShrink: 0 }}>{l.unit}</div>
+        <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', flexShrink: 0 }}>{unitOf(l)}</div>
         <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: over ? '#e67e22' : 'var(--ink)', minWidth: 28, textAlign: 'center', flexShrink: 0 }}>
           {count}
         </div>
@@ -812,7 +817,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                             <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{r.sku}</div>
                             <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{r.name}</div>
                           </td>
-                          <td style={{ fontFamily: 'system-ui' }}>{r.unit}</td>
+                          <td style={{ fontFamily: 'system-ui' }}>{unitOf(r)}</td>
                           <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 20, fontWeight: 700 }}>×{r.qty}</td>
                         </tr>
                       ))}
@@ -887,7 +892,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                                   <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
                                   <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                                 </td>
-                                <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
+                                <td style={{ fontFamily: 'system-ui' }}>{unitOf(l)}</td>
                                 <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 18, fontWeight: 700 }}>{needed}</td>
                                 <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 18, color: 'var(--mute)' }}>{got}</td>
                                 <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: isOver ? '#b86000' : '#e67e22' }}>
@@ -976,7 +981,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                             <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
                             <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                           </td>
-                          <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
+                          <td style={{ fontFamily: 'system-ui' }}>{unitOf(l)}</td>
                           <td style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
                             ×{l.qty ?? l.got ?? 0}
                           </td>
@@ -1037,7 +1042,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                             <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
                             <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                           </td>
-                          <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
+                          <td style={{ fontFamily: 'system-ui' }}>{unitOf(l)}</td>
                           {!recheckMode && (
                             <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, color: 'var(--mute)' }}>
                               {needed}
@@ -1201,7 +1206,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                                 <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>{l.sku}</div>
                               </div>
                               <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 700, textAlign: 'right', flexShrink: 0, color: done ? 'var(--ok)' : '#e67e22' }}>
-                                {myCount}/{needed} {l.unit}
+                                {myCount}/{needed} {unitOf(l)}
                               </div>
                             </div>
                           );
@@ -1252,7 +1257,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                                       <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
                                       <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                                     </td>
-                                    <td style={{ fontFamily: 'system-ui' }}>{l.unit}</td>
+                                    <td style={{ fontFamily: 'system-ui' }}>{unitOf(l)}</td>
                                     <td style={{ textAlign: 'center' }}>
                                       <span style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--ink)' }}>{scanCounts[l.sku]}</span>
                                     </td>
