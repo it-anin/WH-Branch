@@ -184,11 +184,13 @@ Project: `warehousetobranch` (asia-southeast1)
 
 **Anonymous Auth:** `signInAnonymously(auth)` เรียกทันทีที่โหลด app — ทุก Firestore read/write ต้องมี `request.auth != null`
 ```js
-export const db = getFirestore(app);
+export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
 export const auth = getAuth(app);
 signInAnonymously(auth).catch(() => {});
 export const onAuthReady = (cb) => onAuthStateChanged(auth, (user) => { if (user) cb(user); });
 ```
+
+**⚠ `ignoreUndefinedProperties: true` (สำคัญ):** ใช้ `initializeFirestore` (ไม่ใช่ `getFirestore`) เพื่อให้ Firestore **ตัด field ที่เป็น `undefined` ทิ้ง** แทนการ throw — เดิม `getFirestore` ปกติจะ throw ทั้ง `setDoc`/`writeBatch` ถ้ามี field เดียวเป็น undefined (เช่น `scannedLots: undefined`, `barcode: undefined` จาก catalog บางแถว) เนื่องจาก `setBoxes`/`setItemsByBox` เป็น optimistic (local ก่อน → Firestore ทีหลัง) write ที่ล้มจะ**เงียบ** → ลังปิดแล้วเห็นบนเครื่องที่แพ็คแต่ไม่ sync ไป Desktop/Outbound. **ถึงมี safety net นี้แล้วก็ควรใช้ `null`/`''` แทน `undefined` ในทุก field ของ box/item**
 
 ### Collections / Documents
 
@@ -411,6 +413,7 @@ open → packing → closed → exported → received
 | `problemBy` / `problemAt` / `problemScanCounts` / `problemNote` | Android แจ้งปัญหา/ยืนยันไม่ครบ (+ หัวหน้าบันทึก note หรือ auto-gen note จาก pharmacist recheck) | หาว่าสินค้าตัวไหนขาด (ตัวแดง) + รายละเอียด | — |
 | `problemConfirmedBy` / `problemConfirmedAt` | pharmacist กด ยืนยัน recheck-fail (Android) | audit trail — เภสัชยืนยันสินค้าขาดจริง (ไม่ใช่ staff error) | — |
 | `problemResolvedBy` / `problemResolvedAt` | pharmacist กด ยืนยัน recheck-ok (Android) | audit trail — สินค้าครบหลังคลังแก้ไข | — |
+| `note` | กรอก textarea "หมายเหตุ" ใต้ตารางสินค้า (Outbound, save ตอน onBlur) | หมายเหตุต่อลัง (เช่น สินค้าพิเศษ/คำแนะนำสาขา) | — |
 
 **สำคัญ:** fields เหล่านี้ sync ผ่าน `setBoxes` (เขียนทั้ง box object → Firestore `boxes/{id}`) — ข้ามเครื่องได้ (Android ↔ Desktop)
 
@@ -470,6 +473,12 @@ open → packing → closed → exported → received
   - ปิดลังสำเร็จ → `"ปิดลัง BX-xxxx แล้ว ✓"` (ไม่มีข้อความ "เปิดลังใหม่อัตโนมัติ")
 - **เสียงสแกน:** `playScanSuccess()` (`src/sound.js`) เรียกทุกครั้งใน `applyScan()` ตอนสแกนสำเร็จ 1 ชิ้น (ทุกชิ้น ไม่ใช่แค่ตอนครบ) — เสียง "Success Chime" สังเคราะห์สดด้วย Web Audio API ไม่ใช้ไฟล์เสียง (เคยลองแยกเสียง "Rising Ding" เฉพาะตอนครบจำนวน แต่ผู้ใช้ให้กลับไปใช้เสียงเดียวทั้งหมด)
 - **`catalogMeta` prop** — รับจาก AndroidApp → แสดงใน frame-header (Android): `เช็ค X/Y · 📋 Picklist_สาขา วันที่`
+- **สแกนเกินจำนวน (over-scan) — `confirmOver` state:** ถ้าสแกนแล้ว `gotBase + factor > need` (เกิน) → `processBarcode` **หยุดก่อน** setState `confirmOver = {match, factor, scannedBarcode, scannedUnit}` → เด้ง dialog (portal) "⚠ สินค้าเกินจำนวนที่เบิก" โชว์ ต้องการ/มีแล้ว/สแกนนี้+N/เกิน N หน่วย → ปุ่ม "ยกเลิก" (ทิ้ง scan) หรือ "ยืนยัน สินค้าเกินที่เบิก" (`handleConfirmOver` → `proceedScan` ต่อ รวม LOT popup). `processBarcode` block scan ซ้อนขณะ `confirmOver !== null`. **logic กลาง `proceedScan(match, factor, scannedBarcode, scannedUnit)`** = ส่วน LOT + applyScan ที่แชร์กันระหว่าง flow ปกติ (ไม่เกิน) กับ handleConfirmOver
+- **ของหมด/ของไม่พอ (Android — ปัดการ์ดซ้าย):** `ItemCard` ปัดซ้ายเกิน `SWIPE_THRESHOLD` → เด้ง dialog ยืนยัน แยก 2 กรณีตาม `hasScanned = gotBase > 0`:
+  - **ยังไม่สแกน (gotBase=0 = ของหมดจริง):** แถบเผย/ปุ่ม **แดง** "🗑 ของหมด" / "ของหมด ลบรายการ" → toast `'error'` "ลบออกจากรายการแล้ว"
+  - **สแกนไปบ้าง (gotBase>0 = ของมีไม่พอ):** แถบเผย/ปุ่ม **ส้ม** "⚠ ของไม่พอ" / "ของไม่พอ สแกนตัวถัดไป" → toast `'warn'` "สแกนตัวถัดไป"
+  - **`handleMarkOutOfStock(sku)`** (เหมือนกันทั้ง 2 กรณี ต่างแค่ toast): แช่ `need = gotBase` (กันถูกยกไปลังถัดไป — ดู `doClose` filter `gotBase < need`) + `dismissedSkus.add(sku)` (ซ่อนจาก checklist, item ยังอยู่ใน `items` เพื่อคงยอด `got` ที่แพ็คไปแล้ว → ยังนับใน packedItems ตอนปิดลัง)
+- **ปิดลังทั้งที่ยังไม่ครบ:** `handleCloseBox` เช็ค `items.every(gotBase >= need)` — ถ้าไม่ครบ → dialog "⚠ สินค้าไม่ครบ / ปิดลังเลยไหม?" (`confirmClose`) → ยืนยัน → `doClose`
 - **Android mode** (`isAndroid` = module-level const จาก `?android=1`):
   - Layout 2 rows: barcode input + ปิดลัง (row 1) / search (row 2) — ไม่ใช้ `.btn.lg` / `.input.big`
   - ไม่มีปุ่ม "+ ใหม่" บน Android — ปิดลังแล้วเปิดลังใหม่อัตโนมัติจาก `doClose()` เสมอ
@@ -558,6 +567,9 @@ open → packing → closed → exported → received
     - **ปุ่ม "🔴 แจ้งปัญหา"** ใช้สีแดง (`var(--red)`) แทนส้ม + ตัวอักษรแดงเมื่อ inactive และ N > 0 (เรียกความสนใจหัวหน้า)
   - ขวา (detail, grid `1fr 380px`):
     - คอลัมน์ซ้าย: **"รายชื่อสินค้าในลัง"** ตาราง SKU / ชื่อ / **Barcode** / หน่วย / จำนวน / **LOT** / **Exp** / Location (maxHeight 320) — **แตกแถวตาม LOT จริง** ผ่าน helper กลาง `lotRows(l, lotMap)` ที่ใช้ร่วมกับไฟล์ Text (`handleExportBarcode`) → ข้อมูล barcode/LOT/qty ในตารางตรงกับที่จะ export เป๊ะ (SKU เดียวสแกนคนละ LOT = หลายแถว); คอลัมน์ **Exp โชว์เฉพาะเมื่อมีลังที่กรอก exp** (`hasExp`) — แสดงเป็น **ค.ศ. ดิบตามที่พนักงานกรอก** (ไม่แปลง พ.ศ. ต่างจากไฟล์ Text ที่แปลงผ่าน `toBuddhistExp`)
+      - **แก้ไขตาราง (`editMode` — ปุ่ม "✎ แก้ไข" / "✓ อนุมัติ" / "✕ ยกเลิก"):** เฉพาะลัง `closed`/`exported` — คลิก "✎ แก้ไข" → `startEdit()` copy boxItems เข้า `editItems` → ตารางเปลี่ยนเป็น input แก้ **จำนวน (number) / LOT / Exp** ต่อแถว + ปุ่ม `×` ลบแถว. **"✓ อนุมัติ" (`handleSaveEdit`)** = filter qty>0, `setItemsByBox`, อัปเดต box `totalQty`/`skuCount`, **set `scannedLots: null` ทุก item** (เพื่อให้ view mode อ่าน qty/lot/exp จาก field ที่แก้ไข ไม่ใช่ `scannedLots` เก่า — เคยเป็นบั๊ก qty ไม่อัปเดต). ไม่แตะ flow อนุมัติเอกสาร (Text→เลขเอกสาร→exported)
+      - **สแกน barcode ในตาราง (edit mode):** (1) **column Barcode ต่อแถว** — สแกน/พิมพ์ + Enter → `lookupUnitByBarcode(barcodeMap, sku, barcode)` เปลี่ยน**หน่วย**ของแถวนั้นอัตโนมัติ (2) **input "🔍 สแกน…เพิ่มสินค้าใหม่"** เหนือตาราง — Enter → `lookupByScan(barcodeMap, catalog, val)` (match SKU ตรง หรือ barcode) → SKU มีอยู่แล้ว = qty+1, SKU ใหม่ = เพิ่มแถว (`handleAddByScan`). รับ prop `catalog` + `barcodeMap`
+      - **หมายเหตุ (`boxNote`):** textarea "หมายเหตุ" ใต้ตาราง — save `box.note` ตอน `onBlur` (ดู Box object field `note`)
     - คอลัมน์ขวา: **"ตัวอย่างสติกเกอร์ติดลัง"** (90×65mm, barcode = Box ID, "คลังสินค้า · WH-01") → ปุ่ม ⇩ ส่งออกไฟล์ Text → แถว [เลขที่เอกสาร input + อนุมัติเอกสาร] → 🖨 พิมพ์ใบปิดลัง
 - **selectedId:** useState lazy init — เลือก `activeBoxId` เฉพาะเมื่ออยู่ใน closedBoxes (กันเลือกลัง open ใหม่หลังปิดลัง) ไม่งั้น fallback `closedBoxes[0]` (ลังปิดล่าสุด)
   - **คลิกการ์ดลัง = set `selectedId` เท่านั้น ไม่แตะ `activeBoxId`** — ป้องกัน activeBoxId ของการแพ็คถูกเปลี่ยนเป็นลังที่ปิดแล้ว (เคยเป็นบั๊ก: สแกนต่อจะลงลังที่ปิดไปแล้ว)
@@ -686,10 +698,13 @@ open → packing → closed → exported → received
 ### State + Derived
 - **`recheckMode`** (useState): true เมื่อ pharmacist สแกนซ้ำลัง `problemType='incomplete'` → reset เป็น false ใน `handleScanNext` / `handleApprove` / `handleRecheck`
 - **`verifyItems`** (derived): filter boxItems ให้เหลือเฉพาะ SKU ที่ `problemScanCounts[sku] < qty` (เฉพาะที่ไม่ครบในรอบแรก) — `allChecked` / `doneCount` / `scannedSkuCount` ใช้ `verifyItems` แทน `boxItems` ใน recheck mode
+- **`getDeficit(item)`** (derived — สำคัญ): ใน recheck mode เภสัชต้องสแกน**เฉพาะส่วนที่ขาด** (`needed − problemScanCounts[sku]`) ไม่ใช่ qty เต็ม เช่น เบิก 10 รอบแรกได้ 7 → deficit=3 → เภสัชสแกน 3 ก็ครบ. `fullyChecked` = `scanCounts[sku] >= getDeficit(item)`, `hasOver` (handleConfirm) เทียบกับ `getDeficit` ด้วย. normal mode: `getDeficit = needed` (พฤติกรรมเดิม)
 
 ### Flow
+- **⚠ ลำดับ guard ใน `handleScan` (สำคัญ):** เช็ค `problemReported && !problemResolved` (→ pharmacist recheck / block คนอื่น) **ก่อน** `receivePending` — กัน edge case ที่ลังมีทั้ง `receivePending` และ `problemReported` พร้อมกัน (Firestore race) แล้วเภสัชโดนบล็อกที่ receivePending ก่อนถึง pharmacist exception
 1. **handleScan:** เจอลัง `problemReported && !problemResolved && problemType='incomplete'` + `branchStaff?.role === 'pharmacist'` → `setRecheckMode(true)` + `startReceive(box)` + toast `🔁 รีเช็คลัง {id}` (success)
 2. **handleItemScan:** ใน recheck mode ถ้าสแกน SKU ที่ `problemScanCounts[sku] >= needed` (ครบในรอบแรก) → reject + `scanError = "SKU นี้สแกนครบแล้วในรอบแรก"` (กันสแกนนอก verifyItems)
+   - **Android แสดงรายการของที่ต้องรีเช็คก่อนสแกน:** panel "🧪 สินค้าที่ต้องรีเช็ค ({doneCount}/{verifyItems.length} SKU)" — แต่ละแถวโชว์ชื่อ/SKU + `{scanCounts}/{getDeficit} {unit}` (สแกนแล้ว/ต้องสแกน) เขียวเมื่อครบ — กันเภสัชไม่รู้ว่าตัวไหนขาดเท่าไหร่
 3. **handleConfirm 3-way split:**
    - **recheck + ok:** `problemResolved=true`, `problemResolvedBy/At=pharmacist`, `receivePending=true` → รอเภสัชอนุมัติเอกสาร (เหมือนรับปกติ)
    - **recheck + fail/over (Option B auto-notify):** keep `problemReported=true`, **`problemReviewed=true`** (auto — Outbound badge ขึ้นทันที), `problemNote = auto-generated` ลิสต์ SKU ที่ขาด/เกินพร้อมชื่อ + จำนวน, `problemConfirmedBy/At=pharmacist`, merge `problemScanCounts` รอบใหม่; toast `⚠ เภสัชยืนยันสินค้าขาด · แจ้งคลังสินค้าแล้ว` (error)
@@ -706,10 +721,11 @@ open → packing → closed → exported → received
 ### ผลกระทบกับ Desktop view (`saveProblemNote`)
 - Desktop ที่หัวหน้าพิมพ์ note + กด `📦 แจ้งคลังสินค้า` **ยังใช้งานได้เหมือนเดิม** — เก็บไว้สำหรับ damaged box (มีรูป) หรือ incomplete ที่ไม่ได้ผ่าน pharmacist recheck
 - ถ้า pharmacist recheck-fail ก่อน → Outbound badge ขึ้นทันที + note auto-fill — หัวหน้า Desktop อาจไม่ต้องทำซ้ำ
-- Desktop "🔁 รีเช็คสินค้า" view (blind: SKU/ชื่อ/หน่วย/สแกนแล้ว) **เก็บไว้ดูประวัติเท่านั้น** ไม่ใช่หน้าสแกน
-  - มีหัวข้อตาราง **"รายการสินค้าที่ต้องรีเช็ค"** + subtitle "ผลสแกนรอบแรก (จากพนักงานสาขา)"
-  - คอลัมน์: SKU/ชื่อ / หน่วย / **จำนวนที่สแกนได้** (เปลี่ยนจาก "สแกนแล้ว")
-  - **Hint banner สีแดง** ด้านบนตาราง: `สแกนสินค้าที่ app เพื่อรีเช็ค` (เน้นว่า supervisor ไม่ทำ recheck บน Desktop — ต้องให้เภสัช scan ใน Android)
+- Desktop "🔁 รีเช็คสินค้า" view **เก็บไว้ดูประวัติ/ให้หัวหน้ารู้ว่าตัวไหนขาด** ไม่ใช่หน้าสแกน
+  - หัวข้อตาราง **"รายการสินค้าที่ต้องรีเช็ค"** + `{N} SKU` + subtitle "สินค้าที่สแกนไม่ตรงจำนวน (ขาด หรือ เกิน) — เภสัชต้องรีเช็คตามรายการนี้"
+  - **กรองเฉพาะ SKU ที่ `problemScanCounts[sku] !== needed`** (ทั้งขาดและเกิน — เดิมกรองแค่ `< needed` ทำให้กรณีสแกนเกินทุกตัวตารางว่าง)
+  - คอลัมน์: SKU/ชื่อ / หน่วย / **ต้องมี** / **รอบแรกได้** / **ผลต่าง** (ขาด = `−N` ส้ม พื้นส้มอ่อน / เกิน = `+N` น้ำตาลทอง พื้นเหลืองอ่อน)
+  - useEffect ที่ sync `problemNote` textarea — dep ต้องมี `viewingBox?.problemNote` ไม่งั้น Firestore update จากเภสัช Android จะไม่ refresh ในหน้า Desktop จนกว่า user จะคลิกลังอื่นแล้วกลับมา (เคยเป็นบั๊ก)
   - useEffect ที่ sync `problemNote` textarea — dep ต้องมี `viewingBox?.problemNote` ไม่งั้น Firestore update จากเภสัช Android จะไม่ refresh ในหน้า Desktop จนกว่า user จะคลิกลังอื่นแล้วกลับมา (เคยเป็นบั๊ก)
 
 ### Verify phase UI (ทั้ง Android และ Desktop)
@@ -718,18 +734,20 @@ open → packing → closed → exported → received
 - **สแกนสินค้าที่ไม่อยู่ในลัง:** showToast `⚠ ไม่มี SKU นี้ในลัง` (สีแดง) + inline `scanError` ใต้ input — โดดเด่นทั้งสองแบบ
 
 ## Toast Types
-`showToast(message, type?)` รองรับ 3 type — นิยามสีใน `Toast.jsx`:
+`showToast(message, type?)` รองรับ 4 type — นิยามสีใน `Toast.jsx`:
 
 | type | สี | ใช้เมื่อ |
 |---|---|---|
 | `'default'` (ค่า default) | พื้นดำ / ตัวขาว | แจ้งทั่วไป |
 | `'error'` | พื้นแดง | validation fail, ข้อผิดพลาด, scan ไม่พบ |
 | `'success'` | พื้นเขียว | บันทึกสำเร็จ, อนุมัติแล้ว, ปิดลังสำเร็จ |
+| `'warn'` | พื้นส้ม `#e67e22` | เตือนแบบไม่ใช่ error เช่น "สแกนตัวถัดไป" ตอนของไม่พอ (PackScanC) |
 
 ```js
 showToast('บันทึกแล้ว ✓')                        // default
 showToast('⚠ กรุณากรอกเลขที่เอกสาร', 'error')   // แดง
 showToast('อนุมัติแล้ว ✓', 'success')            // เขียว
+showToast('สแกนตัวถัดไป', 'warn')                // ส้ม
 ```
 
 ## CSS Chip Classes (styles.css)
