@@ -1063,8 +1063,8 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   border: '2px solid var(--accent)', borderRadius: 12, padding: '14px 16px',
                   background: 'var(--accent-soft)', textAlign: 'center',
                 }}>
-                  <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: 'var(--accent)' }}>
-                    ✓ {recheckMode ? 'รีเช็คสินค้าแล้ว · ส่งให้อนุมัติเอกสาร' : 'ส่งให้เภสัชอนุมัติเอกสารแล้ว'}
+                  <div style={{ fontFamily: 'system-ui', fontSize: 17, fontWeight: 700, color: 'var(--accent)' }}>
+                    ✓ {recheckMode ? 'รีเช็คแล้ว · รอเภสัชอนุมัติเอกสาร' : 'ส่งให้เภสัชอนุมัติเอกสารแล้ว'}
                   </div>
                   <div style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)', marginTop: 4 }}>
                     กดปุ่ม [+ ลังถัดไป] เพื่อสแกนลังต่อ
@@ -1072,7 +1072,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 </div>
               ) : (
                 <div style={{ border: '2px solid #e67e22', borderRadius: 12, padding: '14px 16px', background: '#fff3cd', textAlign: 'center' }}>
-                  <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: '#b86000' }}>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 17, fontWeight: 700, color: '#b86000' }}>
                     ✓ {recheckMode ? 'รีเช็คสินค้าแล้ว' : 'ส่งให้เภสัชรีเช็คสินค้า'}
                   </div>
                   <div style={{ fontFamily: 'system-ui', fontSize: 14, color: '#b86000', marginTop: 4 }}>
