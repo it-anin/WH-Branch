@@ -1090,6 +1090,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 <div style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)' }}>ยิงบาร์โค้ดที่ติดลัง หรือพิมพ์ BX-…</div>
                 <input
                   ref={inputRef}
+                  inputMode="none"
                   className="input big"
                   placeholder="BX-… หรือ POS number"
                   style={{ width: '100%', textAlign: 'center' }}
@@ -1161,6 +1162,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                       <div className="row" style={{ gap: 10 }}>
                         <input
                           ref={itemScanRef}
+                          inputMode="none"
                           className="input big"
                           placeholder="ยิงบาร์โค้ดสินค้า"
                           value={itemScan}
