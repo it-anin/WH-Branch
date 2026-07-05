@@ -1016,11 +1016,11 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 <table className="tbl" style={{ fontSize: 12 }}>
                   <thead style={{ position: 'sticky', top: 0 }}>
                     <tr>
-                      <th style={{ width: 36 }}>✓</th>
+                      <th style={{ width: isAndroid ? 28 : 36 }}>✓</th>
                       <th>SKU / ชื่อ</th>
-                      <th style={{ width: 70 }}>หน่วย</th>
-                      {!recheckMode && <th style={{ width: 60, textAlign: 'center' }}>ของเข้า</th>}
-                      <th style={{ width: 70, textAlign: 'center' }}>นับได้</th>
+                      <th style={{ width: isAndroid ? 44 : 70 }}>หน่วย</th>
+                      {!recheckMode && <th style={{ width: isAndroid ? 42 : 60, textAlign: 'center' }}>ของเข้า</th>}
+                      <th style={{ width: isAndroid ? 50 : 70, textAlign: 'center' }}>นับได้</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1037,7 +1037,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                         <tr key={l.sku} style={{ background: rowBg }}>
                           <td style={{ textAlign: 'center' }}>
                             <div style={{
-                              width: 22, height: 22, borderRadius: '50%', margin: '0 auto',
+                              width: isAndroid ? 18 : 22, height: isAndroid ? 18 : 22, borderRadius: '50%', margin: '0 auto',
                               background: dotBg,
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               color: 'white', fontSize: 13, fontWeight: 700,
@@ -1049,14 +1049,14 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                             <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
                             <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
                           </td>
-                          <td style={{ fontFamily: 'system-ui' }}>{unitOf(l)}</td>
+                          <td style={{ fontFamily: 'system-ui', fontSize: isAndroid ? 12 : undefined }}>{unitOf(l)}</td>
                           {!recheckMode && (
-                            <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, color: 'var(--mute)' }}>
+                            <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: isAndroid ? 14 : 18, fontWeight: 700, color: 'var(--mute)' }}>
                               {needed}
                             </td>
                           )}
-                          <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: countColor }}>
-                            {count}{over && <span style={{ fontSize: 13, marginLeft: 2 }}>+{count - needed}</span>}
+                          <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: isAndroid ? 16 : 22, fontWeight: 700, color: countColor }}>
+                            {count}{over && <span style={{ fontSize: isAndroid ? 10 : 13, marginLeft: 2 }}>+{count - needed}</span>}
                           </td>
                         </tr>
                       );
