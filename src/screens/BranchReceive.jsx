@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { matchBarcode } from '../data.js';
 import { ALL_BRANCH_STAFF } from '../branches.js';
 import { playScanSuccess, playBoxScan, playScanFail } from '../sound.js';
+import { lookupFactor, buildBarcodeIndex } from '../units.js';
 
 // Desktop staff filter dropdown ใช้รายชื่อรวมทุกสาขา; Android ใช้ staff ของสาขาที่เลือก (controlled mode)
 const BRANCH_STAFF = ALL_BRANCH_STAFF;
@@ -16,10 +17,9 @@ const statusLabel = {
   received: 'รับสินค้าแล้ว',
 };
 
-// หน่วยที่แสดง — ใช้หน่วยที่สแกนจริง (scannedUnit เช่น "กล่อง") ถ้ามี ไม่งั้น fallback หน่วย picklist (unit เช่น "โหล")
-// สำคัญ: qty ของ boxItem ถูกบันทึกเป็น "จำนวนครั้งสแกน" ตามหน่วยที่สแกน จึงต้องคู่กับ scannedUnit ไม่ใช่ unit
-// (เช่น สแกน 12 กล่อง → qty=12 คู่กับ "กล่อง" ไม่ใช่ "โหล") — ตรงกับที่ BoxClosedLabel ใช้อยู่
-const unitOf = (l) => l?.scannedUnit || l?.unit || '';
+// หน่วยที่แสดงฝั่งรับสินค้า — ใช้ "หน่วยฐาน" (baseUnit เช่น "ม้วน") เพราะการนับรับเข้าคิดเป็นหน่วยฐาน
+// fallback: baseUnit → scannedUnit (หน่วยที่แพ็คสแกน เช่น "กล่อง") → unit (หน่วย picklist) — ลังเก่าไม่มี baseUnit ตกไปตามลำดับ
+const unitOf = (l) => l?.baseUnit || l?.scannedUnit || l?.unit || '';
 
 // ย่อรูปหลักฐาน → base64 JPEG (กว้างสุด ~800px) เพื่อเก็บลง Firestore (1 doc ≤ 1MB)
 function compressImage(file, maxW = 800, quality = 0.7) {
@@ -232,7 +232,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onIns
   );
 }
 
-export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null }) {
+export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null, barcodeMap = {}, factorMap = {} }) {
   const [internalBranchStaff, setInternalBranchStaff] = useState(null);
   const isControlled = branchStaffProp !== undefined;
   const branchStaff = isControlled ? branchStaffProp : internalBranchStaff;
@@ -300,7 +300,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         .flatMap(box =>
           (itemsByBox[box.id] || [])
             .filter(l => (l.sku || '').toLowerCase().includes(searchQ) || (l.name || '').toLowerCase().includes(searchQ))
-            .map(l => ({ boxId: box.id, status: box.status, sku: l.sku, name: l.name, unit: l.unit, qty: l.qty ?? l.got ?? 0 }))
+            .map(l => ({ boxId: box.id, status: box.status, sku: l.sku, name: l.name, unit: l.unit, scannedUnit: l.scannedUnit, baseUnit: l.baseUnit, qty: l.gotBase ?? l.qty ?? l.got ?? 0 }))
         )
     : [];
 
@@ -470,7 +470,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       const mergedCounts = { ...foundBox.problemScanCounts, ...scanCounts };
       const shortList = boxItems
         .map(l => {
-          const need = l.qty ?? l.got ?? 0;
+          const need = getNeeded(l);
           const got = mergedCounts[l.sku] || 0;
           const diff = need - got;
           return diff !== 0 ? { sku: l.sku, name: l.name, diff } : null;
@@ -574,7 +574,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     if (!val) return;
     setItemScan('');
 
-    const match = boxItems.find(l => matchBarcode(l, val));
+    // resolve บาร์โค้ด → SKU/หน่วย (รองรับสแกนได้ทุกหน่วยของ SKU — เช่น กล่อง หรือ ม้วน ก็รับได้)
+    const hit = barcodeIndex[val];
+    const match = boxItems.find(l => l.sku === val || (hit && l.sku === hit.sku) || matchBarcode(l, val));
     if (!match) {
       playScanFail();
       setScanError(`ไม่มี SKU นี้ในลัง`);
@@ -583,22 +585,24 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       return;
     }
 
-    // recheck mode: บล็อกเฉพาะ SKU ที่รอบแรกถูกต้องพอดี (count = qty) — ให้ตรวจซ้ำได้ทั้งที่ขาดและเกิน
+    // recheck mode: บล็อกเฉพาะ SKU ที่รอบแรกถูกต้องพอดี (count = needed หน่วยฐาน) — ให้ตรวจซ้ำได้ทั้งที่ขาดและเกิน
     if (recheckMode && foundBox?.problemScanCounts) {
       const prevCount = foundBox.problemScanCounts[match.sku] || 0;
-      const needed = match.qty ?? match.got ?? 0;
-      if (prevCount === needed) {
+      if (prevCount === getNeeded(match)) {
         setScanError(`SKU นี้ถูกต้องแล้วในรอบแรก — ตรวจซ้ำเฉพาะที่ขาด/เกิน`);
         setLastScannedSku(null);
         return;
       }
     }
 
+    // นับเป็นหน่วยฐาน: สแกน 1 กล่อง (factor 24) → +24, สแกน 1 ม้วน (factor 1) → +1 — รับได้ทุก multiple
+    const scannedUnit = hit?.unit || match.baseUnit || match.scannedUnit || match.unit;
+    const factor = factorOf(match.sku, scannedUnit);
     const current = scanCounts[match.sku] || 0;
     playScanSuccess();
     setScanError('');
     setLastScannedSku(match.sku);
-    setScanCounts(prev => ({ ...prev, [match.sku]: current + 1 }));
+    setScanCounts(prev => ({ ...prev, [match.sku]: current + factor }));
   }
 
   // Android: ปัดลบรายการที่สแกนแล้ว (กรณียิงเกิน/ผิด) — เลิกนับ SKU นี้ทั้งหมด ให้สแกนใหม่
@@ -613,13 +617,16 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   }
 
 const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
-  // recheck mode: เภสัชนับใหม่จาก 0 ต้องสแกนให้ครบ "เต็มจำนวน" (qty) เสมอ — ไม่หักจำนวนที่ผู้ช่วยนับรอบแรก
-  // (ค่ารอบแรก problemScanCounts เชื่อไม่ได้ จึงให้เภสัชตรวจนับใหม่ทั้งหมดของ SKU ที่ขาด)
-  const getNeeded        = (item) => item.qty ?? item.got ?? 0;
+  // resolve บาร์โค้ด→หน่วย + factor (แปลงหน่วยตอนรับเข้า เช่น 1 กล่อง = 24 ม้วน)
+  const barcodeIndex     = useMemo(() => buildBarcodeIndex(barcodeMap), [barcodeMap]);
+  const factorOf         = (sku, unit) => lookupFactor(factorMap, sku, unit);
+  // needed = "หน่วยฐาน" (gotBase จากตอนแพ็ค เช่น 24 ม้วน) — พนักงานสาขาสแกน multiple ไหนก็ได้ ระบบนับรวมเป็นหน่วยฐาน
+  // recheck: เภสัชนับใหม่จาก 0 ต้องครบเต็มจำนวนฐานเสมอ; ลังเก่าไม่มี gotBase → fallback qty (นับดิบตามเดิม)
+  const getNeeded        = (item) => item.gotBase ?? item.qty ?? item.got ?? 0;
   const fullyChecked     = (item) => (scanCounts[item.sku] || 0) >= getNeeded(item);
-  // recheck: ตรวจเฉพาะ SKU ที่รอบแรกสแกนไม่ตรงจำนวน (ขาดหรือเกิน — count ≠ qty) — normal: ทุก SKU ในลัง
+  // recheck: ตรวจเฉพาะ SKU ที่รอบแรกสแกนไม่ตรงจำนวน (ขาดหรือเกิน — count ≠ needed หน่วยฐาน) — normal: ทุก SKU ในลัง
   const verifyItems      = (recheckMode && foundBox?.problemScanCounts)
-    ? boxItems.filter(l => (foundBox.problemScanCounts[l.sku] || 0) !== (l.qty ?? l.got ?? 0))
+    ? boxItems.filter(l => (foundBox.problemScanCounts[l.sku] || 0) !== getNeeded(l))
     : boxItems;
   const allChecked       = verifyItems.length > 0 && verifyItems.every(fullyChecked);
   const doneCount        = verifyItems.filter(fullyChecked).length;
@@ -851,7 +858,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
               {(() => {
                 const psc = viewingBox.problemScanCounts || {};
                 const problemItems = viewingItems.filter(l => {
-                  const needed = l.qty ?? l.got ?? 0;
+                  const needed = getNeeded(l);
                   return (psc[l.sku] || 0) !== needed;
                 });
                 return (
@@ -882,7 +889,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                           {problemItems.length === 0 ? (
                             <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--mute)', fontFamily: 'system-ui', padding: 16 }}>ไม่พบความผิดปกติ</td></tr>
                           ) : problemItems.map(l => {
-                            const needed = l.qty ?? l.got ?? 0;
+                            const needed = getNeeded(l);
                             const got = psc[l.sku] || 0;
                             const diff = got - needed; // บวก = เกิน, ลบ = ขาด
                             const isOver = diff > 0;
@@ -983,7 +990,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                           </td>
                           <td style={{ fontFamily: 'system-ui' }}>{unitOf(l)}</td>
                           <td style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
-                            ×{l.qty ?? l.got ?? 0}
+                            ×{getNeeded(l)}
                           </td>
                         </tr>
                       ))}
@@ -1018,7 +1025,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   </thead>
                   <tbody>
                     {boxItems.map((l) => {
-                      const needed = l.qty ?? l.got ?? 0;
+                      const needed = getNeeded(l);
                       const count  = scanCounts[l.sku] || 0;
                       const over   = count > needed;
                       const done   = count >= needed;
@@ -1234,7 +1241,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' }}>
                               {scannedItems.map((l) => {
-                                const needed = l.qty ?? l.got ?? 0;
+                                const needed = getNeeded(l);
                                 const count = scanCounts[l.sku] || 0;
                                 return (
                                   <ScannedItemRow key={l.sku} l={l} count={count} over={count > needed} onRemove={handleRemoveScan} />
