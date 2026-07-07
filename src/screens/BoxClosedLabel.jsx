@@ -19,20 +19,23 @@ function lotRows(l, lotMap) {
   const fallbackBarcode = l.scannedBarcode || l.barcode || '';
   const fallbackUnit = l.scannedUnit || l.unit || ''; // หน่วยที่สแกนจริง (เช่นกล่อง) ต่างจากหน่วย picklist (โหล) — ใช้คิดทุน/แสดงหน่วย
   const fallbackLots = lotMap[l.sku] || [];
+  // exp fallback: ลังที่แพ็คก่อนมีไฟล์ LOT+EXP ไม่มี exp ติดมากับ scannedLots → เติมจาก lotMap ตาม lot ที่ตรงกัน (ได้ EXP ย้อนหลัง)
+  const lotExp = (lot) => fallbackLots.find(f => f.lot === lot)?.exp || '';
   if (l.scannedLots && l.scannedLots.length > 0) {
     return l.scannedLots.map(({ lot, qty, exp, scannedBarcode, unit }) => ({
       barcode: scannedBarcode || fallbackBarcode,
       qty,
       lot,
-      exp: exp || '',
+      exp: exp || lotExp(lot),
       unit: unit || fallbackUnit,
     }));
   }
+  const fbLot = l.lot || fallbackLots[0]?.lot || '';
   return [{
     barcode: fallbackBarcode,
     qty: l.qty ?? l.got ?? 0,
-    lot: l.lot || fallbackLots[0]?.lot || '',
-    exp: l.exp || '',
+    lot: fbLot,
+    exp: l.exp || lotExp(fbLot),
     unit: fallbackUnit,
   }];
 }

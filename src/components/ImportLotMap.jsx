@@ -1,30 +1,59 @@
 import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 
-// ColA(0)=LOT  ColB(1)=SKU  ColF(5)=qty  ColG(6)=หน่วย (ตรงกับ R05.106 ColG)
+// รองรับ 2 format — detect คอลัมน์จากชื่อ header (case-insensitive):
+//   R01.119 เดิม:   cf_lotno(A) cf_itemid(B) cf_quantity(F) cf_unitname(G) — ไม่มี exp
+//   LOT+EXP ใหม่:   CF_LOTNO(L) CF_ITEMID(J) CF_QUANTITY(O) CF_UNITNAME(N) CF_EXPIREDATE_TEXT(C) CF_TRANDATE(D)
+// ไม่เจอ header ที่รู้จัก → fallback ตำแหน่งเดิมของ R01.119 (A=LOT, B=SKU, F=qty, G=unit)
+function detectColumns(headerRow) {
+  const idx = {};
+  (headerRow || []).forEach((h, i) => { idx[String(h).trim().toLowerCase()] = i; });
+  if (idx['cf_lotno'] != null && idx['cf_itemid'] != null) {
+    return {
+      lot: idx['cf_lotno'], sku: idx['cf_itemid'],
+      qty: idx['cf_quantity'] ?? 5, unit: idx['cf_unitname'] ?? 6,
+      exp: idx['cf_expiredate_text'] ?? null, td: idx['cf_trandate'] ?? null,
+    };
+  }
+  return { lot: 0, sku: 1, qty: 5, unit: 6, exp: null, td: null };
+}
+
+// CF_TRANDATE "DD/MM/YYYY" → เลขเทียบลำดับได้ (YYYYMMDD) — ใช้เลือก exp จากแถวล่าสุดเมื่อ lot เดียวกันมีหลาย exp
+function tdNum(s) {
+  const m = String(s ?? '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? (+m[3]) * 10000 + (+m[2]) * 100 + (+m[1]) : 0;
+}
+
 // แปลง qty → หน่วยฐานด้วย factorMap ตั้งแต่ import (qty × factor(sku__unit)) → lotMap เก็บ qty เป็นหน่วยฐานเลย
-// ⚠ ไม่เก็บ unit ต่อ lot — ไฟล์นี้ ~27k LOT entries, เก็บ unit ต่อแถวทำให้ config/lotMap เกินลิมิต Firestore 1MB (invalid-argument)
+// ⚠ ไม่เก็บ unit ต่อ lot (ทำ doc โต) — ส่วน exp เก็บเฉพาะ lot ที่มีค่า; ทั้งก้อนเกิน 1MB/doc แล้ว → App.jsx แบ่งเขียนหลาย doc (shard)
 function rowsToMap(rows, factorMap = {}) {
-  // Pass 1: รวม qty (หน่วยฐาน) ต่อ (sku, lot)
-  const totals = {}; // { [sku]: { [lot]: sumBaseQty } }
+  const cols = detectColumns(rows[0]);
+  // Pass 1: รวม qty (หน่วยฐาน) ต่อ (sku, lot) + เก็บ exp จากแถวที่ TRANDATE ล่าสุด (~4% ของแถวมี exp ขัดกันในลอตเดียวกัน — ข้อมูลเก่า/แก้ทีหลัง)
+  const totals = {}; // { [sku]: { [lot]: {qty, exp, td} } }
   rows.slice(1).forEach(vals => {
-    const lot = String(vals[0] ?? '').trim();
-    const sku = String(vals[1] ?? '').trim();
-    const qty = parseFloat(String(vals[5] ?? '').replace(/,/g, '')) || 0;
-    const unit = String(vals[6] ?? '').trim();
+    const lot = String(vals[cols.lot] ?? '').trim();
+    const sku = String(vals[cols.sku] ?? '').trim();
+    const qty = parseFloat(String(vals[cols.qty] ?? '').replace(/,/g, '')) || 0;
+    const unit = String(vals[cols.unit] ?? '').trim();
     if (!sku || !lot) return;
     const factor = factorMap[`${sku}__${unit}`] ?? 1; // ไม่มี factor (ยังไม่ import R05.106) → 1 = ใช้ qty ตามเดิม
     if (!totals[sku]) totals[sku] = {};
-    totals[sku][lot] = (totals[sku][lot] || 0) + qty * factor;
+    const cur = totals[sku][lot] || (totals[sku][lot] = { qty: 0, exp: '', td: -1 });
+    cur.qty += qty * factor;
+    if (cols.exp != null) {
+      const exp = String(vals[cols.exp] ?? '').trim();
+      const td = cols.td != null ? tdNum(vals[cols.td]) : 0;
+      if (exp && td >= cur.td) { cur.exp = exp; cur.td = td; }
+    }
   });
 
-  // Pass 2: เก็บเฉพาะ LOT ที่ sum > 0 (qty คงเหลือเป็นหน่วยฐาน)
+  // Pass 2: เก็บเฉพาะ LOT ที่ sum > 0 (qty คงเหลือเป็นหน่วยฐาน) — exp ใส่เฉพาะเมื่อมีค่า (ประหยัดขนาด doc)
   const map = {};
   Object.entries(totals).forEach(([sku, lots]) => {
-    Object.entries(lots).forEach(([lot, qty]) => {
-      if (qty > 0) {
+    Object.entries(lots).forEach(([lot, t]) => {
+      if (t.qty > 0) {
         if (!map[sku]) map[sku] = [];
-        map[sku].push({ lot, qty });
+        map[sku].push({ lot, qty: t.qty, ...(t.exp ? { exp: t.exp } : {}) });
       }
     });
   });
@@ -66,7 +95,7 @@ export default function ImportLotMap({ matchCount, meta, onImport, factorMap = {
         const map = parseWorkbook(ev.target.result, isCsv ? 'string' : 'array', factorMap);
         if (Object.keys(map).length === 0) {
           setStage(null);
-          alert('ไม่พบข้อมูล LOT กรุณาตรวจสอบรูปแบบไฟล์\n(ColA=LOT, ColB=SKU)');
+          alert('ไม่พบข้อมูล LOT กรุณาตรวจสอบรูปแบบไฟล์\n(header CF_LOTNO/CF_ITEMID หรือ ColA=LOT, ColB=SKU)');
           return;
         }
         const d = new Date(); // วันที่อัปโหลดจริง (ไม่ใช่ file.lastModified ที่เป็นวันแก้ไขไฟล์)
@@ -100,7 +129,7 @@ export default function ImportLotMap({ matchCount, meta, onImport, factorMap = {
         disabled={uploading}
         onClick={() => fileRef.current?.click()}
       >
-        {uploading ? '⏳ กำลังอัปโหลด...' : displayUploadedAt ? '✅ อัปโหลดไฟล์ R01.119 (LOT) แล้ว' : '⇑ อัปโหลดไฟล์ R01.119 (LOT)'}
+        {uploading ? '⏳ กำลังอัปโหลด...' : displayUploadedAt ? '✅ อัปโหลดไฟล์ LOT+EXP แล้ว' : '⇑ อัปโหลดไฟล์ LOT+EXP'}
       </button>
       {uploading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 220 }}>

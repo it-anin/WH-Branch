@@ -482,11 +482,12 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   }
 
   // คืน LOT ที่ยังเหลือสต็อก > 0 — qty ใน lotMap เป็นหน่วยฐานแล้ว (แปลงตั้งแต่ import ดู ImportLotMap), usage ก็หน่วยฐาน
+  // exp ติดมาจากไฟล์ LOT+EXP (ลอตเก่า/ไฟล์ R01.119 เดิมไม่มี → '')
   function getAvailableLots(sku) {
     const lots = lotMap[sku] || [];
     const usage = calcLotUsage();
     return lots
-      .map(({ lot, qty }) => ({ lot, qty, remaining: qty - (usage[`${sku}__${lot}`] || 0) }))
+      .map(({ lot, qty, exp }) => ({ lot, qty, exp: exp || '', remaining: qty - (usage[`${sku}__${lot}`] || 0) }))
       .filter(l => l.remaining > 0);
   }
 
@@ -507,8 +508,8 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
       return;
     }
     const currentValid = match.lot && availableLots.some(l => l.lot === match.lot);
-    const autoLot = currentValid ? match.lot : availableLots[0].lot;
-    await applyScan(match, autoLot, !currentValid, '', scannedBarcode, scannedUnit, factor);
+    const chosen = currentValid ? availableLots.find(l => l.lot === match.lot) : availableLots[0];
+    await applyScan(match, chosen.lot, !currentValid, chosen.exp || '', scannedBarcode, scannedUnit, factor);
   }
 
   async function handleConfirmOver() {
@@ -557,7 +558,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     return next;
   }
 
-  // resetLot=true → เปลี่ยน lot ของ item เป็นค่าใหม่ (กรณี LOT เก่าหมด ต้องสลับ); exp = วันหมดอายุ (เฉพาะตอนใส่ LOT เอง — LOT จาก lotMap ไม่มีข้อมูล exp)
+  // resetLot=true → เปลี่ยน lot ของ item เป็นค่าใหม่ (กรณี LOT เก่าหมด ต้องสลับ); exp = วันหมดอายุ ค.ศ. DD/MM/YYYY (จากไฟล์ LOT+EXP หรือกรอกเองตอน "ใส่ LOT เอง")
   // scannedBarcode = บาร์โค้ดตัวจริงที่สแกน เก็บไว้ export (ต่างจาก it.barcode ที่อาจเป็น comma-separated หลายตัวจาก catalog)
   async function applyScan(match, lot, resetLot = false, exp = '', scannedBarcode = '', scannedUnit = '', factor = 1) {
     playScanSuccess();
@@ -611,8 +612,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   async function handleLotSelect(lot) {
     if (!pendingLot) return;
     const { match, scannedBarcode, scannedUnit, factor } = pendingLot;
+    const exp = pendingLot.lots.find(l => l.lot === lot)?.exp || ''; // exp จากไฟล์ LOT+EXP — ติดไปกับ scannedLots → export อัตโนมัติ
     closeLotPopup();
-    await applyScan(match, lot, true, '', scannedBarcode, scannedUnit, factor);
+    await applyScan(match, lot, true, exp, scannedBarcode, scannedUnit, factor);
   }
 
   async function handleManualLotConfirm() {
@@ -735,7 +737,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
             {!manualLotMode ? (
               <>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
-                  {pendingLot.lots.map(({ lot, remaining }) => (
+                  {pendingLot.lots.map(({ lot, remaining, exp }) => (
                     <button
                       key={lot}
                       className="btn primary"
@@ -745,7 +747,10 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
                       }}
                       onClick={() => handleLotSelect(lot)}
                     >
-                      <span>{lot}</span>
+                      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                        <span>{lot}</span>
+                        {exp && <span style={{ fontSize: 12, opacity: 0.85, fontFamily: 'system-ui' }}>EXP {exp}</span>}
+                      </span>
                       <span style={{ fontSize: 13, opacity: 0.85, fontFamily: 'system-ui' }}>เหลือ {remaining}</span>
                     </button>
                   ))}

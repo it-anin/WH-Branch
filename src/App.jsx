@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, runTransaction } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, runTransaction, query, where, documentId } from 'firebase/firestore';
 import { db } from './firebase.js';
 
 import BoxList from './screens/BoxList.jsx';
@@ -26,6 +26,11 @@ const TABS = [
 
 const ACCENT = '#e8692b';
 const ACCENT_SOFT = '#f5c9a8';
+
+// lotMap (พร้อม exp) ทั้งก้อน ~1.3MB เกินลิมิต Firestore 1MB/doc → แบ่งเขียนหลาย doc: config/lotMap (chunk 0 + _meta) + config/lotMap_1..N
+// MAX_CHUNKS = เพดานที่ listener/cleanup รู้จัก (10 × ~700KB = ข้อมูล LOT ได้ ~7MB — เหลือเฟือ)
+const LOTMAP_MAX_CHUNKS = 10;
+const LOTMAP_CHUNK_BUDGET = 700_000; // ~700KB ต่อ doc (JSON length โดยประมาณ)
 
 const isAndroidMode = new URLSearchParams(window.location.search).get('android') === '1';
 
@@ -168,19 +173,24 @@ export default function App() {
         setFactorMap(Object.fromEntries(entries.map(e => [e.key, e.factor])));
       }
     }, onErr('factorMap'));
-    const unsubLotMap = onSnapshot(doc(db, 'config', 'lotMap'), snap => {
-      if (snap.exists()) {
-        const entries = snap.data().entries || [];
-        // รูปแบบใหม่: lots = [{lot, qty}], รูปแบบเก่า (backward-compat): lots = [string] หรือ lot=string
-        setLotMap(Object.fromEntries(entries.map(e => {
-          const raw = e.lots || (e.lot ? [e.lot] : []);
-          const normalized = raw.map(l => typeof l === 'string' ? { lot: l, qty: Infinity } : l);
-          return [e.key, normalized];
-        })));
-        setLotMapMeta(snap.data()._meta || null);
-      } else {
-        setLotMapMeta(null);
-      }
+    // lotMap แบ่งเก็บหลาย doc (shard) — query ทุก doc ที่ id ขึ้นต้น 'lotMap' (รวม doc เดี่ยวเดิม = backward-compat) แล้วรวม entries
+    const lotMapQuery = query(collection(db, 'config'),
+      where(documentId(), '>=', 'lotMap'), where(documentId(), '<=', 'lotMap\uf8ff'));
+    const unsubLotMap = onSnapshot(lotMapQuery, snap => {
+      if (snap.empty) { setLotMapMeta(null); return; }
+      const entries = [];
+      let meta = null;
+      snap.docs.forEach(d => {
+        entries.push(...(d.data().entries || []));
+        if (d.id === 'lotMap') meta = d.data()._meta || null; // _meta อยู่ chunk 0 เท่านั้น
+      });
+      // รูปแบบใหม่: lots = [{lot, qty, exp?}], รูปแบบเก่า (backward-compat): lots = [string] หรือ lot=string
+      setLotMap(Object.fromEntries(entries.map(e => {
+        const raw = e.lots || (e.lot ? [e.lot] : []);
+        const normalized = raw.map(l => typeof l === 'string' ? { lot: l, qty: Infinity } : l);
+        return [e.key, normalized];
+      })));
+      setLotMapMeta(meta);
     }, onErr('lotMap'));
     const unsubZone = onSnapshot(doc(db, 'config', 'zoneAssignments'), snap => {
       if (snap.exists()) setZoneAssignments(snap.data().assignments || {});
@@ -359,6 +369,7 @@ export default function App() {
       batch.delete(doc(db, 'config', 'costMap'));
       batch.delete(doc(db, 'config', 'factorMap'));
       batch.delete(doc(db, 'config', 'lotMap'));
+      for (let i = 1; i < LOTMAP_MAX_CHUNKS; i++) batch.delete(doc(db, 'config', `lotMap_${i}`)); // ลบ shard ทุกตัว (no-op ถ้าไม่มี)
       await batch.commit();
       boxesRef.current = [];
       itemsByBoxRef.current = {};
@@ -532,11 +543,26 @@ export default function App() {
 
   function handleLotMapImport(map, meta) {
     setLotMap(map);
-    // map = { [sku]: [{lot, qty}, ...] }
+    // map = { [sku]: [{lot, qty, exp?}, ...] } — ทั้งก้อน (มี exp) ~1.3MB เกิน 1MB/doc → แบ่งเขียนเป็น chunk ละ ~700KB
     const entries = Object.entries(map).map(([key, lots]) => ({ key, lots }));
     const total = entries.reduce((s, e) => s + (e.lots?.length || 0), 0);
-    return setDoc(doc(db, 'config', 'lotMap'), { entries, ...(meta ? { _meta: meta } : {}) })
-      .then(() => showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓`, 'success'))
+    const chunks = [];
+    let cur = [], curSize = 0;
+    for (const e of entries) {
+      const size = JSON.stringify(e).length; // ประมาณขนาด Firestore ต่อ entry (ทั้ง SKU อยู่ chunk เดียวกันเสมอ ไม่แตกข้าม doc)
+      if (curSize + size > LOTMAP_CHUNK_BUDGET && cur.length > 0) { chunks.push(cur); cur = []; curSize = 0; }
+      cur.push(e); curSize += size;
+    }
+    if (cur.length > 0) chunks.push(cur);
+    const batch = writeBatch(db);
+    chunks.forEach((chunkEntries, i) => {
+      const ref = doc(db, 'config', i === 0 ? 'lotMap' : `lotMap_${i}`);
+      batch.set(ref, { entries: chunkEntries, ...(i === 0 && meta ? { _meta: meta } : {}) });
+    });
+    // ลบ chunk เก่าที่รอบนี้ไม่ใช้ (import ก่อนหน้าอาจมี chunk มากกว่า — delete doc ที่ไม่มีอยู่เป็น no-op)
+    for (let i = Math.max(chunks.length, 1); i < LOTMAP_MAX_CHUNKS; i++) batch.delete(doc(db, 'config', `lotMap_${i}`));
+    return batch.commit()
+      .then(() => showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓ (${chunks.length} doc)`, 'success'))
       .catch(err => {
         console.error('lotMap write failed:', err.code);
         showToast('⚠ Firestore error: ' + err.code, 'error');
@@ -650,7 +676,7 @@ export default function App() {
           <>
             <div className="screen-label">
               <span className="num">01</span> Box List
-              <span className="desc">— ภาพรวมลังทั้งหมดวันนี้</span>
+              <span className="desc">— อัปโหลดไฟล์เรียงตามลำดับ</span>
             </div>
             <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
