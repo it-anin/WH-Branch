@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { generatePOS, matchBarcode } from '../data.js';
-import { playScanSuccess } from '../sound.js';
+import { playScanSuccess, playScanFail } from '../sound.js';
 
 const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
@@ -500,6 +500,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     }
     const availableLots = getAvailableLots(match.sku);
     if (availableLots.length === 0) {
+      playScanFail();
       showToast('⚠ LOT นี้สินค้าหมด', 'error');
       return;
     }
@@ -524,9 +525,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     if (!val?.trim() || isClosing || pendingLot || confirmOver) return;
     const barcode = val.trim();
     const catMatch = catalog.find(it => matchBarcode(it, barcode));
-    if (!catMatch) { showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
+    if (!catMatch) { playScanFail(); showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
     const match = items.find(it => it.sku === catMatch.sku && it.unit === catMatch.unit);
-    if (!match || match.gotBase >= match.need) { showToast('⚠ ครบแล้ว', 'error'); return; }
+    if (!match || match.gotBase >= match.need) { playScanFail(); showToast('⚠ ครบแล้ว', 'error'); return; }
 
     // catMatch.barcode อาจเป็น comma-separated หลายตัวต่อ SKU (ดู matchBarcode ใน data.js) — เก็บตัวที่สแกนจริงไว้ export
     const scannedBarcode = catMatch.barcode.split(',').map(b => b.trim()).includes(barcode)

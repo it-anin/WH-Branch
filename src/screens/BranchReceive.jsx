@@ -476,7 +476,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
           return diff !== 0 ? { sku: l.sku, name: l.name, diff } : null;
         })
         .filter(Boolean);
-      const autoNote = '🧪 เภสัชยืนยันสินค้าขาด:\n' + shortList
+      // หัวข้อ note + toast ต้องสะท้อนว่าขาด/เกิน/ทั้งคู่ (เดิม hardcode "ขาด" → กรณีเกินแจ้งผิด)
+      const hasShort  = shortList.some(x => x.diff > 0); // diff = need - got → บวก = ขาด
+      const hasExcess = shortList.some(x => x.diff < 0); // ลบ = เกิน
+      const kindLabel = hasShort && hasExcess ? 'ขาด/เกิน' : hasExcess ? 'เกิน' : 'ขาด';
+      const autoNote = `🧪 เภสัชยืนยันสินค้า${kindLabel}:\n` + shortList
         .map(x => x.diff > 0 ? `• ${x.sku} ${x.name} ขาด ${x.diff} ชิ้น` : `• ${x.sku} ${x.name} เกิน ${-x.diff} ชิ้น`)
         .join('\n');
       const nowStr = new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -496,7 +500,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         receivingBy: null,
         updated: time,
       } : b));
-      showToast('⚠ เภสัชยืนยันสินค้าขาด · แจ้งคลังสินค้าแล้ว', 'error');
+      showToast(`⚠ เภสัชยืนยันสินค้า${kindLabel} · แจ้งคลังสินค้าแล้ว`, 'error');
     } else {
       // พนักงานทั่วไป: ไม่ครบ/เกิน → ส่งให้รีเช็ค (รอเภสัช)
       setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
@@ -1149,7 +1153,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                 <>
                   <div className="row" style={{ marginBottom: 10 }}>
                     <div>
-                      <b style={{ fontFamily: 'system-ui', fontSize: isAndroid ? 16 : 22 }}>ตรวจสอบสินค้าในลัง</b>
+                      <b style={{ fontFamily: 'system-ui', fontSize: isAndroid ? 14 : 22 }}>ตรวจสอบสินค้าในลัง</b>
                       {foundBox?.id && (
                         <span className="mono" style={{ fontSize: 12, color: 'var(--accent)', marginLeft: 8, fontWeight: 700 }}>
                           {foundBox.id}

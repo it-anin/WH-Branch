@@ -419,7 +419,7 @@ open → packing → closed → exported → received
 | `problemBy` / `problemAt` / `problemScanCounts` / `problemNote` | Android แจ้งปัญหา/ยืนยันไม่ครบ (+ หัวหน้าบันทึก note หรือ auto-gen note จาก pharmacist recheck) | หาว่าสินค้าตัวไหนขาด (ตัวแดง) + รายละเอียด | — |
 | `problemConfirmedBy` / `problemConfirmedAt` | pharmacist กด ยืนยัน recheck-fail (Android) | audit trail — เภสัชยืนยันสินค้าขาดจริง (ไม่ใช่ staff error) | — |
 | `problemResolvedBy` / `problemResolvedAt` | pharmacist กด ยืนยัน recheck-ok (Android) | audit trail — สินค้าครบหลังคลังแก้ไข | — |
-| `note` | กรอก textarea "หมายเหตุ" ใต้ตารางสินค้า (Outbound, save ตอน onBlur) | หมายเหตุต่อลัง (เช่น สินค้าพิเศษ/คำแนะนำสาขา) | — |
+| `note` | กรอก textarea "📝 Note บนสติกเกอร์" ใต้ตัวอย่างสติกเกอร์ (คอลัมน์ขวา Outbound, save ตอน onBlur ผ่าน `saveBoxNote`) | หมายเหตุต่อลัง — **โชว์บนสติกเกอร์** (`Note: {note}`) + แก้พิมพ์ผิด/เปลี่ยนข้อความได้ตลอด | — |
 
 **สำคัญ:** fields เหล่านี้ sync ผ่าน `setBoxes` (เขียนทั้ง box object → Firestore `boxes/{id}`) — ข้ามเครื่องได้ (Android ↔ Desktop)
 
@@ -565,7 +565,8 @@ open → packing → closed → exported → received
 ## Outbound (BoxClosedLabel) — Logic สำคัญ
 - Tab label: **Outbound** (เดิม: Box & Label) — screen-label "รายการส่งสินค้า", frame title: **"เลขที่ลัง"**
 - Global search ข้ามทุก closed box (frame-header) → แผงขวาแสดงตารางผล (maxHeight 450, sticky header)
-- **Frame กว้างพิเศษ:** App.jsx ใส่ class `canvas-wide` บน `.canvas` เฉพาะ tab `closed` (`!showAll && tab === 'closed'`) → `max-width: 1920px` (ปกติ `.canvas` cap `1600px`) — ขยายให้ตาราง "รายชื่อสินค้าในลัง" ที่มีหลายคอลัมน์โชว์ชื่อสินค้าเต็มแนวนอน (cell ชื่อ `whiteSpace: nowrap`); หน้าอื่นไม่กระทบ
+- **Frame กว้างพิเศษ:** App.jsx ใส่ class `canvas-wide` บน `.canvas` เฉพาะ tab `closed` (`!showAll && tab === 'closed'`) → `max-width: 1920px` (ปกติ `.canvas` cap `1600px`) — ให้ตาราง "รายชื่อสินค้าในลัง" หลายคอลัมน์มีที่พอ; หน้าอื่นไม่กระทบ
+  - **⚠ คอลัมน์ชื่อสินค้าตัดบรรทัด (`maxWidth: 200` + `whiteSpace: normal` + `wordBreak`) ไม่ใช่ `nowrap` แล้ว** — เดิม nowrap ทำให้ชื่อยาว (เช่น "Glucerna SR/Gold (Triple Care)...") ดัน track `1fr` กว้างเกินจน**คอลัมน์สติกเกอร์ 380px หลุดขอบขวา** → แก้ด้วย `minWidth: 0` บน div คอลัมน์ซ้าย (ให้ `1fr` หดได้) + จำกัดชื่อ 200px ตัดบรรทัด
 - **Layout:** grid `440px 1fr`
   - ซ้าย (440px) = การ์ดลัง **grid 3 คอลัมน์** เรียงตาม id น้อย→มาก + **ปุ่ม filter 2 แถว**:
     - สถานะ (`outboundFilter`): ทั้งหมด / รออนุมัติ (`status closed`) / อนุมัติแล้ว (`exported`/`received`) / **🔴 แจ้งปัญหา** (`problemReviewed && !problemResolved`)
@@ -576,8 +577,11 @@ open → packing → closed → exported → received
     - คอลัมน์ซ้าย: **"รายชื่อสินค้าในลัง"** ตาราง SKU / ชื่อ / **Barcode** / หน่วย / จำนวน / **LOT** / **Exp** / Location (maxHeight 320) — **แตกแถวตาม LOT จริง** ผ่าน helper กลาง `lotRows(l, lotMap)` ที่ใช้ร่วมกับไฟล์ Text (`handleExportBarcode`) → ข้อมูล barcode/LOT/qty ในตารางตรงกับที่จะ export เป๊ะ (SKU เดียวสแกนคนละ LOT = หลายแถว); คอลัมน์ **Exp โชว์เฉพาะเมื่อมีลังที่กรอก exp** (`hasExp`) — แสดงเป็น **ค.ศ. ดิบตามที่พนักงานกรอก** (ไม่แปลง พ.ศ. ต่างจากไฟล์ Text ที่แปลงผ่าน `toBuddhistExp`)
       - **แก้ไขตาราง (`editMode` — ปุ่ม "✎ แก้ไข" / "✓ อนุมัติ" / "✕ ยกเลิก"):** เฉพาะลัง `closed`/`exported` — คลิก "✎ แก้ไข" → `startEdit()` copy boxItems เข้า `editItems` → ตารางเปลี่ยนเป็น input แก้ **จำนวน (number) / LOT / Exp** ต่อแถว + ปุ่ม `×` ลบแถว. **"✓ อนุมัติ" (`handleSaveEdit`)** = filter qty>0, `setItemsByBox`, อัปเดต box `totalQty`/`skuCount`, **set `scannedLots: null` ทุก item** (เพื่อให้ view mode อ่าน qty/lot/exp จาก field ที่แก้ไข ไม่ใช่ `scannedLots` เก่า — เคยเป็นบั๊ก qty ไม่อัปเดต). ไม่แตะ flow อนุมัติเอกสาร (Text→เลขเอกสาร→exported)
       - **สแกน barcode ในตาราง (edit mode):** (1) **column Barcode ต่อแถว** — สแกน/พิมพ์ + Enter → `lookupUnitByBarcode(barcodeMap, sku, barcode)` เปลี่ยน**หน่วย**ของแถวนั้นอัตโนมัติ (2) **input "🔍 สแกน…เพิ่มสินค้าใหม่"** เหนือตาราง — Enter → `lookupByScan(barcodeMap, catalog, val)` (match SKU ตรง หรือ barcode) → SKU มีอยู่แล้ว = qty+1, SKU ใหม่ = เพิ่มแถว (`handleAddByScan`). รับ prop `catalog` + `barcodeMap`
-      - **หมายเหตุ (`boxNote`):** textarea "หมายเหตุ" ใต้ตาราง — save `box.note` ตอน `onBlur` (ดู Box object field `note`)
-    - คอลัมน์ขวา: **"ตัวอย่างสติกเกอร์ติดลัง"** (90×65mm, barcode = Box ID, "คลังสินค้า · WH-01") → ปุ่ม ⇩ ส่งออกไฟล์ Text → แถว [เลขที่เอกสาร input + อนุมัติเอกสาร] → 🖨 พิมพ์ใบปิดลัง
+      - **หมายเหตุ (`boxNote`):** textarea "📝 Note บนสติกเกอร์" อยู่**คอลัมน์ขวา ใต้ตัวอย่างสติกเกอร์** (ย้ายจากใต้ตารางเดิม เพื่อให้แก้ได้ตรงจุดที่ Note โชว์) — save `box.note` ตอน `onBlur` ผ่าน `saveBoxNote()` → สติกเกอร์อัปเดตทันที (ดู Box object field `note` + `StickerLabel`)
+    - คอลัมน์ขวา: **"ตัวอย่างสติกเกอร์ติดลัง"** (90×65mm) → ปุ่ม ⇩ ส่งออกไฟล์ Text → แถว [เลขที่เอกสาร input + อนุมัติเอกสาร] → 🖨 พิมพ์ใบปิดลัง
+      - **ดีไซน์สติกเกอร์ = component `StickerLabel({ box })`** (module scope, ใช้ร่วมทั้ง preview บนจอ + ตัวพิมพ์จริง portal → เนื้อหาตรงกันเป๊ะ ไม่ drift) — สไตล์ "ป้ายพัสดุ FROM/TO": (1) แถวบน **เลขที่เอกสาร (`box.pos`) ตัวใหญ่ 22px mono** + วันที่ (2) กล่อง **จาก·FROM = คลังสินค้า** (+ แพ็คโดย `box.packer.name`) / **ถึง·TO = ชื่อสาขา** (กรอบหนากว่า) (3) barcode = `box.id` เต็มความกว้าง (`SketchyBarcode` มี `displayValue` → โชว์เลขลังใต้บาร์เอง) + บรรทัดล่างสุด **`Note: {box.note}`** (จากช่องหมายเหตุหน้า Outbound — โชว์เฉพาะเมื่อมี note; แทนเลขลังซ้ำที่เคยอยู่ตรงนี้)
+      - **ชื่อสาขา (ผู้รับ):** `branchLabel(box.branch)` — map `BRANCH_NAMES` (`SRC`→สาขาชากค้อ, `KKL`→สาขาเก้ากิโล, `SSS`→สาขาสวนเสือศรีราชา; ไม่รู้จัก → `สาขา {code}`)
+      - **วันที่บนสติกเกอร์ = วันที่กดพิมพ์ (`new Date()`)** ไม่ใช่วันอนุมัติจริง — ระบบไม่เก็บ `approvedAt` (จงใจ เพื่อไม่แตะ flow อนุมัติที่ล็อกไว้); ปกติพิมพ์วันเดียวกับอนุมัติ
 - **selectedId:** useState lazy init — เลือก `activeBoxId` เฉพาะเมื่ออยู่ใน closedBoxes (กันเลือกลัง open ใหม่หลังปิดลัง) ไม่งั้น fallback `closedBoxes[0]` (ลังปิดล่าสุด)
   - **คลิกการ์ดลัง = set `selectedId` เท่านั้น ไม่แตะ `activeBoxId`** — ป้องกัน activeBoxId ของการแพ็คถูกเปลี่ยนเป็นลังที่ปิดแล้ว (เคยเป็นบั๊ก: สแกนต่อจะลงลังที่ปิดไปแล้ว)
 - ปุ่ม "⇩ ส่งออกไฟล์ Text" → export `.txt` แบบ TSV ไม่มี header: `barcode\tจำนวนสินค้า\tทุนสินค้า\t\t\t\t\t\tLOT\tEXP`
@@ -594,7 +598,7 @@ open → packing → closed → exported → received
   - ตัวอย่าง (ไม่มี exp): `8859243302790\t4\t8.49\t\t\t\t\t\t10012026\t`
   - **กันส่งซ้ำ:** กดแล้ว set `box.textExported = true` (sync Firestore) → ปุ่ม disable + เปลี่ยนเป็น "✓ ส่งออกไฟล์ Text แล้ว" ถาวร จนกว่าจะกด **Clear · เริ่มวันถัดไป** (clearBoxes ลบ box → flag หาย)
 - ปุ่ม "🖨 พิมพ์ใบปิดลัง" → ล็อกจนกว่า `box.status === 'exported'` — `handlePrint()` แค่เรียก `window.print()`
-  - **Print isolation (`.print-only-label`, portal):** สติกเกอร์ที่พิมพ์จริง render แยกจาก preview บนจอ — เป็น element ใหม่ที่ `createPortal` ไปที่ `document.body` ตรงๆ (sibling ของ `#root` ไม่ใช่ลูก) เนื้อหา (sticker JSX) เหมือน preview บนจอทุกอย่างแต่ duplicate ไว้คนละ element โดยตั้งใจ (ไม่ share component — สั้นพอที่ไม่คุ้มทำ abstraction)
+  - **Print isolation (`.print-only-label`, portal):** สติกเกอร์ที่พิมพ์จริง render แยกจาก preview บนจอ — เป็น element ใหม่ที่ `createPortal` ไปที่ `document.body` ตรงๆ (sibling ของ `#root` ไม่ใช่ลูก) เนื้อหาใช้ component `StickerLabel({ box })` **ตัวเดียวกันกับ preview** (share แล้ว — ต่างแค่ wrapper: preview = 340×245px มีกรอบ, print = 90×65mm portal) จึงตรงกันเป๊ะเสมอ
   - **เหตุผลที่ต้องแยก:** เดิมใช้ trick `visibility:hidden` ซ่อนทั้งหน้า + `position:fixed` โชว์เฉพาะ label ตอนพิมพ์ — แต่ `visibility:hidden` ไม่ลบ element ออกจาก layout (ยังกินความสูงอยู่) ทำให้หน้า Outbound ที่ยาว (รายการลังซ้าย/ตาราง) ดัน print pagination ออกมาหลายสิบแผ่น และ Chrome จะ repeat element `position:fixed` ซ้ำทุกแผ่นที่ paginate ออกมา (ของเดิมเลยได้ 11 แผ่น ตัวอักษรทับกันมั่ว)
   - **วิธีแก้:** `styles.css` → `@media print { #root { display: none !important; } .print-only-label { display: flex !important; } }` — `display:none` ลบ `#root` ออกจาก layout จริง (ความสูง = 0 ไม่ paginate) ส่วน `.print-only-label` (portal, อยู่นอก `#root`) ไม่ถูกกระทบ จึงเหลือ element เดียวในหน้าพิมพ์ → ออกแผ่นเดียวพอดี
   - **`@page { size: 90mm 65mm; margin: 0; }`** กำหนดขนาดกระดาษจริงตรงกับ label sticker (เผื่อ driver/OS ไม่ได้ตั้ง default ตรงขนาดเครื่องพิมพ์ TSC TTP-244 Pro)
@@ -714,12 +718,13 @@ open → packing → closed → exported → received
    - **Android แสดงรายการของที่ต้องรีเช็คก่อนสแกน:** panel "🧪 สินค้าที่ต้องรีเช็ค ({doneCount}/{verifyItems.length} SKU)" — แต่ละแถวโชว์ชื่อ/SKU + `{scanCounts}/{getDeficit} {unit}` (สแกนแล้ว/ต้องสแกน) เขียวเมื่อครบ — กันเภสัชไม่รู้ว่าตัวไหนขาดเท่าไหร่
 3. **handleConfirm 3-way split:**
    - **recheck + ok:** `problemResolved=true`, `problemResolvedBy/At=pharmacist`, `receivePending=true` → รอเภสัชอนุมัติเอกสาร (เหมือนรับปกติ)
-   - **recheck + fail/over (Option B auto-notify):** keep `problemReported=true`, **`problemReviewed=true`** (auto — Outbound badge ขึ้นทันที), `problemNote = auto-generated` ลิสต์ SKU ที่ขาด/เกินพร้อมชื่อ + จำนวน, `problemConfirmedBy/At=pharmacist`, merge `problemScanCounts` รอบใหม่; toast `⚠ เภสัชยืนยันสินค้าขาด · แจ้งคลังสินค้าแล้ว` (error)
+   - **recheck + fail/over (Option B auto-notify):** keep `problemReported=true`, **`problemReviewed=true`** (auto — Outbound badge ขึ้นทันที), `problemNote = auto-generated` ลิสต์ SKU ที่ขาด/เกินพร้อมชื่อ + จำนวน, `problemConfirmedBy/At=pharmacist`, merge `problemScanCounts` รอบใหม่; toast `⚠ เภสัชยืนยันสินค้า{kindLabel} · แจ้งคลังสินค้าแล้ว` (error)
+     - **`kindLabel` = ขาด / เกิน / ขาด/เกิน** (คำนวณจาก `shortList`: `diff = need − got`, บวก=ขาด ลบ=เกิน) — ใช้ทั้งหัวข้อ note + toast; **เดิม hardcode "ขาด" ตายตัว → กรณีสินค้าเกินแจ้งผิดเป็น "ขาด"** (bug fixed)
    - **non-pharmacist + fail/over:** flow เดิม — `problemReported=true` รอเภสัชตรวจ (ไม่ trigger `problemReviewed`)
 
 ### Auto-generated `problemNote` format
 ```
-🧪 เภสัชยืนยันสินค้าขาด:
+🧪 เภสัชยืนยันสินค้า{kindLabel}:      ← kindLabel = ขาด / เกิน / ขาด/เกิน (ตามรายการจริง)
 • {SKU1} {name1} ขาด {N} ชิ้น
 • {SKU2} {name2} ขาด {M} ชิ้น
 • {SKU3} {name3} เกิน {K} ชิ้น    ← กรณีเกิน (over)

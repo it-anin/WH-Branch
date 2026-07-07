@@ -86,6 +86,66 @@ function receiveBadge(b) {
   return { label: 'สาขา: ยังไม่รับ', bg: '#f0ede8', border: 'var(--line)', color: 'var(--mute)' };
 }
 
+// ชื่อสาขาเต็ม (ผู้รับบนสติกเกอร์) — map จาก box.branch (= suffix ของ Picklist_XXX)
+const BRANCH_NAMES = { SRC: 'สาขาชากค้อ', KKL: 'สาขาเก้ากิโล', SSS: 'สาขาสวนเสือศรีราชา' };
+const branchLabel = (code) => code ? (BRANCH_NAMES[code] || `สาขา ${code}`) : 'สาขาปลายทาง';
+
+// เนื้อหาสติกเกอร์ติดลัง (ดีไซน์ "ป้ายพัสดุ FROM/TO" + เลขที่เอกสารตัวใหญ่) — 90×65mm
+// ใช้ร่วมทั้ง preview บนจอ (.print-label) และตัวพิมพ์จริง (.print-only-label portal) → เนื้อหาตรงกันเป๊ะ ไม่ drift
+// วันที่ = วันที่กดพิมพ์ (new Date) ตามที่ตกลง — ระบบไม่ได้เก็บ approvedAt เพื่อไม่แตะ flow อนุมัติที่ล็อกไว้
+function StickerLabel({ box }) {
+  const doc = box.pos && box.pos !== '—' ? box.pos : '—';
+  const printDate = new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
+  const tag = { fontSize: 8, fontWeight: 800, background: '#000', color: '#fff', padding: '1px 6px', borderRadius: 3 };
+  const kLabel = { fontSize: 9, fontWeight: 700, color: '#555', letterSpacing: '.3px' };
+  return (
+    <div style={{
+      width: '100%', height: '100%', boxSizing: 'border-box',
+      padding: '5mm', background: 'white', color: '#000',
+      fontFamily: 'system-ui, Tahoma, sans-serif',
+      display: 'flex', flexDirection: 'column', gap: '2.5mm',
+    }}>
+      {/* แถวเลขที่เอกสาร (ตัวใหญ่สุด) + วันที่อนุมัติ */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '2px solid #000', paddingBottom: 4 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={kLabel}>เลขที่เอกสาร</div>
+          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 16, fontWeight: 800, lineHeight: 1, whiteSpace: 'nowrap' }}>{doc}</div>
+        </div>
+        <div style={{ textAlign: 'right', flex: '0 0 auto', paddingLeft: 8 }}>
+          <div style={kLabel}>วันที่อนุมัติ</div>
+          <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{printDate}</div>
+        </div>
+      </div>
+
+      {/* กล่อง จาก (คลังสินค้า) / ถึง (สาขา — กรอบหนากว่า) */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ flex: 1, border: '1.5px solid #000', borderRadius: 5, padding: '5px 7px', minWidth: 0 }}>
+          <span style={tag}>จาก · FROM</span>
+          <div style={{ fontSize: 15, fontWeight: 800, marginTop: 4 }}>คลังสินค้า</div>
+          {box.packer && <div style={{ fontSize: 10, color: '#333' }}>แพ็คโดย {box.packer.name}</div>}
+        </div>
+        <div style={{ flex: 1, border: '2.5px solid #000', borderRadius: 5, padding: '5px 7px', minWidth: 0 }}>
+          <span style={tag}>ถึง · TO</span>
+          <div style={{ fontSize: 17, fontWeight: 800, marginTop: 4 }}>{branchLabel(box.branch)}</div>
+          {box.branch && <div style={{ fontSize: 10, color: '#333' }}>({box.branch})</div>}
+        </div>
+      </div>
+
+      {/* barcode เต็มความกว้าง (displayValue โชว์ box.id ใต้บาร์อยู่แล้ว) + Note จากช่องหมายเหตุ (box.note) แทนเลขลังซ้ำ */}
+      <div style={{ marginTop: 'auto' }}>
+        <div style={{ textAlign: 'center' }}>
+          <SketchyBarcode value={box.id} width={300} height={46} />
+        </div>
+        {box.note && (
+          <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.25, marginTop: 2, wordBreak: 'break-word' }}>
+            Note: {box.note}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {}, barcodeMap = {}, catalog = [] }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
@@ -269,6 +329,15 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     setEditMode(false); setEditItems([]); setAddScan(''); setAddScanErr('');
     setBoxNote(boxes.find(b => b.id === selectedId)?.note || '');
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // บันทึก Note ต่อลัง → box.note (sync Firestore) → โชว์บนสติกเกอร์ (StickerLabel อ่าน box.note)
+  function saveBoxNote() {
+    if (!selectedId) return;
+    const trimmed = boxNote.trim();
+    const current = boxes.find(b => b.id === selectedId)?.note || '';
+    if (trimmed === current) return;
+    setBoxes(prev => prev.map(b => b.id === selectedId ? { ...b, note: trimmed } : b));
+  }
 
   function startEdit() {
     setEditItems(boxItems.map(it => ({ ...it })));
@@ -584,8 +653,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
         ) : activeBox ? (
           <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24, alignItems: 'start' }}>
 
-            {/* LEFT: รายชื่อสินค้าในลัง */}
-            <div>
+            {/* LEFT: รายชื่อสินค้าในลัง — minWidth:0 ให้ track 1fr หดได้ (ไม่งั้นชื่อ nowrap ดันคอลัมน์สติกเกอร์หลุดขอบ) */}
+            <div style={{ minWidth: 0 }}>
               <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6, gap: 8 }}>
                 <div className="hand" style={{ fontSize: 20 }}>รายชื่อสินค้าในลัง</div>
                 <div className="row" style={{ gap: 8 }}>
@@ -729,7 +798,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                         <thead>
                           <tr>
                             <th>SKU</th>
-                            <th>ชื่อสินค้า</th>
+                            <th style={{ maxWidth: 200 }}>ชื่อสินค้า</th>
                             <th style={{ width: 110 }}>Barcode</th>
                             <th style={{ width: 56 }}>หน่วย</th>
                             <th style={{ width: 55, textAlign: 'center' }}>จำนวน</th>
@@ -742,7 +811,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                           {tableRows.map((r, i) => (
                             <tr key={`${r.sku}-${r.lot}-${i}`}>
                               <td className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{r.sku}</td>
-                              <td style={{ fontFamily: 'JetBrains Mono', whiteSpace: 'nowrap' }}>{r.name}</td>
+                              <td style={{ fontFamily: 'JetBrains Mono', maxWidth: 200, whiteSpace: 'normal', wordBreak: 'break-word' }}>{r.name}</td>
                               <td className="mono" style={{ fontSize: 11 }}>{r.barcode || '—'}</td>
                               <td style={{ fontFamily: 'JetBrains Mono' }}>{r.unit}</td>
                               <td style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, textAlign: 'center' }}>×{r.qty}</td>
@@ -760,55 +829,31 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 </div>
               )}
 
-              {/* หมายเหตุต่อลัง */}
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', marginBottom: 4 }}>หมายเหตุ</div>
-                <textarea
-                  className="input"
-                  placeholder="ใส่หมายเหตุ เช่น สินค้าพิเศษ / คำแนะนำสำหรับสาขา…"
-                  style={{ width: '100%', minHeight: 64, resize: 'vertical', fontSize: 13 }}
-                  value={boxNote}
-                  onChange={e => setBoxNote(e.target.value)}
-                  onBlur={() => {
-                    if (!selectedId) return;
-                    const trimmed = boxNote.trim();
-                    const current = boxes.find(b => b.id === selectedId)?.note || '';
-                    if (trimmed === current) return;
-                    setBoxes(prev => prev.map(b => b.id === selectedId ? { ...b, note: trimmed } : b));
-                  }}
-                />
-              </div>
             </div>
 
             {/* RIGHT: สติกเกอร์ + ปุ่ม */}
             <div>
               <div className="hand" style={{ fontSize: 20, marginBottom: 8 }}>ตัวอย่างสติกเกอร์ติดลัง (90×65 mm)</div>
               <div className="print-label" style={{
-                background: 'white', border: '2px solid var(--line)', borderRadius: 8,
-                padding: '14px 16px', fontFamily: 'JetBrains Mono',
-                width: 340, height: 245, boxSizing: 'border-box',
-                display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                border: '2px solid var(--line)', borderRadius: 8,
+                width: 340, height: 245, boxSizing: 'border-box', overflow: 'hidden',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px dashed var(--line)', paddingBottom: 8 }}>
-                  <div>
-                    <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700 }}>คลังสินค้า · WH-01</div>
-                    <div style={{ fontSize: 10, color: 'var(--mute)' }}>packed {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontFamily: 'system-ui', fontSize: 16, fontWeight: 700 }}>{activeBox.id}</div>
-                    {activeBox.status === 'exported' && activeBox.pos && activeBox.pos !== '—' && (
-                      <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700 }}>เลขที่เอกสาร: {activeBox.pos}</div>
-                    )}
-                  </div>
+                <StickerLabel box={activeBox} />
+              </div>
+
+              {/* แก้ไข Note บนสติกเกอร์ — ผูก box.note (แก้พิมพ์ผิด/เปลี่ยนข้อความได้ตลอด) → สติกเกอร์อัปเดตหลัง blur */}
+              <div style={{ marginTop: 10, width: 340 }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', marginBottom: 4 }}>
+                  📝 Note บนสติกเกอร์ <span style={{ fontSize: 11 }}>(แก้ไขได้ — โชว์บนสติกเกอร์เฉพาะเมื่อมีข้อความ)</span>
                 </div>
-                <div style={{ textAlign: 'center', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <SketchyBarcode value={activeBox.id} width={280} height={56} />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, fontSize: 11, borderTop: '1px dashed var(--line)', paddingTop: 8 }}>
-                  <div>SKU: <b>{activeBox.skuCount ?? 0}</b></div>
-                  <div>ชิ้น: <b>{activeBox.totalQty ?? 0}</b></div>
-                  {activeBox.packer && <div>โดย: <b>{activeBox.packer.name}</b></div>}
-                </div>
+                <textarea
+                  className="input"
+                  placeholder="พิมพ์ Note ที่จะโชว์บนสติกเกอร์ เช่น สินค้าพิเศษ / เก็บเย็น / คำแนะนำสาขา…"
+                  style={{ width: '100%', minHeight: 52, resize: 'vertical', fontSize: 13 }}
+                  value={boxNote}
+                  onChange={e => setBoxNote(e.target.value)}
+                  onBlur={saveBoxNote}
+                />
               </div>
 
               {/* ปุ่ม: ส่งออกไฟล์ Text — disable ถาวรหลังกด จนกว่าจะ Clear */}
@@ -878,30 +923,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
         <div className="print-only-label" style={{
           width: '90mm', height: '65mm',
           position: 'fixed', top: 0, left: 0,
-          padding: '8mm', boxSizing: 'border-box',
-          background: 'white', fontFamily: 'JetBrains Mono',
-          flexDirection: 'column', justifyContent: 'space-between',
+          boxSizing: 'border-box', overflow: 'hidden',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px dashed var(--line)', paddingBottom: 8 }}>
-            <div>
-              <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700 }}>คลังสินค้า · WH-01</div>
-              <div style={{ fontSize: 10, color: 'var(--mute)' }}>packed {new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontFamily: 'system-ui', fontSize: 16, fontWeight: 700 }}>{activeBox.id}</div>
-              {activeBox.status === 'exported' && activeBox.pos && activeBox.pos !== '—' && (
-                <div style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700 }}>เลขที่เอกสาร: {activeBox.pos}</div>
-              )}
-            </div>
-          </div>
-          <div style={{ textAlign: 'center', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <SketchyBarcode value={activeBox.id} width={280} height={56} />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, fontSize: 11, borderTop: '1px dashed var(--line)', paddingTop: 8 }}>
-            <div>SKU: <b>{activeBox.skuCount ?? 0}</b></div>
-            <div>ชิ้น: <b>{activeBox.totalQty ?? 0}</b></div>
-            {activeBox.packer && <div>โดย: <b>{activeBox.packer.name}</b></div>}
-          </div>
+          <StickerLabel box={activeBox} />
         </div>,
         document.body
       )}
