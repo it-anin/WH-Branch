@@ -636,14 +636,14 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 </div>
 
                 {/* แยก แก้ไข ↔ อนุมัติ: "แก้ไขรายการสินค้า" เด้งไปตารางเต็ม (edit mode) ก่อน ยังไม่ resolve → กลับมากด "อนุมัติ" ทีหลัง */}
-                <div className="row" style={{ marginTop: 14, gap: 10, justifyContent: 'flex-end' }}>
+                <div className="row" style={{ marginTop: 14, gap: 8, justifyContent: 'flex-end' }}>
                   <button
-                    className="btn lg"
+                    className="btn sm"
                     style={{ background: 'var(--accent)', borderColor: 'var(--accent)', color: 'white', fontWeight: 700 }}
                     onClick={() => { setProblemEditing(true); startEdit(); }}
                   >✎ แก้ไขรายการสินค้า</button>
                   <button
-                    className="btn lg"
+                    className="btn sm"
                     style={{ background: 'var(--green)', borderColor: 'var(--green)', color: 'white', fontWeight: 700 }}
                     onClick={resolveProblem}
                   >✓ อนุมัติ</button>
