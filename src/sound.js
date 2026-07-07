@@ -66,3 +66,27 @@ export function playScanFail() {
     // เบราว์เซอร์ไม่รองรับ Web Audio API — ข้ามเงียบๆ ไม่กระทบการสแกน
   }
 }
+
+// playOutOfStock — ของหมด (PackScanC Android: ปัดลบรายการที่ยังไม่สแกน) — สองโน้ตไล่ "ลง" C5→F4 สื่อ "ลบ/หายไป" (ตรงข้าม success ที่ไล่ขึ้น)
+export function playOutOfStock() {
+  try {
+    const ctx = getCtx();
+    if (!ctx) return;
+    tone(ctx, 523, 0, 0.10, 0.26);    // C5
+    tone(ctx, 349, 0.09, 0.22, 0.26); // F4 (ไล่ลง)
+  } catch {
+    // เบราว์เซอร์ไม่รองรับ Web Audio API — ข้ามเงียบๆ ไม่กระทบการสแกน
+  }
+}
+
+// playShortSupply — ของไม่พอ สแกนตัวถัดไป (PackScanC Android: ปัดตอนสแกนไปบ้างแล้ว) — สองโน้ตเท่ากัน G5 ซ้ำ สื่อ "รับทราบ ไปต่อ" (ไม่ขึ้นไม่ลง = กลางๆ)
+export function playShortSupply() {
+  try {
+    const ctx = getCtx();
+    if (!ctx) return;
+    tone(ctx, 784, 0, 0.07, 0.24);    // G5
+    tone(ctx, 784, 0.11, 0.12, 0.24); // G5 (ซ้ำ)
+  } catch {
+    // เบราว์เซอร์ไม่รองรับ Web Audio API — ข้ามเงียบๆ ไม่กระทบการสแกน
+  }
+}

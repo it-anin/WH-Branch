@@ -162,6 +162,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const [confirmDeleteId, setConfirmDeleteId] = useState(null); // boxId รอยืนยันลบ (ยกเลิกรายการเบิก) — null = ไม่แสดง dialog
   const [editMode, setEditMode]     = useState(false);          // แก้ไขตารางรายชื่อสินค้าในลัง
   const [editItems, setEditItems]   = useState([]);             // สำเนา boxItems สำหรับแก้ไข (ออกจาก editMode = ทิ้ง)
+  const [problemEditing, setProblemEditing] = useState(false);  // ลังมีปัญหา: กด "แก้ไขรายการสินค้า" → เด้งไปตารางเต็ม (edit mode) ก่อน ยังไม่ resolve
   const [addScan, setAddScan]       = useState('');             // barcode input สำหรับเพิ่มสินค้าใหม่ใน edit mode
   const [addScanErr, setAddScanErr] = useState('');
   const [boxNote, setBoxNote]       = useState('');             // หมายเหตุต่อลัง — sync กับ box.note ใน Firestore
@@ -326,7 +327,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
   // reset state เมื่อเปลี่ยนลัง
   useEffect(() => {
-    setEditMode(false); setEditItems([]); setAddScan(''); setAddScanErr('');
+    setEditMode(false); setEditItems([]); setAddScan(''); setAddScanErr(''); setProblemEditing(false);
     setBoxNote(boxes.find(b => b.id === selectedId)?.note || '');
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -573,7 +574,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               </div>
             )}
           </div>
-        ) : activeBox && activeBox.problemReviewed && !activeBox.problemResolved ? (
+        ) : activeBox && activeBox.problemReviewed && !activeBox.problemResolved && !problemEditing ? (
           <div style={{ padding: 20 }}>
             <div className="row" style={{ marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
               <b className="hand" style={{ fontSize: 22, color: 'var(--red)' }}>🔴 แก้ไขสินค้าที่มีปัญหา · {activeBox.id}</b>
@@ -634,11 +635,18 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   )}
                 </div>
 
-                {/* ปุ่มแก้ไข/อนุมัติ — ใต้ตาราง */}
-                <div className="row" style={{ marginTop: 14, justifyContent: 'flex-end' }}>
-                  <button className="btn lg" style={{ background: 'var(--red)', borderColor: 'var(--red)', color: 'white', fontWeight: 700 }} onClick={resolveProblem}>
-                    ✓ แก้ไข/อนุมัติ
-                  </button>
+                {/* แยก แก้ไข ↔ อนุมัติ: "แก้ไขรายการสินค้า" เด้งไปตารางเต็ม (edit mode) ก่อน ยังไม่ resolve → กลับมากด "อนุมัติ" ทีหลัง */}
+                <div className="row" style={{ marginTop: 14, gap: 10, justifyContent: 'flex-end' }}>
+                  <button
+                    className="btn lg"
+                    style={{ background: 'var(--accent)', borderColor: 'var(--accent)', color: 'white', fontWeight: 700 }}
+                    onClick={() => { setProblemEditing(true); startEdit(); }}
+                  >✎ แก้ไขรายการสินค้า</button>
+                  <button
+                    className="btn lg"
+                    style={{ background: 'var(--green)', borderColor: 'var(--green)', color: 'white', fontWeight: 700 }}
+                    onClick={resolveProblem}
+                  >✓ อนุมัติ</button>
                 </div>
               </div>
 
@@ -660,8 +668,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 <div className="row" style={{ gap: 8 }}>
                   {editMode ? (
                     <>
-                      <button className="btn sm" onClick={() => { setEditMode(false); setEditItems([]); }}>✕ ยกเลิก</button>
-                      <button className="btn sm primary" onClick={handleSaveEdit}>✓ อนุมัติ</button>
+                      <button className="btn sm" onClick={() => { setEditMode(false); setEditItems([]); setProblemEditing(false); }}>✕ ยกเลิก</button>
+                      <button className="btn sm primary" onClick={() => { handleSaveEdit(); setProblemEditing(false); }}>{problemEditing ? '✓ บันทึกการแก้ไข' : '✓ อนุมัติ'}</button>
                     </>
                   ) : (
                     <>

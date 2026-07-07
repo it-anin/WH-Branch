@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { generatePOS, matchBarcode } from '../data.js';
-import { playScanSuccess, playScanFail } from '../sound.js';
+import { playScanSuccess, playScanFail, playOutOfStock, playShortSupply } from '../sound.js';
 
 const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
@@ -505,6 +505,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
       return;
     }
     if (isAndroid) {
+      playScanSuccess(); // เสียงยืนยัน "สแกนบาร์โค้ดติด" ทันที (เสียงเดียวกับตอนเลือก LOT) — ก่อนเด้ง popup ที่เงียบ ให้รู้ว่าสแกนสำเร็จแล้วค่อยเลือก LOT
       setPendingLot({ match, lots: availableLots, scannedBarcode, scannedUnit, factor });
       return;
     }
@@ -640,8 +641,8 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     setItems(newItems);
     setDismissedSkus(prev => new Set(prev).add(sku));
     if (activeBoxId && onScanProgress) onScanProgress(activeBoxId, newItems);
-    if (hasScanned) showToast('สแกนตัวถัดไป', 'warn');
-    else showToast('ลบออกจากรายการแล้ว', 'error');
+    if (hasScanned) { playShortSupply(); showToast('สแกนตัวถัดไป', 'warn'); }
+    else { playOutOfStock(); showToast('ลบออกจากรายการแล้ว', 'error'); }
   }
 
   // ref pattern — ให้ wh-scan listener เสมอเห็น processBarcode ล่าสุด (ไม่ stale)
@@ -701,6 +702,12 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   }
 
   function handleCloseBox() {
+    // ต้องมีสินค้าสแกนลงลังก่อน (got > 0 อย่างน้อย 1 ตัว) — ลังว่าง (เพิ่งเปิด/ยกของค้างมาแต่ยังไม่สแกน) ปิดไม่ได้
+    if (!items.some(it => it.got > 0)) {
+      playScanFail();
+      showToast('⚠ ปิดลังไม่ได้ — ต้องสแกนสินค้าลงลังก่อน', 'error');
+      return;
+    }
     const allDone = items.every(it => it.gotBase >= it.need);
     if (allDone) {
       doClose();

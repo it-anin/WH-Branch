@@ -481,9 +481,10 @@ open → packing → closed → exported → received
 - **`catalogMeta` prop** — รับจาก AndroidApp → แสดงใน frame-header (Android): `เช็ค X/Y · 📋 Picklist_สาขา วันที่`
 - **สแกนเกินจำนวน (over-scan) — `confirmOver` state:** ถ้าสแกนแล้ว `gotBase + factor > need` (เกิน) → `processBarcode` **หยุดก่อน** setState `confirmOver = {match, factor, scannedBarcode, scannedUnit}` → เด้ง dialog (portal) "⚠ สินค้าเกินจำนวนที่เบิก" โชว์ ต้องการ/มีแล้ว/สแกนนี้+N/เกิน N หน่วย → ปุ่ม "ยกเลิก" (ทิ้ง scan) หรือ "ยืนยัน สินค้าเกินที่เบิก" (`handleConfirmOver` → `proceedScan` ต่อ รวม LOT popup). `processBarcode` block scan ซ้อนขณะ `confirmOver !== null`. **logic กลาง `proceedScan(match, factor, scannedBarcode, scannedUnit)`** = ส่วน LOT + applyScan ที่แชร์กันระหว่าง flow ปกติ (ไม่เกิน) กับ handleConfirmOver
 - **ของหมด/ของไม่พอ (Android — ปัดการ์ดซ้าย):** `ItemCard` ปัดซ้ายเกิน `SWIPE_THRESHOLD` → เด้ง dialog ยืนยัน แยก 2 กรณีตาม `hasScanned = gotBase > 0`:
-  - **ยังไม่สแกน (gotBase=0 = ของหมดจริง):** แถบเผย/ปุ่ม **แดง** "🗑 ของหมด" / "ของหมด ลบรายการ" → toast `'error'` "ลบออกจากรายการแล้ว"
-  - **สแกนไปบ้าง (gotBase>0 = ของมีไม่พอ):** แถบเผย/ปุ่ม **ส้ม** "⚠ ของไม่พอ" / "ของไม่พอ สแกนตัวถัดไป" → toast `'warn'` "สแกนตัวถัดไป"
-  - **`handleMarkOutOfStock(sku)`** (เหมือนกันทั้ง 2 กรณี ต่างแค่ toast): แช่ `need = gotBase` (กันถูกยกไปลังถัดไป — ดู `doClose` filter `gotBase < need`) + `dismissedSkus.add(sku)` (ซ่อนจาก checklist, item ยังอยู่ใน `items` เพื่อคงยอด `got` ที่แพ็คไปแล้ว → ยังนับใน packedItems ตอนปิดลัง)
+  - **ยังไม่สแกน (gotBase=0 = ของหมดจริง):** แถบเผย/ปุ่ม **แดง** "🗑 ของหมด" / "ของหมด ลบรายการ" → toast `'error'` "ลบออกจากรายการแล้ว" + **เสียง `playOutOfStock()`** (2 โน้ตไล่ลง C5→F4 "ลบ/หาย")
+  - **สแกนไปบ้าง (gotBase>0 = ของมีไม่พอ):** แถบเผย/ปุ่ม **ส้ม** "⚠ ของไม่พอ" / "ของไม่พอ สแกนตัวถัดไป" → toast `'warn'` "สแกนตัวถัดไป" + **เสียง `playShortSupply()`** (2 โน้ต G5 เท่ากัน "รับทราบ ไปต่อ")
+  - **`handleMarkOutOfStock(sku)`** (เหมือนกันทั้ง 2 กรณี ต่างแค่ toast + เสียง): แช่ `need = gotBase` (กันถูกยกไปลังถัดไป — ดู `doClose` filter `gotBase < need`) + `dismissedSkus.add(sku)` (ซ่อนจาก checklist, item ยังอยู่ใน `items` เพื่อคงยอด `got` ที่แพ็คไปแล้ว → ยังนับใน packedItems ตอนปิดลัง)
+- **กันปิดลังว่าง:** `handleCloseBox` guard แรก — ถ้า `!items.some(got > 0)` (ยังไม่มีสินค้าสแกนลงลัง เช่นเพิ่งเปิด/ยกของค้างมาแต่ยังไม่สแกน) → `playScanFail()` + toast `'error'` "⚠ ปิดลังไม่ได้ — ต้องสแกนสินค้าลงลังก่อน" แล้ว return (ไม่เข้า confirmClose/doClose)
 - **ปิดลังทั้งที่ยังไม่ครบ:** `handleCloseBox` เช็ค `items.every(gotBase >= need)` — ถ้าไม่ครบ → dialog "⚠ สินค้าไม่ครบ / ปิดลังเลยไหม?" (`confirmClose`) → ยืนยัน → `doClose`
 - **Android mode** (`isAndroid` = module-level const จาก `?android=1`):
   - Layout 2 rows: barcode input + ปิดลัง (row 1) / search (row 2) — ไม่ใช้ `.btn.lg` / `.input.big`
@@ -502,7 +503,7 @@ open → packing → closed → exported → received
   3. ถ้า `allLots.length === 0` (SKU ไม่มีใน lotMap) → สแกนปกติไม่มี LOT
   4. ถ้า `availableLots.length === 0` (LOT หมดทั้งหมด) → **block scan** + toast `⚠ LOT หมดทั้งหมด สต็อกไม่พอ`
   5. ถ้า `match.lot` ยังอยู่ใน availableLots → ใช้ต่อไม่ popup
-  6. Android + `>1 available` → `setPendingLot({match, lots: availableLots, scannedBarcode})` → popup เด้ง
+  6. Android + `>1 available` → **`playScanSuccess()` ก่อน** (เสียงยืนยันสแกนติดทันที — popup เงียบ ไม่งั้นไม่รู้ว่าสแกนสำเร็จ) → `setPendingLot({match, lots: availableLots, scannedBarcode})` → popup เด้ง → เลือก LOT แล้ว `applyScan` เล่นเสียงอีกครั้ง (สแกน+ยืนยัน = 2 ครั้ง โดยตั้งใจ)
   7. ไม่งั้น auto-pick `availableLots[0]` (ทั้ง `lot` และ `exp`)
 - **`getAvailableLots(sku)` คืน `exp` ติดมาด้วย** — ทุกเส้นทางที่เลือก LOT จาก lotMap (popup / auto-pick / LOT เดิมยังใช้ได้) ส่ง exp เข้า `applyScan` → ติดไปกับ `item.exp` + `scannedLots[].exp` → Outbound/ไฟล์ Text ได้ EXP อัตโนมัติโดยพนักงานไม่ต้องกรอก
 - **`applyScan(match, lot, resetLot=false, exp='', scannedBarcode='', scannedUnit='', factor=1)`**: เพิ่ม `got+1`, `gotBase+factor`, set `item.lot` (ถ้า resetLot=true จะ overwrite LOT เดิม กรณีสลับเพราะ LOT หมด), set `item.exp` เฉพาะเมื่อมี `exp` ส่งมา (จากไฟล์ LOT+EXP ผ่าน lotMap หรือกรอกเองผ่าน manual entry), set `item.scannedBarcode` เฉพาะเมื่อมีค่าส่งมา, **ถ้ามี `lot`** → เรียก `addLotEntry(it.scannedLots, lot, exp, scannedBarcode)` เพิ่ม/รวม qty ใน `item.scannedLots` ด้วย (ดู *`scannedLots` field* ด้านบน) — ทำงานทุกครั้งไม่ว่า resetLot จะเป็นค่าอะไร (ต่าง LOT ไม่ overwrite กัน ไม่เหมือน `item.lot`)
@@ -650,6 +651,7 @@ open → packing → closed → exported → received
 - **ตารางตรวจสอบสินค้า (phase verify):** แสดงคอลัมน์ SKU / ชื่อ / หน่วย / สแกนแล้ว
   - ไม่มีคอลัมน์ ✓ และไม่มีตัวเลขเปลี่ยนสีเมื่อครบ — ตัวเลขสีดำเสมอ (Blind)
   - **พนักงานสาขาไม่เห็นจำนวนที่ควรมีในลัง (`needed`)** — เห็นแค่จำนวนที่สแกนไปแล้ว (`count`)
+- **กันกดยืนยันรับทั้งที่สแกนไม่ครบ:** ปุ่ม "✓ ยืนยันรับสินค้า" เรียก `requestConfirm` (ไม่ใช่ `handleConfirm` ตรง) — ถ้า `!allChecked` (ยังสแกนไม่ครบทุกรายการ) → เด้ง dialog (portal) **"⚠ ยังสแกนสินค้าไม่ครบ · เหลืออีก N รายการ · ต้องการยืนยันรับเลยหรือไม่?"** → "ยกเลิก · สแกนต่อ" (`setConfirmIncomplete(false)`) หรือ "ยืนยันรับ" (`handleConfirm` ต่อ → result `fail`); ครบแล้ว → `handleConfirm` เลยไม่ถาม (over ก็ครบ = ผ่านตรง ไม่เด้ง — ดูเฉพาะ "ไม่ครบ")
 - **Phase `result`** (Android — หลังกด ✓ ยืนยันรับสินค้า):
   - `verifyResult` = `'ok'` / `'over'` / `'fail'`
     - `'ok'`: allChecked && !hasOver → `handleConfirm` ตั้ง `receivePending: true` บน box → แสดงกล่อง **"✓ ส่งให้หัวหน้าอนุมัติเอกสารแล้ว"** (ไม่มีปุ่มอนุมัติบน Android — อนุมัติที่ Desktop)
@@ -696,7 +698,10 @@ open → packing → closed → exported → received
    → แผงขวา: ตารางรายการ (สินค้าขาด = แถวแดง, เทียบ `problemScanCounts` กับ qty) + รูปหลักฐาน + textarea "รายละเอียดปัญหาที่พบ"
    → **กด "📦 แจ้งคลังสินค้า"** (`saveProblemNote`, เดิมชื่อ "บันทึกรายละเอียด") = set `problemNote` + **`problemReviewed=true`** ← gate ส่งต่อให้ Outbound (Outbound จะยังไม่ขึ้น badge จนกว่าจะกดอันนี้)
 3. **Desktop Outbound:** card กรอบแดง + badge "🔴 แจ้งปัญหา" **เมื่อ `problemReviewed && !problemResolved`** → คลิก → ตาราง **"แก้ไขสินค้าที่มีปัญหา"** (+/- จำนวน ผ่าน `adjustQty` → setItemsByBox) + แสดง note/รูป
-   → ปุ่มแดง **"✓ แก้ไข/อนุมัติ"** ใต้ตาราง (`resolveProblem`) → `problemResolved=true` + recompute skuCount/totalQty (ไม่ต้องผ่าน flow Text/เลขเอกสาร/พิมพ์)
+   → **2 ปุ่มแยก (แก้ไข ↔ อนุมัติ):**
+     - **"✎ แก้ไขรายการสินค้า"** (ส้ม) → `setProblemEditing(true)` + `startEdit()` → **เด้งไปตาราง "รายชื่อสินค้าในลัง" แบบ edit mode เต็ม** (แก้ qty/LOT/Exp, เพิ่ม/ลบแถว, สแกนเพิ่ม) โดย**ยังไม่ resolve** — `problemEditing` gate หน้าปัญหา (`&& !problemEditing`) ให้ตกไป view ปกติ; กด "✓ บันทึกการแก้ไข" (handleSaveEdit) หรือ "✕ ยกเลิก" → `setProblemEditing(false)` กลับหน้าปัญหา (ยังไม่ resolve)
+     - **"✓ อนุมัติ"** (เขียว) → `resolveProblem` → `problemResolved=true` + recompute skuCount/totalQty (ไม่ต้องผ่าน flow Text/เลขเอกสาร/พิมพ์)
+   - **เหตุผล:** เดิมปุ่มเดียว "✓ แก้ไข/อนุมัติ" ทำทั้งแก้+อนุมัติพร้อมกัน (แก้ได้แค่ +/- ในหน้าปัญหา) → แยกเป็นแก้ในตารางเต็มก่อน แล้วค่อยอนุมัติ เพื่อแก้สินค้าจริงได้ครบ (LOT/Exp/เพิ่ม-ลบ)
 4. **กลับ Desktop รับสินค้า:** card → "✓ แก้ไขปัญหาแล้ว · รออนุมัติ" + ปุ่มเขียว **"✓ แก้ไขแล้ว/อนุมัติเอกสาร"** (กดได้ → `handleApprove` → status `received`) → จากนั้น card เป็น "เภสัชอนุมัติเอกสารแล้ว ✓"
    - `problemFixed = problemReported && problemResolved && status !== 'received'` (priority ปุ่ม/label: hasProblem > pending > problemFixed > received)
 - **Tab badge:** receive รวม `problemReported && !problemResolved`, Outbound (closed) รวม `problemReviewed && !problemResolved`; header รับสินค้ามี chip "🔴 N แจ้งปัญหา"

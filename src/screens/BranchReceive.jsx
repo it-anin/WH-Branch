@@ -246,6 +246,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [scanError, setScanError]     = useState('');
   const [viewingId, setViewingId]     = useState(null);
   const [verifyResult, setVerifyResult] = useState(null); // 'ok' | 'fail'
+  const [confirmIncomplete, setConfirmIncomplete] = useState(false); // dialog ยืนยันตอนกดรับทั้งที่สแกนไม่ครบ
   const [supervisorCode, setSupervisorCode] = useState('');
   const [reportOpen, setReportOpen]   = useState(false);
   const [reportImage, setReportImage] = useState(null);
@@ -435,7 +436,14 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     showToast('บันทึกแล้ว ✓ · ส่งให้ Outbound แก้ไขสินค้า', 'success');
   }
 
+  // กดยืนยันรับ — ถ้าสแกนไม่ครบทุกรายการ เด้ง dialog ยืนยันก่อน (กันกดพลาดทั้งที่ยังสแกนไม่เสร็จ); ครบแล้ว → ยืนยันเลย
+  function requestConfirm() {
+    if (!allChecked) { setConfirmIncomplete(true); return; }
+    handleConfirm();
+  }
+
   function handleConfirm() {
+    setConfirmIncomplete(false);
     if (!foundBox) return;
     // recheck: เช็คเฉพาะ verifyItems (SKU ที่ขาดรอบแรก) แต่เภสัชนับใหม่จาก 0 เทียบ qty เต็ม, normal: เช็คทุก SKU
     const hasOver = verifyItems.some(l => (scanCounts[l.sku] || 0) > getNeeded(l));
@@ -1340,7 +1348,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                       )}
                       <div className="row" style={{ marginTop: 14, gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <button className="btn lg" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => setReportOpen(p => !p)}>⚠ แจ้งปัญหา</button>
-                        <button className="btn primary lg" onClick={handleConfirm}>✓ ยืนยันรับสินค้า</button>
+                        <button className="btn primary lg" onClick={requestConfirm}>✓ ยืนยันรับสินค้า</button>
                       </div>
                     </>
                   )}
@@ -1350,6 +1358,23 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
           )}
         </div>
       </div>
+
+      {confirmIncomplete && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'white', borderRadius: 14, padding: '24px 28px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)', textAlign: 'center', minWidth: 280, maxWidth: 360 }}>
+            <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 8, color: 'var(--red)' }}>⚠ ยังสแกนสินค้าไม่ครบ</div>
+            <div style={{ fontSize: 14, color: '#555', marginBottom: 20, lineHeight: 1.5 }}>
+              ยังสแกนสินค้าในลังไม่ครบทุกรายการ{(() => { const n = verifyItems.filter(l => !fullyChecked(l)).length; return n > 0 ? ` (เหลืออีก ${n} รายการ)` : ''; })()}<br />
+              ต้องการยืนยันรับสินค้าเลยหรือไม่?
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="btn ghost" onClick={() => setConfirmIncomplete(false)}>ยกเลิก · สแกนต่อ</button>
+              <button className="btn primary" onClick={handleConfirm}>ยืนยันรับ</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
