@@ -142,18 +142,28 @@ function ScannedItemRow({ l, count, over, onRemove }) {
   );
 }
 
-function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onInspect, onClick }) {
+// การ์ดลังฝั่ง Desktop รับสินค้า — ดีไซน์ "Sketchy Paper" (ธีมกระดาษของแอป): กรอบ 2px + เงา offset (จาก .box-card)
+// + chip สถานะเอียงเล็กน้อย — แสดง status อย่างเดียว (ปุ่ม action ย้ายไปแผงขวา)
+function BoxCard({ box, isActive, isViewing, isPendingApproval, onClick }) {
   const isReceived = box.status === 'received';
   const hasProblem = box.problemReported && !box.problemResolved;
   const isIncomplete = hasProblem && box.problemType === 'incomplete'; // ไม่ครบ → รีเช็ค (ส้ม), อื่น → ตรวจสอบ (แดง)
-  const problemColor = isIncomplete ? '#e67e22' : 'var(--red)';
   const problemFixed = box.problemReported && box.problemResolved && !isReceived; // แก้แล้ว แต่ยังไม่อนุมัติเอกสาร
-  // สีพื้น/ขอบ ตามสถานะลังเอง (ไม่ใช่ตอนคลิก) — accentState = pending/active
   const accentState = isActive || isPendingApproval;
-  const borderColor = hasProblem ? problemColor : accentState ? 'var(--accent)' : isReceived ? 'var(--green)' : 'var(--line)';
-  const bg = hasProblem ? (isIncomplete ? '#fff3cd' : '#fde8e8') : isReceived ? '#edf5e0' : accentState ? 'var(--accent-soft)' : 'white';
-  // การ์ดทั้งใบเป็นปุ่ม "กดค้าง" (แบบ 1 คลาสสิก+) — press mechanic อยู่ใน .box-card (styles.css)
-  // pressed = เลือก/กำลังตรวจ/รออนุมัติ → จมลงชนพื้น เงาหาย (is-selected); สี bg/ขอบ ยังคุมตามสถานะด้านล่าง
+
+  // สถานะ → ข้อความ + สีของ chip — ย้ายปุ่ม action ไปแผงขวาแล้ว จึงต้องให้ pending มี label ชัด
+  const stt = hasProblem
+    ? (isIncomplete
+        ? { text: '🔁 สินค้าไม่ครบ · รอรีเช็ค', color: '#e67e22' }
+        : { text: '🔴 พบปัญหา · รอตรวจสอบ',   color: 'var(--red)' })
+    : isPendingApproval ? { text: '📥 รออนุมัติเอกสาร',          color: 'var(--accent)' }
+    : problemFixed       ? { text: '✓ แก้ไขปัญหาแล้ว · รออนุมัติ', color: '#5a8a2a' }
+    : isReceived         ? { text: '✅ เภสัชอนุมัติแล้ว',          color: 'var(--green)' }
+    : isActive           ? { text: 'ลังที่กำลังตรวจ',              color: 'var(--accent)' }
+    :                      { text: statusLabel[box.status] || box.status, color: 'var(--mute)' };
+
+  // การ์ดทั้งใบเป็นปุ่ม "กดค้าง" — press mechanic + เงา offset 4px 4px 0 อยู่ใน .box-card (styles.css) ตรงดีไซน์ Sketchy อยู่แล้ว
+  // ห้ามใส่ boxShadow inline — จะ override เงาตอน hover/จมของ .is-selected
   const pressed = isViewing || accentState;
 
   return (
@@ -162,72 +172,42 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onApprove, onIns
       className={`box-card${pressed ? ' is-selected' : ''}`}
       style={{
         position: 'relative',
-        padding: '14px 16px',
-        border: `1px solid ${borderColor}`,
-        borderRadius: 14,
-        background: bg,
+        padding: '13px 15px',
+        border: '2px solid var(--line)',
+        borderRadius: 12,
+        background: '#fffdf8',
         opacity: (!isViewing && !accentState && !isReceived && !hasProblem && !problemFixed) ? 0.65 : 1,
-        filter: isViewing ? 'brightness(0.9)' : 'none',
+        filter: isViewing ? 'brightness(0.96)' : 'none',
       }}
     >
-      {(() => {
-        // แสดงสถานะเสมอ — ไม่ซ่อนตอนกด/เลือกการ์ด (isViewing) เพื่อให้บรรทัดสถานะไม่หายไป
-        const label = hasProblem ? (isIncomplete ? '🔁 สินค้าไม่ครบ · รอรีเช็ค' : '🔴 พบปัญหา · รอตรวจสอบ')
-          : isPendingApproval ? ''
-          : problemFixed ? '✓ แก้ไขปัญหาแล้ว · รออนุมัติ'
-          : isReceived ? 'เภสัชอนุมัติเอกสารแล้ว ✓'
-          : isActive ? 'ลังที่กำลังตรวจ'
-          : statusLabel[box.status] || box.status;
-        return label ? (
-          <div style={{ fontFamily: 'system-ui', fontSize: 11, color: hasProblem ? problemColor : isReceived ? '#6a9a3a' : 'var(--mute)', marginBottom: 2 }}>
-            {label}
-          </div>
-        ) : null;
-      })()}
+      {/* chip สถานะเอียงเล็กน้อย — สีตามสถานะ พื้นขาว กรอบ 2px (ดีไซน์ Sketchy Paper); ข้อความหลัง " · " ตัดขึ้นบรรทัดใหม่ */}
+      <div style={{ marginBottom: 8 }}>
+        <span style={{
+          display: 'inline-block', fontFamily: 'system-ui', fontSize: 11, fontWeight: 800,
+          padding: '3px 10px', border: `2px solid ${stt.color}`, borderRadius: 12,
+          color: stt.color, background: 'white', transform: 'rotate(-1.5deg)',
+          lineHeight: 1.35, textAlign: 'left',
+        }}>
+          {stt.text.split(' · ').map((part, i) => (
+            <span key={i}>{i > 0 && <br />}{part}</span>
+          ))}
+        </span>
+      </div>
       <div style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, lineHeight: 1.1 }}>{box.id}</div>
       <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 3 }}>เลขที่เอกสาร: {box.pos}</div>
       <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
         เลขที่ลัง: <span className="mono" style={{ fontSize: 11 }}>{box.id}</span>
       </div>
       {box.packer && (
-        <div style={{ fontFamily: 'system-ui', fontSize: 12, color: isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
+        <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
           แพ็คโดย: {box.packer.name}
         </div>
       )}
       {(box.receivedBy || box.problemBy) && (
-        <div style={{ fontFamily: 'system-ui', fontSize: 12, color: hasProblem ? problemColor : isReceived ? '#6a9a3a' : 'var(--mute)', marginTop: 2 }}>
+        <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 2 }}>
           ตรวจสอบโดย: {(box.receivedBy || box.problemBy).name}
         </div>
       )}
-      <div className="row" style={{ marginTop: 10, gap: 6 }}>
-        <span className={isReceived ? 'chip ok' : 'chip'}>{box.skuCount ?? 0} SKU</span>
-        <span className={isReceived ? 'chip ok' : 'chip'}>{box.totalQty ?? 0} ชิ้น</span>
-      </div>
-      {hasProblem ? (
-        <button
-          className="btn"
-          style={{ marginTop: 10, width: '100%', background: problemColor, borderColor: problemColor, color: 'white', fontWeight: 700 }}
-          onClick={(e) => { e.stopPropagation(); onInspect(); }}
-        >
-          {isIncomplete ? '🔁 รีเช็คสินค้า' : '🔍 ตรวจสอบ'}
-        </button>
-      ) : isPendingApproval ? (
-        <button
-          className="btn primary"
-          style={{ marginTop: 10, width: '100%' }}
-          onClick={(e) => { e.stopPropagation(); onApprove(); }}
-        >
-          ✓ อนุมัติเอกสาร
-        </button>
-      ) : problemFixed ? (
-        <button
-          className="btn"
-          style={{ marginTop: 10, width: '100%', background: 'var(--green)', borderColor: 'var(--green)', color: 'white', fontWeight: 700 }}
-          onClick={(e) => { e.stopPropagation(); onApprove(); }}
-        >
-          ✓ แก้ไขแล้ว/อนุมัติเอกสาร
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -787,8 +767,6 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   isActive={false}
                   isViewing={box.id === viewingId}
                   isPendingApproval={!!box.receivePending}
-                  onApprove={() => handleApprove(box.id)}
-                  onInspect={() => setViewingId(box.id)}
                   onClick={() => setViewingId(prev => prev === box.id ? null : box.id)}
                 />
               ))
@@ -873,6 +851,9 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                   const needed = getNeeded(l);
                   return (psc[l.sku] || 0) !== needed;
                 });
+                // compact: override .tbl th (17px/8px) + .tbl td padding (8px 10px) ที่ inline fontSize บน <table> แตะไม่ได้
+                const thS = { fontSize: 12, padding: '5px 8px' };
+                const tdS = { padding: '5px 8px' };
                 return (
                   <>
                     <div style={{ marginBottom: 4 }}>
@@ -887,19 +868,19 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                       </div>
                     </div>
                     <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 300, overflowY: 'auto', marginTop: 8, marginBottom: 14 }}>
-                      <table className="tbl" style={{ fontSize: 14 }}>
+                      <table className="tbl" style={{ fontSize: 13 }}>
                         <thead style={{ position: 'sticky', top: 0 }}>
                           <tr>
-                            <th>SKU / ชื่อ</th>
-                            <th style={{ width: 60 }}>หน่วย</th>
-                            <th style={{ width: 80, textAlign: 'center' }}>ของเข้า</th>
-                            <th style={{ width: 80, textAlign: 'center' }}>นับได้</th>
-                            <th style={{ width: 80, textAlign: 'center' }}>เกิน/ขาด</th>
+                            <th style={thS}>SKU / ชื่อ</th>
+                            <th style={{ ...thS, width: 54 }}>หน่วย</th>
+                            <th style={{ ...thS, width: 62, textAlign: 'center' }}>ของเข้า</th>
+                            <th style={{ ...thS, width: 62, textAlign: 'center' }}>นับได้</th>
+                            <th style={{ ...thS, width: 66, textAlign: 'center' }}>เกิน/ขาด</th>
                           </tr>
                         </thead>
                         <tbody>
                           {problemItems.length === 0 ? (
-                            <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--mute)', fontFamily: 'system-ui', padding: 16 }}>ไม่พบความผิดปกติ</td></tr>
+                            <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--mute)', fontFamily: 'system-ui', padding: 12 }}>ไม่พบความผิดปกติ</td></tr>
                           ) : problemItems.map(l => {
                             const needed = getNeeded(l);
                             const got = psc[l.sku] || 0;
@@ -907,14 +888,14 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                             const isOver = diff > 0;
                             return (
                               <tr key={l.sku} style={{ background: isOver ? '#fff9e6' : '#fff8f0' }}>
-                                <td>
-                                  <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
-                                  <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
+                                <td style={tdS}>
+                                  <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>{l.sku}</div>
+                                  <div style={{ fontFamily: 'system-ui', fontSize: 13 }}>{l.name}</div>
                                 </td>
-                                <td style={{ fontFamily: 'system-ui' }}>{unitOf(l)}</td>
-                                <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 18, fontWeight: 700 }}>{needed}</td>
-                                <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 18, color: 'var(--mute)' }}>{got}</td>
-                                <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: isOver ? '#b86000' : '#e67e22' }}>
+                                <td style={{ ...tdS, fontFamily: 'system-ui' }}>{unitOf(l)}</td>
+                                <td style={{ ...tdS, textAlign: 'center', fontFamily: 'system-ui', fontSize: 14, fontWeight: 700 }}>{needed}</td>
+                                <td style={{ ...tdS, textAlign: 'center', fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)' }}>{got}</td>
+                                <td style={{ ...tdS, textAlign: 'center', fontFamily: 'system-ui', fontSize: 15, fontWeight: 700, color: isOver ? '#b86000' : '#e67e22' }}>
                                   {isOver ? `+${diff}` : `−${Math.abs(diff)}`}
                                 </td>
                               </tr>
@@ -1008,6 +989,23 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+              {/* ปุ่ม action ย้ายจากการ์ดมาที่นี่ — อนุมัติเอกสาร (pending) / แก้ไขแล้ว-อนุมัติ (problemFixed); auto-width + ชิดขวา */}
+              {(viewingBox?.receivePending || (viewingBox?.problemReported && viewingBox?.problemResolved && viewingBox?.status !== 'received')) && (
+                <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
+                  {viewingBox?.receivePending ? (
+                    <button
+                      className="btn primary"
+                      onClick={() => handleApprove(viewingId)}
+                    >✓ อนุมัติเอกสาร</button>
+                  ) : (
+                    <button
+                      className="btn"
+                      style={{ background: 'var(--green)', borderColor: 'var(--green)', color: 'white', fontWeight: 700 }}
+                      onClick={() => handleApprove(viewingId)}
+                    >✓ แก้ไขแล้ว/อนุมัติเอกสาร</button>
+                  )}
                 </div>
               )}
             </div>
@@ -1362,14 +1360,14 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
       {confirmIncomplete && createPortal(
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: 'white', borderRadius: 14, padding: '24px 28px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)', textAlign: 'center', minWidth: 280, maxWidth: 360 }}>
-            <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 8, color: 'var(--red)' }}>⚠ ยังสแกนสินค้าไม่ครบ</div>
+            <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 8, color: 'var(--red)' }}>⚠ สแกนสินค้าไม่ครบ</div>
             <div style={{ fontSize: 14, color: '#555', marginBottom: 20, lineHeight: 1.5 }}>
               ยังสแกนสินค้าในลังไม่ครบทุกรายการ{(() => { const n = verifyItems.filter(l => !fullyChecked(l)).length; return n > 0 ? ` (เหลืออีก ${n} รายการ)` : ''; })()}<br />
-              ต้องการยืนยันรับสินค้าเลยหรือไม่?
+              ต้องการยืนยันรับสินค้าหรือไม่?
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-              <button className="btn ghost" onClick={() => setConfirmIncomplete(false)}>ยกเลิก · สแกนต่อ</button>
-              <button className="btn primary" onClick={handleConfirm}>ยืนยันรับ</button>
+              <button className="btn ghost" onClick={() => setConfirmIncomplete(false)}>ยกเลิก</button>
+              <button className="btn primary" onClick={handleConfirm}>ยืนยัน</button>
             </div>
           </div>
         </div>,

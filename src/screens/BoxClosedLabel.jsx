@@ -78,7 +78,7 @@ function receiveBadge(b) {
       ? { label: 'สาขา: รอรีเช็ค', bg: '#fff3cd', border: '#e67e22', color: '#b86000' }
       : { label: 'สาขา: รอตรวจสอบ', bg: '#fde8e8', border: 'var(--red)', color: '#c0392b' };
   if (b.problemReported && b.problemResolved)
-    return { label: 'สาขา: แก้ไขแล้ว · รออนุมัติ', bg: '#e8f0d8', border: 'var(--green)', color: '#5a8a2a' };
+    return { label: 'คลังแก้ไขแล้ว · รอสาขาอนุมัติ', bg: '#e8f0d8', border: 'var(--green)', color: '#5a8a2a' };
   if (b.receivePending)
     return { label: 'สาขา: รอเภสัชอนุมัติ', bg: 'var(--accent-soft)', border: 'var(--accent)', color: 'var(--accent)' };
   if (b.receivingBy)
@@ -131,16 +131,14 @@ function StickerLabel({ box }) {
         </div>
       </div>
 
-      {/* barcode เต็มความกว้าง (displayValue โชว์ box.id ใต้บาร์อยู่แล้ว) + Note จากช่องหมายเหตุ (box.note) แทนเลขลังซ้ำ */}
+      {/* barcode เต็มความกว้าง (displayValue โชว์ box.id ใต้บาร์อยู่แล้ว) + หมายเหตุ (box.note) — โชว์ตลอดแม้ไม่มีข้อความ */}
       <div style={{ marginTop: 'auto' }}>
         <div style={{ textAlign: 'center' }}>
           <SketchyBarcode value={box.id} width={300} height={46} />
         </div>
-        {box.note && (
-          <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.25, marginTop: 2, wordBreak: 'break-word' }}>
-            Note: {box.note}
-          </div>
-        )}
+        <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.25, marginTop: 2, wordBreak: 'break-word' }}>
+          หมายเหตุ: {box.note || ''}
+        </div>
       </div>
     </div>
   );
@@ -852,12 +850,12 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               {/* แก้ไข Note บนสติกเกอร์ — ผูก box.note (แก้พิมพ์ผิด/เปลี่ยนข้อความได้ตลอด) → สติกเกอร์อัปเดตหลัง blur */}
               <div style={{ marginTop: 10, width: 340 }}>
                 <div style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)', marginBottom: 4 }}>
-                  📝 Note บนสติกเกอร์ <span style={{ fontSize: 11 }}>(แก้ไขได้ — โชว์บนสติกเกอร์เฉพาะเมื่อมีข้อความ)</span>
+                  <span style={{ fontSize: 11 }}></span>
                 </div>
                 <textarea
                   className="input"
-                  placeholder="พิมพ์ Note ที่จะโชว์บนสติกเกอร์ เช่น สินค้าพิเศษ / เก็บเย็น / คำแนะนำสาขา…"
-                  style={{ width: '100%', minHeight: 52, resize: 'vertical', fontSize: 13 }}
+                  placeholder="📝 เพิ่มหมายเหตุ.."
+                  style={{ width: '100%', minHeight: 50, resize: 'vertical', fontSize: 13 }}
                   value={boxNote}
                   onChange={e => setBoxNote(e.target.value)}
                   onBlur={saveBoxNote}
@@ -865,7 +863,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               </div>
 
               {/* ปุ่ม: ส่งออกไฟล์ Text — disable ถาวรหลังกด จนกว่าจะ Clear */}
-              <div className="row" style={{ marginTop: 14, gap: 10, flexWrap: 'wrap' }}>
+              <div className="row" style={{ marginTop: 5, gap: 10, flexWrap: 'wrap' }}>
                 {(() => {
                   const exportable = (activeBox.status === 'closed' || activeBox.status === 'exported');
                   const done = !!activeBox.textExported;

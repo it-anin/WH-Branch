@@ -580,7 +580,7 @@ open → packing → closed → exported → received
       - **สแกน barcode ในตาราง (edit mode):** (1) **column Barcode ต่อแถว** — สแกน/พิมพ์ + Enter → `lookupUnitByBarcode(barcodeMap, sku, barcode)` เปลี่ยน**หน่วย**ของแถวนั้นอัตโนมัติ (2) **input "🔍 สแกน…เพิ่มสินค้าใหม่"** เหนือตาราง — Enter → `lookupByScan(barcodeMap, catalog, val)` (match SKU ตรง หรือ barcode) → SKU มีอยู่แล้ว = qty+1, SKU ใหม่ = เพิ่มแถว (`handleAddByScan`). รับ prop `catalog` + `barcodeMap`
       - **หมายเหตุ (`boxNote`):** textarea "📝 Note บนสติกเกอร์" อยู่**คอลัมน์ขวา ใต้ตัวอย่างสติกเกอร์** (ย้ายจากใต้ตารางเดิม เพื่อให้แก้ได้ตรงจุดที่ Note โชว์) — save `box.note` ตอน `onBlur` ผ่าน `saveBoxNote()` → สติกเกอร์อัปเดตทันที (ดู Box object field `note` + `StickerLabel`)
     - คอลัมน์ขวา: **"ตัวอย่างสติกเกอร์ติดลัง"** (90×65mm) → ปุ่ม ⇩ ส่งออกไฟล์ Text → แถว [เลขที่เอกสาร input + อนุมัติเอกสาร] → 🖨 พิมพ์ใบปิดลัง
-      - **ดีไซน์สติกเกอร์ = component `StickerLabel({ box })`** (module scope, ใช้ร่วมทั้ง preview บนจอ + ตัวพิมพ์จริง portal → เนื้อหาตรงกันเป๊ะ ไม่ drift) — สไตล์ "ป้ายพัสดุ FROM/TO": (1) แถวบน **เลขที่เอกสาร (`box.pos`) ตัวใหญ่ 22px mono** + วันที่ (2) กล่อง **จาก·FROM = คลังสินค้า** (+ แพ็คโดย `box.packer.name`) / **ถึง·TO = ชื่อสาขา** (กรอบหนากว่า) (3) barcode = `box.id` เต็มความกว้าง (`SketchyBarcode` มี `displayValue` → โชว์เลขลังใต้บาร์เอง) + บรรทัดล่างสุด **`Note: {box.note}`** (จากช่องหมายเหตุหน้า Outbound — โชว์เฉพาะเมื่อมี note; แทนเลขลังซ้ำที่เคยอยู่ตรงนี้)
+      - **ดีไซน์สติกเกอร์ = component `StickerLabel({ box })`** (module scope, ใช้ร่วมทั้ง preview บนจอ + ตัวพิมพ์จริง portal → เนื้อหาตรงกันเป๊ะ ไม่ drift) — สไตล์ "ป้ายพัสดุ FROM/TO": (1) แถวบน **เลขที่เอกสาร (`box.pos`) ตัวใหญ่ 22px mono** + วันที่ (2) กล่อง **จาก·FROM = คลังสินค้า** (+ แพ็คโดย `box.packer.name`) / **ถึง·TO = ชื่อสาขา** (กรอบหนากว่า) (3) barcode = `box.id` เต็มความกว้าง (`SketchyBarcode` มี `displayValue` → โชว์เลขลังใต้บาร์เอง) + บรรทัดล่างสุด **`หมายเหตุ: {box.note}`** (จากช่องหมายเหตุหน้า Outbound — **โชว์ตลอดแม้ไม่มีข้อความ** = โชว์ label "หมายเหตุ:" เปล่า; แทนเลขลังซ้ำที่เคยอยู่ตรงนี้)
       - **ชื่อสาขา (ผู้รับ):** `branchLabel(box.branch)` — map `BRANCH_NAMES` (`SRC`→สาขาชากค้อ, `KKL`→สาขาเก้ากิโล, `SSS`→สาขาสวนเสือศรีราชา; ไม่รู้จัก → `สาขา {code}`)
       - **วันที่บนสติกเกอร์ = วันที่กดพิมพ์ (`new Date()`)** ไม่ใช่วันอนุมัติจริง — ระบบไม่เก็บ `approvedAt` (จงใจ เพื่อไม่แตะ flow อนุมัติที่ล็อกไว้); ปกติพิมพ์วันเดียวกับอนุมัติ
 - **selectedId:** useState lazy init — เลือก `activeBoxId` เฉพาะเมื่ออยู่ใน closedBoxes (กันเลือกลัง open ใหม่หลังปิดลัง) ไม่งั้น fallback `closedBoxes[0]` (ลังปิดล่าสุด)
@@ -661,8 +661,8 @@ open → packing → closed → exported → received
 - **Desktop layout (approval-only):**
   - แผงซ้าย: `approvalBoxes` = boxes ที่ `receivePending`/`problemReported` หรืออยู่ใน `receiveBoxIds` — **grid 2 คอลัมน์** (`repeat(2,1fr)`, คอลัมน์ซ้าย 420px); sortRank: problem(0) > pending(1) > อื่น(2)
   - badge header: chip "N รออนุมัติ" (`pendingCount`) + chip แดง "🔴 N แจ้งปัญหา" (`problemCount`) — เคารพตัวกรองพนักงาน
-  - แผงขวา: คลิก card → `isViewingOther` → ตารางรายการสินค้า read-only (เลขที่ลัง / SKU / ชื่อ / หน่วย / จำนวน); ไม่คลิก → placeholder
-  - **BoxCard:** field labels "เลขที่เอกสาร / เลขที่ลัง / แพ็คโดย / ตรวจสอบโดย"; คลิก (viewing) = `filter: brightness(0.9)` (เข้มขึ้น ไม่เปลี่ยนสีพื้น) ไม่มี watermark
+  - แผงขวา: คลิก card → `isViewingOther` → ตารางรายการสินค้า read-only (เลขที่ลัง / SKU / ชื่อ / หน่วย / จำนวน) + **ปุ่ม action ท้ายตาราง** (pending→"✓ อนุมัติเอกสาร" ส้ม / problemFixed→"✓ แก้ไขแล้ว/อนุมัติเอกสาร" เขียว → `handleApprove(viewingId)`); ไม่คลิก → placeholder
+  - **BoxCard (ดีไซน์ "Sketchy Paper" — status-only, ไม่มีปุ่มบนการ์ด):** พื้นครีม `#fffdf8` + กรอบ `2px solid var(--line)` radius 12 + **เงา offset/press mechanic มาจาก class `.box-card` (styles.css: เงา 4px 4px 0, hover ลอย, `.is-selected` จม) — ห้ามใส่ `boxShadow` inline จะทับกลไกกด** + **chip สถานะเอียง `rotate(-1.5deg)`** (กรอบ 2px สีตามสถานะ พื้นขาว) + field labels "เลขที่เอกสาร / เลขที่ลัง / แพ็คโดย / ตรวจสอบโดย" (**ไม่มี chips SKU/ชิ้นแล้ว** — เอาออกให้การ์ดโปร่ง; ดูจำนวนได้จากตาราง detail แผงขวา). **ปุ่ม action (อนุมัติ/ตรวจสอบ/รีเช็ค) ย้ายไปแผงขวาทั้งหมด** — คลิกการ์ด = เปิด detail: hasProblem→หน้าตรวจสอบ/รีเช็ค (มี "📦 แจ้งคลังสินค้า"), อื่น→read-only + ปุ่มอนุมัติ. `isViewing` = `brightness(0.96)`, inactive ธรรมดา = `opacity 0.65` (แกลเลอรีดีไซน์: `card-styles.html` — เลือกแบบ 9)
   - **statusLabel (เฉพาะหน้านี้):** `closed`→"รอคลังอนุมัติเอกสาร", `exported`→"รอผู้ช่วยตรวจสอบสินค้า", received→"เภสัชอนุมัติเอกสารแล้ว ✓"
   - **frame-header date:** prefix "รอบเบิก {วันที่}"
   - **ปุ่มเลือกพนักงาน (dropdown 🔽):** = **filter** ลังตามผู้ตรวจรับ (`box.receivedBy.code`) ไม่ใช่เลือกผู้รับ — `staffFilter = !isControlled && branchStaff?.code`; มีตัวเลือก "ทุกพนักงาน" ล้างตัวกรอง
@@ -682,7 +682,7 @@ open → packing → closed → exported → received
 - **`handleScanNext`** (ปุ่ม "+ รับลังถัดไป" / Android "+ ลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'`
 - **ไม่มีปุ่ม "ข้ามลัง" แล้ว** (ลบ `handleSkip` ออก — ซ้ำซ้อนกับ "ลังถัดไป" + toast เดิม "แจ้งปัญหาแล้ว" ทำให้สับสน); การแจ้งปัญหาจริงใช้ `handleReportProblem` เท่านั้น
 - **`pendingApprovalBoxId`** (App.jsx state) — local-only, ใช้ track result phase บน Android เท่านั้น (ไม่ sync ข้ามเครื่อง — การข้ามเครื่องใช้ `box.receivePending` แทน)
-- **BoxCard `isPendingApproval`**: `box.receivePending` — ซ่อนบรรทัด label สถานะ, ปุ่มสีส้ม **✓ อนุมัติเอกสาร** บน card → `handleApprove(box.id)` (ไม่มี watermark แล้ว)
+- **BoxCard `isPendingApproval`**: `box.receivePending` — chip สถานะ "📥 รออนุมัติเอกสาร" (สีส้ม) + การ์ดจม (`.is-selected`); **ปุ่มอนุมัติอยู่แผงขวา ไม่ใช่บนการ์ด** (คลิกการ์ด → detail → "✓ อนุมัติเอกสาร" → `handleApprove(viewingId)`)
 - **BoxCard selected state** (isActive / isViewing / isPendingApproval): ใช้ raised button style เหมือน Topbar tab active
   - `box-shadow: 3px 3px 0 var(--line)`, `transform: translate(-1px,-1px)`, พื้นหลัง `var(--accent-soft)`
   - การ์ดที่ไม่ถูกเลือก → `opacity: 0.65`
@@ -705,7 +705,7 @@ open → packing → closed → exported → received
 4. **กลับ Desktop รับสินค้า:** card → "✓ แก้ไขปัญหาแล้ว · รออนุมัติ" + ปุ่มเขียว **"✓ แก้ไขแล้ว/อนุมัติเอกสาร"** (กดได้ → `handleApprove` → status `received`) → จากนั้น card เป็น "เภสัชอนุมัติเอกสารแล้ว ✓"
    - `problemFixed = problemReported && problemResolved && status !== 'received'` (priority ปุ่ม/label: hasProblem > pending > problemFixed > received)
 - **Tab badge:** receive รวม `problemReported && !problemResolved`, Outbound (closed) รวม `problemReviewed && !problemResolved`; header รับสินค้ามี chip "🔴 N แจ้งปัญหา"
-- **ปุ่ม/label priority ใน BoxCard:** hasProblem > pending > problemFixed > received
+- **status chip priority ใน BoxCard:** hasProblem > pending > problemFixed > received (ไม่มีปุ่มบนการ์ดแล้ว — action ทั้งหมดอยู่แผงขวา)
 
 ## Pharmacist Recheck Flow (Android) — เภสัชสแกนซ้ำลังที่แจ้งปัญหา
 
@@ -766,6 +766,8 @@ showToast('⚠ กรุณากรอกเลขที่เอกสาร',
 showToast('อนุมัติแล้ว ✓', 'success')            // เขียว
 showToast('สแกนตัวถัดไป', 'warn')                // ส้ม
 ```
+
+**Animation (Elastic Bounce) — 2 เฟสใน `showToast` (App.jsx):** โผล่ = สปริงเด้งขึ้น (`toastIn` .55s `cubic-bezier(.34,1.56,.34,1)`) → ค้าง 2s → **mark `leaving: true`** (เฟส 1) เล่นขาออกตกลง+จาง (`toastOut` .34s) → **ลบจริงที่ 2340ms** (เฟส 2, ต้องตรงกับ 340ms ของ `toastOut`). `Toast.jsx` ใส่ class `toast-anim` + `toast-leaving` (เมื่อ `t.leaving`); keyframes อยู่ `styles.css` — `.toast-anim.toast-leaving` ต้องนิยาม**หลัง** `.toast-anim` เพื่อให้ขาออก override ขาเข้า. `id = Date.now() + Math.random()` กัน toast โผล่ ms เดียวกันชนกันตอน `.map` mark leaving
 
 ## CSS Chip Classes (styles.css)
 | class | สี | ใช้เมื่อ |

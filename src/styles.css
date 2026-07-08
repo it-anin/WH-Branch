@@ -273,6 +273,20 @@ button:active:not(:disabled):not(.no-press) {
   to   { transform: translateY(-18px); opacity: 0; }
 }
 
+/* Toast — Elastic Bounce (โผล่ = สปริงเด้งขึ้น / หาย = ตกลง+จาง)
+   .toast-leaving ต้องอยู่หลัง .toast-anim เพื่อให้ animation ขาออก override ขาเข้า
+   ดู TOAST_EXIT_MS ใน App.jsx (ต้องตรงกับ 340ms ของ toastOut) */
+.toast-anim { animation: toastIn .55s cubic-bezier(.34, 1.56, .34, 1) both; }
+.toast-anim.toast-leaving { animation: toastOut .34s cubic-bezier(.5, 0, .75, 0) both; }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(40px) scale(.85); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(30px) scale(.9); }
+}
+
 .section-divider {
   text-align: center; margin: 40px 0 20px;
   font-family: system-ui, sans-serif; font-size: 26px;

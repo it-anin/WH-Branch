@@ -244,12 +244,17 @@ export default function App() {
   }
 
   const showToast = useCallback((message, type = 'default') => {
-    const id = Date.now();
+    const id = Date.now() + Math.random();   // กันชนกันเมื่อ toast โผล่ใน ms เดียวกัน
     setToasts(prev => [...prev, { id, message, type }]);
-    const timer = setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
+    // เฟส 1: ค้าง 2s แล้ว mark leaving → เล่นขาออก (toastOut)
+    const t1 = setTimeout(() => {
+      setToasts(prev => prev.map(t => t.id === id ? { ...t, leaving: true } : t));
     }, 2000);
-    toastTimers.current.push(timer);
+    // เฟส 2: ลบจริงหลัง exit animation จบ (ตรงกับ TOAST_EXIT_MS 340ms ใน styles.css)
+    const t2 = setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 2340);
+    toastTimers.current.push(t1, t2);
   }, []);
 
   function generateBoxId(currentBoxes) {

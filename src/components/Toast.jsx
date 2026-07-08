@@ -15,7 +15,7 @@ export default function Toast({ toasts }) {
       zIndex: 300, pointerEvents: 'none',
     }}>
       {toasts.map(t => (
-        <div key={t.id} style={{
+        <div key={t.id} className={`toast-anim${t.leaving ? ' toast-leaving' : ''}`} style={{
           ...STYLES[t.type] || STYLES.default,
           fontFamily: 'system-ui', fontSize: 16,
           padding: '10px 22px', borderRadius: 10,
