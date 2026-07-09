@@ -274,8 +274,9 @@ button:active:not(:disabled):not(.no-press) {
 }
 
 /* Toast — Elastic Bounce (โผล่ = สปริงเด้งขึ้น / หาย = ตกลง+จาง)
-   .toast-leaving ต้องอยู่หลัง .toast-anim เพื่อให้ animation ขาออก override ขาเข้า
-   ดู TOAST_EXIT_MS ใน App.jsx (ต้องตรงกับ 340ms ของ toastOut) */
+   ขาออก override ขาเข้าด้วย specificity: `.toast-anim.toast-leaving` (2 คลาส)
+   ชนะ `.toast-anim` (คลาสเดียว) — ห้ามลดเหลือ `.toast-leaving` เดี่ยวจะเสมอกันแล้วแพ้ลำดับ
+   exit ต้องตรงกับ 2 เฟสใน App.jsx: mark leaving ที่ 2000ms → ลบจริง 2340ms (= +340ms ของ toastOut) */
 .toast-anim { animation: toastIn .55s cubic-bezier(.34, 1.56, .34, 1) both; }
 .toast-anim.toast-leaving { animation: toastOut .34s cubic-bezier(.5, 0, .75, 0) both; }
 @keyframes toastIn {

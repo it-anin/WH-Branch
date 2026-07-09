@@ -281,17 +281,20 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     const dateStr = `${dd}/${mm}/${yyyy}`;
     const headers = ['เลขที่ลังสินค้า', 'เลขที่เอกสาร', 'SKU', 'ชื่อสินค้า', 'Barcode', 'หน่วย', 'จำนวน', 'พนักงานแพ็คสินค้า', 'วันที่ส่งสินค้า'];
     const dataRows = closedBoxes.flatMap(b =>
-      (itemsByBox?.[b.id] || []).map(l => [
-        b.id,
-        b.pos && b.pos !== '—' ? b.pos : '',
-        l.sku,
-        l.name,
-        l.scannedBarcode || l.barcode || '',
-        l.scannedUnit || l.unit,
-        l.qty ?? l.got ?? 0,
-        b.packer?.name || '',
-        dateStr,
-      ])
+      // แตกแถวตาม (LOT + หน่วย) ด้วย lotRows — SKU เดียวสแกนปนหน่วย (แพ็ค + ลัง) แยกคนละแถว บาร์โค้ด/จำนวน/หน่วยของตัวเอง
+      (itemsByBox?.[b.id] || []).flatMap(l =>
+        lotRows(l, lotMap).map(r => [
+          b.id,
+          b.pos && b.pos !== '—' ? b.pos : '',
+          l.sku,
+          l.name,
+          r.barcode || '',
+          r.unit || l.unit,
+          r.qty,
+          b.packer?.name || '',
+          dateStr,
+        ])
+      )
     );
     if (dataRows.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังทั้งหมด', 'error'); return; }
     const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);

@@ -551,11 +551,12 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   // เพิ่ม/รวมจำนวนต่อ LOT จริงบน item (ต่าง LOT ไม่ overwrite กันแบบ it.lot) — ใช้ตอน export แยกแถวเมื่อ SKU เดียวกันในลังนี้สแกนคนละ LOT
   function addLotEntry(scannedLots, lot, exp, scannedBarcode, unit) {
     const next = scannedLots ? [...scannedLots] : [];
-    const idx = next.findIndex(l => l.lot === lot);
+    // key ด้วย (lot + unit) — SKU เดียวสแกนปนหน่วย (เช่น แพ็ค + ลัง) ต้องแยก entry ไม่รวมทับหน่วย/บาร์โค้ดเป็นตัวล่าสุด
+    const idx = next.findIndex(l => l.lot === lot && (l.unit || '') === (unit || ''));
     if (idx >= 0) {
       next[idx] = { ...next[idx], qty: next[idx].qty + 1, ...(exp ? { exp } : {}), ...(scannedBarcode ? { scannedBarcode } : {}), ...(unit ? { unit } : {}) };
     } else {
-      next.push({ lot, qty: 1, exp: exp || '', scannedBarcode: scannedBarcode || '', unit: unit || '' });
+      next.push({ lot: lot || '', qty: 1, exp: exp || '', scannedBarcode: scannedBarcode || '', unit: unit || '' });
     }
     return next;
   }
@@ -590,8 +591,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
             ...(exp && (resetLot || !it.exp) ? { exp } : {}),
             ...(scannedBarcode ? { scannedBarcode } : {}),
             ...(scannedUnit ? { scannedUnit } : {}),  // หน่วยที่สแกนจริง — ใช้คิดทุน/หน่วยตอน export (ลังไม่มี LOT)
-            // scannedLots = breakdown ต่อ LOT จริง — ใช้ export แยกแถวตาม LOT (ดู handleExportBarcode ใน BoxClosedLabel.jsx)
-            ...(lot ? { scannedLots: addLotEntry(it.scannedLots, lot, exp, scannedBarcode, scannedUnit) } : {}),
+            // scannedLots = breakdown ต่อ (LOT + หน่วย) จริง — ใช้ export แยกแถว (ดู handleExportBarcode ใน BoxClosedLabel.jsx)
+            // สร้างเสมอ (ไม่ gate ด้วย lot) เพื่อครอบ SKU ไม่มี LOT ที่สแกนปนหน่วยด้วย — lot='' สำหรับ SKU นอก lotMap
+            scannedLots: addLotEntry(it.scannedLots, lot || '', exp, scannedBarcode, scannedUnit),
           }
         : it
     );

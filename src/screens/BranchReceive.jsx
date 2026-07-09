@@ -218,6 +218,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const branchStaff = isControlled ? branchStaffProp : internalBranchStaff;
   const setBranchStaff = isControlled ? setBranchStaffProp : setInternalBranchStaff;
   const [phase, setPhase]             = useState('scan');
+  const [scannedBoxId, setScannedBoxId] = useState(null); // ลังที่ "เครื่องนี้" กำลังตรวจ — local ต่อเครื่อง (ไม่แชร์ข้ามเครื่อง)
   const [query, setQuery]             = useState('');
   const [notFound, setNotFound]       = useState(false);
   const [scanCounts, setScanCounts]   = useState({});
@@ -239,8 +240,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const itemScanRef = useRef(null);
   const staffMenuRef = useRef(null);
 
-  const activeBoxId    = receiveBoxIds.length > 0 ? receiveBoxIds[receiveBoxIds.length - 1] : null;
-  const foundBox       = activeBoxId ? boxes.find(b => b.id === activeBoxId) || null : null;
+  // ลังที่เครื่องนี้กำลังตรวจ = local state (ตั้งตอน startReceive) — ไม่ดึงจาก receiveBoxIds ที่ sync ข้ามเครื่องผ่าน Firestore
+  // (เดิมใช้ receiveBoxIds[last] → 2 เครื่องสแกนคนละลัง จอเด้งเห็นลังเดียวกัน = ตัวที่ sync ล่าสุดชนะ เสี่ยงยืนยันผิดลัง)
+  const foundBox       = scannedBoxId ? boxes.find(b => b.id === scannedBoxId) || null : null;
   const isReceived     = foundBox?.status === 'received';
   const isViewingOther = viewingId !== null && phase !== 'result';
   const viewingBox     = viewingId ? boxes.find(b => b.id === viewingId) : null;
@@ -320,6 +322,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setScanError('');
     setQuery('');
     setViewingId(null);
+    setScannedBoxId(box.id);   // ผูกลังที่ตรวจกับเครื่องนี้ (ไม่พึ่ง receiveBoxIds ที่แชร์)
     setPhase('verify');
   }
 
@@ -406,7 +409,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setScanCounts({}); setQuery(''); setNotFound(false);
     setItemScan(''); setLastScannedSku(null); setScanError('');
     setVerifyResult(null); setViewingId(null);
-    setPhase('scan'); setReportOpen(false); setReportImage(null);
+    setScannedBoxId(null); setPhase('scan'); setReportOpen(false); setReportImage(null);
   }
 
   function saveProblemNote() {
@@ -527,6 +530,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       setVerifyResult(null);
       setSupervisorCode('');
       setRecheckMode(false);
+      setScannedBoxId(null);
       setPhase('scan');
     }
     showToast(`อนุมัติเอกสาร ${targetBoxId} แล้ว ✓ · รับเข้าสาขาเรียบร้อย`, 'success');
@@ -557,6 +561,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setVerifyResult(null);
     setSupervisorCode('');
     setRecheckMode(false);
+    setScannedBoxId(null);
     setPhase('scan');
   }
 
