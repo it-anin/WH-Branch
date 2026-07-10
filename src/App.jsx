@@ -445,14 +445,14 @@ export default function App() {
   useEffect(() => {
     window.__wh = {
       sku: (s) => {
-        const inCatalog = catalog.filter(c => c.sku === s).map(c => ({ sku: c.sku, unit: c.unit, barcode: c.barcode }));
+        const inCatalog = catalog.filter(c => c.sku === s).map(c => ({ sku: c.sku, unit: c.unit, qty: c.qty, barcode: c.barcode }));
         const inMap     = Object.keys(barcodeMap).filter(k => k.startsWith(s + '__')).map(k => ({ key: k, barcodes: barcodeMap[k] }));
         console.table(inCatalog.length ? inCatalog : [{ note: 'ไม่พบใน catalog' }]);
         console.table(inMap.length     ? inMap     : [{ note: 'ไม่พบใน barcodeMap' }]);
       },
       info: () => {
         console.log(`catalog: ${catalog.length} items | barcodeMap keys: ${Object.keys(barcodeMap).length}`);
-        if (catalog.length > 0) console.table(catalog.slice(0, 5).map(c => ({ sku: c.sku, unit: c.unit, barcode: c.barcode })));
+        if (catalog.length > 0) console.table(catalog.slice(0, 5).map(c => ({ sku: c.sku, unit: c.unit, qty: c.qty, barcode: c.barcode })));
       },
       mapKeys: (s) => {
         const keys = Object.keys(barcodeMap).filter(k => k.startsWith(s));
@@ -464,9 +464,9 @@ export default function App() {
         console.table(r.length ? r : [{ note: 'ทุก item มี barcode' }]);
       },
       find: (s) => {
-        const r = catalog.filter(c => c.sku.toLowerCase().includes(s.toLowerCase())).map(c => ({ sku: c.sku, unit: c.unit, barcode: c.barcode, src: 'catalog' }));
+        const r = catalog.filter(c => c.sku.toLowerCase().includes(s.toLowerCase())).map(c => ({ sku: c.sku, unit: c.unit, qty: c.qty, barcode: c.barcode, src: 'catalog' }));
         const allPacker = Object.entries(catalogByPacker).flatMap(([code, items]) =>
-          items.filter(c => c.sku.toLowerCase().includes(s.toLowerCase())).map(c => ({ sku: c.sku, unit: c.unit, barcode: c.barcode, src: `packer:${code}` }))
+          items.filter(c => c.sku.toLowerCase().includes(s.toLowerCase())).map(c => ({ sku: c.sku, unit: c.unit, qty: c.qty, barcode: c.barcode, src: `packer:${code}` }))
         );
         const combined = [...r, ...allPacker];
         console.table(combined.length ? combined : [{ note: `ไม่พบ SKU ที่มี "${s}" ในทั้ง catalog และ catalogByPacker` }]);
