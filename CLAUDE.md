@@ -649,8 +649,8 @@ open → packing → closed → exported → received
 - `hasOver` = มี item ใด item หนึ่งที่ `scanCounts[sku] > item.qty` (สแกนเกิน)
 - reset `scanCounts` เมื่อสแกนลังใหม่ / สแกนลังถัดไป / handleApprove / handleRecheck
 - **ตารางตรวจสอบสินค้า (phase verify):** แสดงคอลัมน์ SKU / ชื่อ / หน่วย / สแกนแล้ว
-  - ไม่มีคอลัมน์ ✓ และไม่มีตัวเลขเปลี่ยนสีเมื่อครบ — ตัวเลขสีดำเสมอ (Blind)
-  - **พนักงานสาขาไม่เห็นจำนวนที่ควรมีในลัง (`needed`)** — เห็นแค่จำนวนที่สแกนไปแล้ว (`count`)
+  - **Android verify list (`ScannedItemRow`) เปลี่ยนสีแถบ+ตัวเลขตามสถานะครบ:** ยังไม่ครบ (`count < needed`)=**แดง** (`#fde8e8`/`#c0392b`) / ครบ (`=== needed`)=**เขียว** (`#e8f0d8`/`var(--green)`) / เกิน (`> needed`)=**เหลือง** (`#fff3cd`/`#e67e22`) — ส่ง `done={count>=needed}` + `over` (ชุดสีเดียวกับ result table [:1047-1050]). เดิมมี 2 สี (`over ? เหลือง : เขียว`) ครบ/ไม่ครบเขียวเหมือนกันแยกไม่ออก. **presentation-only** ไม่แตะ logic นับ/ยืนยัน; Desktop table + recheck panel 🧪 ไม่แตะ
+  - **พนักงานสาขายังไม่เห็นจำนวนที่ควรมีในลัง (`needed`)** — เห็นแค่จำนวนที่สแกนไปแล้ว (`×count`) → semi-blind (สีบอกสถานะครบ แต่ไม่บอกว่าต้องกี่ชิ้น)
 - **กันกดยืนยันรับทั้งที่สแกนไม่ครบ:** ปุ่ม "✓ ยืนยันรับสินค้า" เรียก `requestConfirm` (ไม่ใช่ `handleConfirm` ตรง) — ถ้า `!allChecked` (ยังสแกนไม่ครบทุกรายการ) → เด้ง dialog (portal) **"⚠ ยังสแกนสินค้าไม่ครบ · เหลืออีก N รายการ · ต้องการยืนยันรับเลยหรือไม่?"** → "ยกเลิก · สแกนต่อ" (`setConfirmIncomplete(false)`) หรือ "ยืนยันรับ" (`handleConfirm` ต่อ → result `fail`); ครบแล้ว → `handleConfirm` เลยไม่ถาม (over ก็ครบ = ผ่านตรง ไม่เด้ง — ดูเฉพาะ "ไม่ครบ")
 - **Phase `result`** (Android — หลังกด ✓ ยืนยันรับสินค้า):
   - `verifyResult` = `'ok'` / `'over'` / `'fail'`

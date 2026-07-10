@@ -45,7 +45,7 @@ function compressImage(file, maxW = 800, quality = 0.7) {
 }
 
 // Android: แถวสินค้าที่สแกนแล้ว ปัดซ้ายเกิน SWIPE_THRESHOLD → ถามยืนยัน → ลบรายการสแกน (เลิกนับ) กรณียิงเกิน/ผิด ให้สแกนใหม่
-function ScannedItemRow({ l, count, over, onRemove }) {
+function ScannedItemRow({ l, count, over, done, onRemove }) {
   const [dragX, setDragX] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const dragRef = useRef({ x: 0, dragging: false });
@@ -100,7 +100,7 @@ function ScannedItemRow({ l, count, over, onRemove }) {
         style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '10px 12px', borderRadius: 8,
-          background: over ? '#fff3cd' : '#e8f0d8',
+          background: over ? '#fff3cd' : done ? '#e8f0d8' : '#fde8e8',  // เกิน=เหลือง / ครบ=เขียว / ยังไม่ครบ=แดง
           position: 'relative',
           transform: `translateX(${dragX}px)`,
           transition: dragRef.current.dragging ? 'none' : 'transform 0.2s',
@@ -111,7 +111,7 @@ function ScannedItemRow({ l, count, over, onRemove }) {
           <div style={{ fontFamily: 'system-ui', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</div>
         </div>
         <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', flexShrink: 0 }}>{unitOf(l)}</div>
-        <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: over ? '#e67e22' : 'var(--ink)', minWidth: 28, textAlign: 'center', flexShrink: 0 }}>
+        <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: over ? '#e67e22' : done ? 'var(--green)' : '#c0392b', minWidth: 28, textAlign: 'center', flexShrink: 0 }}>
           {count}
         </div>
       </div>
@@ -1259,7 +1259,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                                 const needed = getNeeded(l);
                                 const count = scanCounts[l.sku] || 0;
                                 return (
-                                  <ScannedItemRow key={l.sku} l={l} count={count} over={count > needed} onRemove={handleRemoveScan} />
+                                  <ScannedItemRow key={l.sku} l={l} count={count} over={count > needed} done={count >= needed} onRemove={handleRemoveScan} />
                                 );
                               })}
                             </div>
