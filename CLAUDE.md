@@ -636,7 +636,7 @@ open → packing → closed → exported → received
    { code: 'BR-03', name: 'นิคกี้' }, { code: 'BR-04', name: 'สุ่ย' },
    { code: 'BR-05', name: 'อ๊อฟ', role: 'pharmacist' }]
   ```
-  - **`role: 'pharmacist'`** ปลดล็อก **recheck mode** บน Android — สแกนซ้ำลัง `problemType='incomplete'` ได้ (รายละเอียดดู section *Pharmacist Recheck Flow*)
+  - **`role: 'pharmacist'`** = สิทธิ์พิเศษตอน recheck: **พนักงานคนไหนก็สแกนซ้ำลัง `problemType='incomplete'` ได้** (แก้ scan พลาด) แต่ถ้ารีเช็คแล้ว**ยังขาด/เกินจริง** เฉพาะ pharmacist ที่ยืนยัน→แจ้งคลังได้ (พนักงานทั่วไปส่งต่อเภสัช) — ดู section *Pharmacist Recheck Flow*
 - Phase: `scan` → `verify` → `result` (3 phases) — **ใช้บน Android เท่านั้น** (Desktop เป็น approval-only ไม่เข้า phase verify/result)
 - **`scanCounts`** = `{[sku]: number}` นับจำนวนชิ้นที่สแกนจริงต่อ SKU (ไม่ใช่ binary Set)
   - สแกน 1 ครั้ง = +1 ชิ้น
@@ -710,23 +710,24 @@ open → packing → closed → exported → received
 
 ## Pharmacist Recheck Flow (Android) — เภสัชสแกนซ้ำลังที่แจ้งปัญหา
 
-**Permission:** เฉพาะ staff ที่มี `role: 'pharmacist'` ใน BRANCH_STAFF (ตอนนี้คือ **BR-05 อ๊อฟ**) — staff อื่นยังบล็อกตามเดิม (`⚠ แจ้งปัญหาแล้ว · รอเภสัชตรวจสอบ`)
+**Permission (อัปเดต):** **พนักงานสาขาคนไหนก็ recheck ลัง `problemType='incomplete'` ได้** (สแกนใหม่แก้ scan พลาดของตัวเอง โดยไม่ต้องรอเภสัช) — เดิมจำกัดเฉพาะ `role: 'pharmacist'`. ลัง **`damaged`** (มีรูป/ปัญหาจริง) ยังบล็อก staff ทั่วไป (`⚠ แจ้งปัญหาแล้ว · รอเภสัชตรวจสอบ`). **ความต่าง pharmacist ↔ พนักงานทั่วไป ย้ายไปอยู่ที่ `handleConfirm` ตอน recheck แล้วยังไม่ตรง** (ดู 4-way ด้านล่าง) — สแกนพลาดใครแก้ก็ได้ แต่ **ของขาด/เกินจริงต้องเภสัชยืนยัน**
 
 ### State + Derived
-- **`recheckMode`** (useState): true เมื่อ pharmacist สแกนซ้ำลัง `problemType='incomplete'` → reset เป็น false ใน `handleScanNext` / `handleApprove` / `handleRecheck`
+- **`recheckMode`** (useState): true เมื่อ**พนักงานคนไหนก็ได้**สแกนซ้ำลัง `problemType='incomplete'` → reset เป็น false ใน `handleScanNext` / `handleApprove` / `handleRecheck`
 - **`verifyItems`** (derived): filter boxItems ให้เหลือเฉพาะ SKU ที่ `problemScanCounts[sku] < qty` (เฉพาะที่ไม่ครบในรอบแรก) — `allChecked` / `doneCount` / `scannedSkuCount` ใช้ `verifyItems` แทน `boxItems` ใน recheck mode
 - **`getDeficit(item)`** (derived — สำคัญ): ใน recheck mode เภสัชต้องสแกน**เฉพาะส่วนที่ขาด** (`needed − problemScanCounts[sku]`) ไม่ใช่ qty เต็ม เช่น เบิก 10 รอบแรกได้ 7 → deficit=3 → เภสัชสแกน 3 ก็ครบ. `fullyChecked` = `scanCounts[sku] >= getDeficit(item)`, `hasOver` (handleConfirm) เทียบกับ `getDeficit` ด้วย. normal mode: `getDeficit = needed` (พฤติกรรมเดิม)
 
 ### Flow
 - **⚠ ลำดับ guard ใน `handleScan` (สำคัญ):** เช็ค `problemReported && !problemResolved` (→ pharmacist recheck / block คนอื่น) **ก่อน** `receivePending` — กัน edge case ที่ลังมีทั้ง `receivePending` และ `problemReported` พร้อมกัน (Firestore race) แล้วเภสัชโดนบล็อกที่ receivePending ก่อนถึง pharmacist exception
-1. **handleScan:** เจอลัง `problemReported && !problemResolved && problemType='incomplete'` + `branchStaff?.role === 'pharmacist'` → `setRecheckMode(true)` + `startReceive(box)` + toast `🔁 รีเช็คลัง {id}` (success)
+1. **handleScan:** เจอลัง `problemReported && !problemResolved && problemType='incomplete'` (**ไม่เช็ค `role` แล้ว** — พนักงานคนไหนก็ได้; เดิมต้อง `role === 'pharmacist'`) → `setRecheckMode(true)` + `startReceive(box)` + toast `🔁 รีเช็คลัง {id}` (success). `damaged` ยังตกไปบล็อก `รอเภสัชตรวจสอบ`
 2. **handleItemScan:** ใน recheck mode ถ้าสแกน SKU ที่ `problemScanCounts[sku] >= needed` (ครบในรอบแรก) → reject + `scanError = "SKU นี้สแกนครบแล้วในรอบแรก"` (กันสแกนนอก verifyItems)
    - **Android แสดงรายการของที่ต้องรีเช็คก่อนสแกน:** panel "🧪 สินค้าที่ต้องรีเช็ค ({doneCount}/{verifyItems.length} SKU)" — แต่ละแถวโชว์ชื่อ/SKU + `{scanCounts}/{getDeficit} {unit}` (สแกนแล้ว/ต้องสแกน) เขียวเมื่อครบ — กันเภสัชไม่รู้ว่าตัวไหนขาดเท่าไหร่
-3. **handleConfirm 3-way split:**
-   - **recheck + ok:** `problemResolved=true`, `problemResolvedBy/At=pharmacist`, `receivePending=true` → รอเภสัชอนุมัติเอกสาร (เหมือนรับปกติ)
-   - **recheck + fail/over (Option B auto-notify):** keep `problemReported=true`, **`problemReviewed=true`** (auto — Outbound badge ขึ้นทันที), `problemNote = auto-generated` ลิสต์ SKU ที่ขาด/เกินพร้อมชื่อ + จำนวน, `problemConfirmedBy/At=pharmacist`, merge `problemScanCounts` รอบใหม่; toast `⚠ เภสัชยืนยันสินค้า{kindLabel} · แจ้งคลังสินค้าแล้ว` (error)
+3. **handleConfirm branch (recheck × role) — 4 ทาง:**
+   - **recheck + ok (พนักงานคนไหนก็ได้):** `problemResolved=true`, `problemResolvedBy/At`, `receivePending=true` → รออนุมัติเอกสาร (= แก้ scan พลาดสำเร็จ ไม่ต้องรอเภสัช)
+   - **recheck + fail/over + `role==='pharmacist'`:** keep `problemReported=true`, **`problemReviewed=true`** (auto — Outbound badge ขึ้นทันที), `problemNote = auto-generated` ลิสต์ SKU ที่ขาด/เกินพร้อมชื่อ + จำนวน, `problemConfirmedBy/At=pharmacist`, merge `problemScanCounts` รอบใหม่; toast `⚠ เภสัชยืนยันสินค้า{kindLabel} · แจ้งคลังสินค้าแล้ว` (error)
      - **`kindLabel` = ขาด / เกิน / ขาด/เกิน** (คำนวณจาก `shortList`: `diff = need − got`, บวก=ขาด ลบ=เกิน) — ใช้ทั้งหัวข้อ note + toast; **เดิม hardcode "ขาด" ตายตัว → กรณีสินค้าเกินแจ้งผิดเป็น "ขาด"** (bug fixed)
-   - **non-pharmacist + fail/over:** flow เดิม — `problemReported=true` รอเภสัชตรวจ (ไม่ trigger `problemReviewed`)
+   - **recheck + fail/over + พนักงานทั่วไป (ใหม่):** = ของขาด/เกิน**จริง** (สแกนใหม่แล้วยังไม่ตรง ไม่ใช่ scan พลาด) → คงเป็น problem `problemReported=true` · **ไม่ set `problemReviewed`/`problemConfirmedBy`** (ไม่ยืนยันแทนเภสัช) · merge `problemScanCounts` รอบล่าสุด; toast `รีเช็คแล้วยังไม่ตรง · รอเภสัชตรวจสอบ` — ส่งต่อเภสัช (ด่านตรวจของขาด/เกินยังอยู่)
+   - **ยืนยันครั้งแรก (ไม่ recheck) + fail/over:** flow เดิม — `problemReported=true` รอรีเช็ค (ไม่ trigger `problemReviewed`)
 
 ### Auto-generated `problemNote` format
 ```

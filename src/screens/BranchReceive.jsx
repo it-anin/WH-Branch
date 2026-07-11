@@ -354,10 +354,12 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       showToast(`⚠ ${boxLabel}รับเข้าสาขาแล้ว`, 'error');
       return;
     }
-    // เภสัช recheck ต้องเช็คก่อน receivePending — ป้องกันกรณีที่ลังมีทั้ง receivePending=true และ problemReported=true
-    // พร้อมกัน (edge case / Firestore race) ซึ่งจะทำให้เภสัชโดนบล็อกก่อนถึง pharmacist exception
+    // recheck ต้องเช็คก่อน receivePending — ป้องกันกรณีที่ลังมีทั้ง receivePending=true และ problemReported=true
+    // พร้อมกัน (edge case / Firestore race) ซึ่งจะทำให้โดนบล็อกก่อนถึง recheck exception
     if (box.problemReported && !box.problemResolved) {
-      if (branchStaff?.role === 'pharmacist' && box.problemType === 'incomplete') {
+      // พนักงานสาขาคนไหนก็ recheck ลังที่สแกนพลาด (incomplete) ได้ — สแกนใหม่ให้ตรง (เดิมจำกัดเฉพาะเภสัช);
+      // ลัง damaged (มีรูป/ปัญหาจริง) ยังตกไปบล็อกด้านล่าง → รอเภสัช/คลังจัดการ
+      if (box.problemType === 'incomplete') {
         setRecheckMode(true);
         startReceive(box);
         showToast(`🔁 รีเช็คลัง ${box.id}`, 'success');
@@ -456,7 +458,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         receivingBy: null,
         updated: time,
       } : b));
-    } else if (recheckMode) {
+    } else if (recheckMode && branchStaff?.role === 'pharmacist') {
       // เภสัช recheck แล้วยังขาด/เกิน → ยืนยันสินค้าขาด → auto-แจ้งคลัง + auto-generate note
       const mergedCounts = { ...foundBox.problemScanCounts, ...scanCounts };
       const shortList = boxItems
@@ -492,8 +494,22 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         updated: time,
       } : b));
       showToast(`⚠ เภสัชยืนยันสินค้า${kindLabel} · แจ้งคลังสินค้าแล้ว`, 'error');
+    } else if (recheckMode) {
+      // พนักงานทั่วไป recheck แล้วยังขาด/เกิน (= ของขาด/เกินจริง ไม่ใช่สแกนพลาด) → คงเป็น problem รอเภสัช
+      // ไม่ auto-confirm/แจ้งคลังแทนเภสัช (ต่างจาก branch เภสัชด้านบน) — เก็บ count รอบล่าสุดไว้ให้เภสัชดู
+      const mergedCounts = { ...foundBox.problemScanCounts, ...scanCounts };
+      setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
+        ...b,
+        problemReported: true,
+        problemResolved: false,
+        problemType: 'incomplete',
+        problemScanCounts: mergedCounts,
+        receivingBy: null,
+        updated: time,
+      } : b));
+      showToast('รีเช็คแล้วยังไม่ตรง · รอเภสัชตรวจสอบ', 'error');
     } else {
-      // พนักงานทั่วไป: ไม่ครบ/เกิน → ส่งให้รีเช็ค (รอเภสัช)
+      // พนักงานทั่วไป (ยืนยันครั้งแรก ไม่ใช่ recheck): ไม่ครบ/เกิน → ส่งให้รีเช็ค (รอเภสัช)
       setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
         ...b,
         problemReported: true,
