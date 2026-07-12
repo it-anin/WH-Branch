@@ -89,6 +89,9 @@ function receiveBadge(b) {
 // ชื่อสาขาเต็ม (ผู้รับบนสติกเกอร์) — map จาก box.branch (= suffix ของ Picklist_XXX)
 const BRANCH_NAMES = { SRC: 'สาขาชากค้อ', KKL: 'สาขาเก้ากิโล', SSS: 'สาขาสวนเสือศรีราชา' };
 const branchLabel = (code) => code ? (BRANCH_NAMES[code] || `สาขา ${code}`) : 'สาขาปลายทาง';
+// ราคาทุน × markup เฉพาะบางสาขา (key = box.branch = suffix ของ Picklist_XXX, uppercase) — ใช้เฉพาะคอลัมน์ทุนในไฟล์ Text
+// สาขาที่ไม่มี key → markup 1 (ค่าทุนเดิมไม่เปลี่ยน); เพิ่มสาขาใหม่แก้ที่นี่จุดเดียว
+const COST_MARKUP = { WRD: 1.013, ONN: 1.013 };
 
 // เนื้อหาสติกเกอร์ติดลัง (ดีไซน์ "ป้ายพัสดุ FROM/TO" + เลขที่เอกสารตัวใหญ่) — 90×65mm
 // ใช้ร่วมทั้ง preview บนจอ (.print-label) และตัวพิมพ์จริง (.print-only-label portal) → เนื้อหาตรงกันเป๊ะ ไม่ drift
@@ -214,11 +217,14 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       return;
     }
     if (boxItems.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังนี้'); return; }
+    // บางสาขา (WRD/ONN) ส่งออกทุน × markup — สาขาอื่น markup=1 ค่าเดิม byte-identical
+    const markup = COST_MARKUP[String(activeBox.branch || '').toUpperCase()] || 1;
     const lines = boxItems.flatMap(l =>
       // โครงสร้าง POS: barcode TAB qty TAB cost + 6 TAB + lot TAB exp — exp แปลง ค.ศ.→พ.ศ. ตอนนี้
       // ทุน = costMap[sku__หน่วยที่สแกนจริง] (เช่นสแกนกล่อง → ทุนต่อกล่อง) ไม่ใช่หน่วย picklist
       lotRows(l, lotMap).map(r => {
-        const cost = costMap[`${l.sku}__${r.unit || l.unit}`] ?? 0;
+        const rawCost = costMap[`${l.sku}__${r.unit || l.unit}`] ?? 0;
+        const cost = markup === 1 ? rawCost : Math.round(rawCost * markup * 100) / 100; // ปัด 2 ตำแหน่ง (เงิน)
         return `${r.barcode}\t${r.qty}\t${cost}\t\t\t\t\t\t${r.lot}\t${toBuddhistExp(r.exp)}`;
       })
     );
