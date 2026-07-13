@@ -97,7 +97,8 @@ const COST_MARKUP = { WRD: 1.013, ONN: 1.013 };
 // ใช้ร่วมทั้ง preview บนจอ (.print-label) และตัวพิมพ์จริง (.print-only-label portal) → เนื้อหาตรงกันเป๊ะ ไม่ drift
 // วันที่ = วันที่กดพิมพ์ (new Date) ตามที่ตกลง — ระบบไม่ได้เก็บ approvedAt เพื่อไม่แตะ flow อนุมัติที่ล็อกไว้
 function StickerLabel({ box }) {
-  const doc = box.pos && box.pos !== '—' ? box.pos : '—';
+  // เลขที่เอกสาร: blank จนกว่าจะกรอก + กดอนุมัติเอกสาร (ตอนนั้น box.pos ถูก set พร้อม status='exported')
+  const doc = box.pos && box.pos !== '—' ? box.pos : '';
   const printDate = new Date().toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
   const tag = { fontSize: 8, fontWeight: 800, background: '#000', color: '#fff', padding: '1px 6px', borderRadius: 3 };
   const kLabel = { fontSize: 9, fontWeight: 700, color: '#555', letterSpacing: '.3px' };
@@ -112,7 +113,7 @@ function StickerLabel({ box }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '2px solid #000', paddingBottom: 4 }}>
         <div style={{ minWidth: 0 }}>
           <div style={kLabel}>เลขที่เอกสาร</div>
-          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 16, fontWeight: 800, lineHeight: 1, whiteSpace: 'nowrap' }}>{doc}</div>
+          <div style={{ fontFamily: 'JetBrains Mono', fontSize: 16, fontWeight: 800, lineHeight: 1, minHeight: 16, whiteSpace: 'nowrap' }}>{doc}</div>
         </div>
         <div style={{ textAlign: 'right', flex: '0 0 auto', paddingLeft: 8 }}>
           <div style={kLabel}>วันที่อนุมัติ</div>
