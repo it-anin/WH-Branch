@@ -1,13 +1,9 @@
 import { useState } from 'react';
 import PackScanC from './PackScanC.jsx';
 import BranchReceive from './BranchReceive.jsx';
-import { BRANCHES, getBranch } from '../branches.js';
 
-// WAREHOUSE = คลังสินค้า (แพ็คกิ้งเท่านั้น) — ไม่อยู่ใน BRANCHES เพราะไม่มี staff รับสินค้า + ไม่กระทบ desktop filter
-const WAREHOUSE = { code: 'WAREHOUSE', name: 'WAREHOUSE', warehouse: true };
-const resolveLoc = (code) => code === 'WAREHOUSE' ? WAREHOUSE : getBranch(code);
-
-// สไตล์ปุ่มการ์ดใหญ่ (หน้าเลือกที่ทำงาน / เลือกพนักงาน)
+// location (คลัง/สาขา) มาจากโปรไฟล์ที่ login (prop) — Login แทนหน้า "เลือกที่ทำงาน" เดิมแล้ว
+// สไตล์ปุ่มการ์ดใหญ่ (หน้าเลือกพนักงาน)
 const cardBtn = {
   padding: '9px 16px',
   border: '2px solid var(--line)',
@@ -34,10 +30,11 @@ const pickerInner = {
 
 export default function AndroidApp({
   screenProps,
+  profile, logout,
   packer, setPacker, PACKERS, catalogByPacker,
   onScanProgress, catalogMeta,
 }) {
-  const [branch, setBranch] = useState(() => resolveLoc(localStorage.getItem('wh_branch')));
+  const branch = profile; // location = โปรไฟล์ที่ login (คลัง/สาขา) — Login แทน picker ขั้นที่ 1 เดิม
   const [branchStaff, setBranchStaff] = useState(null);
   const packCatalog = packer ? (catalogByPacker[packer.code] || screenProps.catalog) : screenProps.catalog;
   const isWarehouse = branch?.warehouse === true;
@@ -47,63 +44,14 @@ export default function AndroidApp({
   const currentStaff = isWarehouse ? packer : branchStaff;
   const setStaff     = isWarehouse ? setPacker : setBranchStaff;
 
-  // เลือกที่ทำงาน → ล้างพนักงานทั้ง 2 โหมดเสมอ → ไปหน้าเลือกพนักงาน
-  function selectBranch(b) {
-    setBranch(b);
-    setBranchStaff(null);
-    setPacker(null);
-    localStorage.setItem('wh_branch', b.code);
-  }
-  // กลับไปหน้าเลือกที่ทำงาน
+  // "เปลี่ยนที่ทำงาน" = ออกจากระบบ (กลับหน้า Login) + ล้าง packer ที่ lifted (branchStaff local หายเองตอน unmount)
   function changeBranch() {
-    setBranch(null);
-    setBranchStaff(null);
     setPacker(null);
-    localStorage.removeItem('wh_branch');
+    logout();
   }
 
-  // ── ขั้นที่ 1: เลือกที่ทำงาน ──
-  if (!branch) {
-    return (
-      <div style={fullScreen}>
-        <div style={pickerInner}>
-        <div style={{ fontSize: 34 }}>📍</div>
-        <div style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--ink)' }}>
-          เลือกที่ทำงาน
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 320 }}>
-          {/* WAREHOUSE — แพ็คกิ้ง */}
-          <button className="loc-btn" onClick={() => selectBranch(WAREHOUSE)}
-            style={{ ...cardBtn, border: '2px solid var(--accent)', background: 'var(--accent-soft)' }}>
-            <span style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>
-              📦 WAREHOUSE
-            </span>
-            <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--accent)' }}>
-              แพ็คกิ้ง
-            </span>
-          </button>
-
-          <div style={{ height: 1, background: 'var(--line)', opacity: 0.5, margin: '2px 0' }} />
-
-          {/* สาขา — รับสินค้า */}
-          {BRANCHES.map((b, i) => (
-            <button key={b.code} className="loc-btn" onClick={() => selectBranch(b)}
-              style={{ ...cardBtn, animationDelay: `${(i + 1) * 70}ms` }}>
-              <span style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>
-                {b.name}
-              </span>
-              <span style={{ fontFamily: 'system-ui', fontSize: 13, color: 'var(--mute)' }}>
-                รับสินค้า · {b.staff.length} คน
-              </span>
-            </button>
-          ))}
-        </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── ขั้นที่ 2: เลือกพนักงาน (ก่อนเข้าหน้าสแกน) ──
+  // ── ขั้นที่ 1 (เดิม "เลือกที่ทำงาน") ถูกแทนด้วยหน้า Login แล้ว — เข้ามาที่นี่คือ login แล้วเสมอ ──
+  // ── ขั้นเลือกพนักงาน (ก่อนเข้าหน้าสแกน) ──
   if (!currentStaff) {
     return (
       <div style={fullScreen}>

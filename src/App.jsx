@@ -9,6 +9,8 @@ import LookupByBoxBarcode from './screens/LookupByBoxBarcode.jsx';
 import BranchReceive from './screens/BranchReceive.jsx';
 import PackerDashboard from './screens/PackerDashboard.jsx';
 import AndroidApp from './screens/AndroidApp.jsx';
+import Login from './screens/Login.jsx';
+import { resolveProfile } from './branches.js';
 import Toast from './components/Toast.jsx';
 import ImportCatalog from './components/ImportCatalog.jsx';
 import ImportBarcodeMap from './components/ImportBarcodeMap.jsx';
@@ -24,6 +26,12 @@ const TABS = [
   { k: 'receive', label: '📥 รับสินค้า (สาขา)' },
 ];
 
+// tab ที่แต่ละ role เห็นบน Desktop (A1 login) — warehouse = งานคลัง, branch = รับสินค้าเท่านั้น (ปรับที่นี่จุดเดียว)
+const ROLE_TABS = {
+  warehouse: ['flow', 'list', 'scan', 'closed'],
+  branch: ['receive'],
+};
+
 const ACCENT = '#e8692b';
 const ACCENT_SOFT = '#f5c9a8';
 
@@ -36,6 +44,9 @@ const isAndroidMode = new URLSearchParams(window.location.search).get('android')
 
 export default function App() {
   const [tab, setTab] = useState(() => localStorage.getItem('wh_tab') || 'flow');
+  // โปรไฟล์ login รายที่ทำงาน (A1) — resolve จาก localStorage; null = ยังไม่ login → แสดงหน้า Login
+  const [profile, setProfile] = useState(() => resolveProfile(localStorage.getItem('wh_profile')));
+  const logout = useCallback(() => { localStorage.removeItem('wh_profile'); setProfile(null); }, []);
   const [boxes, _setBoxes] = useState([]);
   const [activeBoxId, setActiveBoxId] = useState(null);
   const [packer, setPacker] = useState(null);
@@ -58,6 +69,12 @@ export default function App() {
   const receiveBoxIdsRef = useRef([]);
 
   useEffect(() => { localStorage.setItem('wh_tab', tab); }, [tab]);
+  // Desktop: ถ้า tab ปัจจุบันไม่อยู่ในสิทธิ์ของ role ที่ login (เช่นสาขาค้างที่ tab คลังจาก wh_tab เดิม) → เด้งไป tab แรกที่เห็นได้
+  useEffect(() => {
+    if (!profile) return;
+    const allowed = ROLE_TABS[profile.role] || [];
+    if (allowed.length > 0 && !allowed.includes(tab)) setTab(allowed[0]);
+  }, [profile, tab]);
   // history เก็บใน Firestore (config/history collection) — ไม่ต้อง persist localStorage แล้ว
 
   useEffect(() => {
@@ -621,11 +638,23 @@ export default function App() {
 
   const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, pendingApprovalBoxId, setPendingApprovalBoxId };
 
+  // Gate: ยังไม่ login → แสดงหน้า Login (ทั้ง Android + Desktop)
+  if (!profile) {
+    return (
+      <>
+        <Login onLogin={setProfile} showToast={showToast} />
+        <Toast toasts={toasts} />
+      </>
+    );
+  }
+
   if (isAndroidMode) {
     return (
       <>
         <AndroidApp
           screenProps={screenProps}
+          profile={profile}
+          logout={logout}
           packer={packer}
           setPacker={setPacker}
           PACKERS={PACKERS}
@@ -643,7 +672,7 @@ export default function App() {
       <div className="topbar">
         <h1>Warehouse - Inbound &amp; Outbound</h1>
         <div className="tabs">
-          {TABS.map((t) => {
+          {TABS.filter(t => (ROLE_TABS[profile.role] || []).includes(t.k)).map((t) => {
             const problemReceiveN = boxes.filter(b => b.problemReported && !b.problemResolved).length;
             const problemOutboundN = boxes.filter(b => b.problemReviewed && !b.problemResolved).length;
             const badgeCount = t.k === 'receive' ? boxes.filter(b => b.receivePending).length + problemReceiveN
@@ -663,6 +692,12 @@ export default function App() {
               </button>
             );
           })}
+        </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
+            {profile.warehouse ? '📦 WAREHOUSE' : `🏢 ${profile.name}`}
+          </span>
+          <button className="btn sm ghost" onClick={logout} title="ออกจากระบบ">ออกจากระบบ</button>
         </div>
       </div>
 
@@ -825,7 +860,7 @@ export default function App() {
               <span className="num">06</span> รับสินค้าเข้าสาขา
               <span className="desc">— สาขาสแกนบาร์โค้ดลัง → ตรวจและยืนยันรับสินค้า</span>
             </div>
-            <BranchReceive {...screenProps} />
+            <BranchReceive {...screenProps} branch={profile.role === 'branch' ? profile.code : null} />
           </>
         )}
 

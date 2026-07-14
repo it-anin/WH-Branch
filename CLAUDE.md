@@ -97,14 +97,21 @@ export const ALL_BRANCH_STAFF = ...  // flatten ทุกสาขา (+ branch 
 ```
 - **code สาขา = suffix ของ Picklist** (`Picklist_SRC` → `SRC`) → ตรงกับ `catalogMeta.branch` และ `box.branch`
 - **`role: 'pharmacist'`** = สิทธิ์เดียวที่มีตอนนี้ — ตรวจใน `handleScan` (BranchReceive) ว่าให้เข้า recheck mode หรือบล็อก. แต่ละสาขามีเภสัช 1 คน
-- **AndroidApp — flow 3 ขั้น:** (1) **เลือกที่ทำงาน** → (2) **เลือกพนักงาน** → (3) **หน้าสแกน** — แต่ละขั้นเป็นหน้าจอเต็ม gate ด้วย `if (!branch)` / `if (!currentStaff)`
-  - **ขั้น 1 เลือกที่ทำงาน:** **WAREHOUSE** + 3 สาขา; location เก็บใน `localStorage['wh_branch']`
-    - **WAREHOUSE** (sentinel `{code:'WAREHOUSE', warehouse:true}` — module-level, **ไม่อยู่ใน BRANCHES**) → โหมดแพ็คกิ้ง
-    - **สาขา (SRC/KKL/SSS)** → โหมดรับสินค้า
-  - **ขั้น 2 เลือกพนักงาน:** `staffList = isWarehouse ? PACKERS : branch.staff`; `currentStaff/setStaff = isWarehouse ? packer/setPacker : branchStaff/setBranchStaff` (packer = lifted ที่ App.jsx, branchStaff = local) — เภสัชมี tag 💊; ปุ่ม "← เปลี่ยนที่ทำงาน" → `changeBranch`
-    - **staff ไม่ persist** — `selectBranch`/`changeBranch` ล้าง packer+branchStaff เสมอ → reload แล้วต้องเลือกพนักงานใหม่ทุกครั้ง (location ยังจำได้)
-  - **ขั้น 3 หน้าสแกน:** PackScanC (warehouse) / BranchReceive (`branch={branch.code}`); header โชว์ ที่ทำงาน + 👤 พนักงาน + ปุ่ม "เปลี่ยน" (`setStaff(null)` → กลับขั้น 2) — ไม่มี bottom bar / tab switching แล้ว (เคยมีป้ายโหมด "📦 แพ็คกิ้ง"/"📥 รับสินค้า" ใต้จอ ลบออกแล้วเพราะซ้ำซ้อนกับ header)
-- **เดิม** เคย hardcode `BRANCH_STAFF` (BR-01..BR-05) ซ้ำใน BranchReceive.jsx + AndroidApp.jsx — ย้ายมา `branches.js` แล้ว (BranchReceive import `ALL_BRANCH_STAFF`, AndroidApp import `BRANCHES`)
+- **Login (A1) แทน "เลือกที่ทำงาน"** — ตั้งแต่เพิ่ม login รายที่ทำงาน location มาจาก**โปรไฟล์ที่ login** (prop `profile` จาก App.jsx) ไม่ใช่ picker/`wh_branch` เดิม (ดู *Login โปรไฟล์รายที่ทำงาน* ด้านล่าง)
+- **AndroidApp — flow 2 ขั้น** (เดิม 3, ตัด "เลือกที่ทำงาน" ออกเพราะ login แทน): (1) **เลือกพนักงาน** → (2) **หน้าสแกน** — gate ด้วย `if (!currentStaff)`
+  - `const branch = profile` (location จาก login): **WAREHOUSE** (`warehouse:true`) → โหมดแพ็คกิ้ง · **สาขา (SRC/KKL/SSS)** → โหมดรับสินค้า
+  - **ขั้นเลือกพนักงาน:** `staffList = isWarehouse ? PACKERS : branch.staff`; `currentStaff/setStaff = isWarehouse ? packer/setPacker : branchStaff/setBranchStaff` (packer = lifted ที่ App.jsx, branchStaff = local) — เภสัชมี tag 💊; ปุ่ม "← เปลี่ยนที่ทำงาน" → `changeBranch` = **`setPacker(null)` + `logout()`** (กลับหน้า Login)
+    - **staff ไม่ persist** — logout ล้าง packer + AndroidApp unmount → branchStaff (local) หายเอง
+  - **ขั้นหน้าสแกน:** PackScanC (warehouse) / BranchReceive (`branch={branch.code}`); header โชว์ ที่ทำงาน + 👤 พนักงาน + ปุ่ม "เปลี่ยน" (`setStaff(null)` → กลับขั้นเลือกพนักงาน)
+- **เดิม** เคย hardcode `BRANCH_STAFF` (BR-01..BR-05) ซ้ำใน BranchReceive.jsx + AndroidApp.jsx — ย้ายมา `branches.js` แล้ว (BranchReceive import `ALL_BRANCH_STAFF`)
+
+### Login โปรไฟล์รายที่ทำงาน (A1 เบา) — `src/screens/Login.jsx`
+- **เป้าหมาย:** แยกมุมมองต่อที่ทำงาน (โดยเฉพาะ Desktop รับสินค้าที่เดิมเห็นทุกสาขาปนกัน) — **A1 = แยกมุมมองเท่านั้น ไม่แตะ Firestore rules/data model** (ข้อมูลยัง global โหลดหมด กรองที่ UI)
+- **โปรไฟล์ = รายที่ทำงาน** (`PROFILES = [WAREHOUSE, ...BRANCHES]` ใน branches.js) — แต่ละอันมี `role`: `warehouse` / `branch`; login แล้ว**ยังเลือกพนักงานต่อ** (track `packer`/`receivedBy` เหมือนเดิม)
+- **flow:** App.jsx gate `if (!profile) return <Login>` (ก่อน `isAndroidMode`) → Login เลือกที่ทำงาน + กรอกรหัส → เทียบ `config/auth.passwords` (getDoc ครั้งเดียว) → `setProfile` + `localStorage['wh_profile']` → `logout()` ล้าง + กลับ Login
+- **Desktop role-based tabs** (`ROLE_TABS` module-scope ใน App.jsx): `warehouse` → `[flow, list, scan, closed]` · `branch` → `[receive]` เท่านั้น — filter `TABS` + useEffect เด้ง tab ให้ตรง role ถ้า `wh_tab` เดิมไม่อยู่ในสิทธิ์; topbar โชว์ชื่อโปรไฟล์ + ปุ่ม "ออกจากระบบ"
+- **Desktop รับสินค้า scope:** `<BranchReceive branch={profile.role==='branch' ? profile.code : null} />` → สาขาเห็นเฉพาะตัวเอง (reuse `matchBranch` เดิม), **คลัง (null) เห็นทุกสาขา**
+- **⚠ ต้องตั้ง `config/auth.passwords` ใน Firebase console ก่อน deploy** ไม่งั้น login ไม่ผ่าน; ทุกคน login ใหม่หลัง deploy (ไม่มี `wh_profile` เดิม)
 
 ### กรองลังตามสาขา (Android receive)
 - **`box.branch`** (field บน box) — set ตอน `createNewBox` จาก `catalogMeta?.branch` (สาขาของ Picklist ที่ import ล่าสุด) → sync Firestore `boxes/{id}`
@@ -209,6 +216,7 @@ export const onAuthReady = (cb) => onAuthStateChanged(auth, (user) => { if (user
 | `config/receive` | ลังที่รับแล้ว | `{ ids: string[] }` |
 | `config/boxCounter` | serial counter ต่อวัน | `{ [ddmm]: number }` ← atomic counter สำหรับ createNewBox |
 | `config/zoneAssignments` | โซนต่อพนักงาน | `{ assignments: {[code]: string[]} }` ← array ของ zone prefix เช่น `['A','B','COOL']` |
+| `config/auth` | รหัสผ่าน login รายที่ทำงาน (A1) | `{ passwords: { WAREHOUSE, SRC, KKL, SSS } }` ← **ตั้งใน Firebase console เอง** · Login อ่านด้วย `getDoc` (ครั้งเดียว) เทียบ client-side · ⚠ rules เปิด = รหัสอ่านได้ฝั่ง client ไม่ใช่ security จริง |
 
 **barcodeMap ใช้ array format** เพื่อหลีก Firestore "too many index entries" limit
 
@@ -442,6 +450,8 @@ open → packing → closed → exported → received
 | key | ข้อมูล |
 |---|---|
 | `wh_tab` | tab ที่เปิดอยู่ |
+| `wh_profile` | **โปรไฟล์ login รายที่ทำงาน (A1)** — code ('WAREHOUSE'/'SRC'/'KKL'/'SSS'); `resolveProfile()` แปลงเป็น profile object ตอน init; ล้างตอน logout → กลับหน้า Login |
+| `wh_branch` | **(deprecated)** เดิม AndroidApp เก็บที่ทำงานที่เลือก — แทนที่ด้วย `wh_profile` (login) แล้ว, ไม่ได้อ่าน/เขียนอีก |
 | `wh_history` | (deprecated) ประวัติลังที่ clear แล้ว — ตอนนี้ย้ายไป Firestore `history/*` แล้ว, key นี้คงไว้เป็น migration fallback (อ่านครั้งเดียวตอน init, ไม่ได้เขียนใหม่) |
 
 ---
