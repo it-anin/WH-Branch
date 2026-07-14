@@ -19,17 +19,6 @@ export const UNIT_FACTOR_OVERRIDE = {
 export const lookupFactor = (factorMap, sku, unit) =>
   factorMap[`${sku}__${unit}`] ?? UNIT_FACTOR_OVERRIDE[`${sku}__${unit}`] ?? STANDARD_UNIT_FACTOR[unit] ?? 1;
 
-// หาชื่อ "หน่วยฐาน" ของ SKU = หน่วยที่ factor === 1 ใน R05.106 (ทุก SKU มีเสมอ — ดู CLAUDE.md ไฟล์ 2)
-// ไม่เจอ (SKU ไม่อยู่ใน factorMap เลย) → fallback (logic เดียวกับ baseUnitOf inline ใน PackScanC)
-export function baseUnitOf(factorMap, sku, fallback = '') {
-  for (const key of Object.keys(factorMap || {})) {
-    if (factorMap[key] !== 1) continue;
-    const idx = key.indexOf('__');
-    if (key.slice(0, idx) === sku) return key.slice(idx + 2);
-  }
-  return fallback;
-}
-
 // index บาร์โค้ด → { sku, unit } จาก barcodeMap ({ sku__unit: [barcodes] })
 // ใช้ resolve ว่าบาร์โค้ดที่พนักงานสาขาสแกนเป็นหน่วยอะไรของ SKU ไหน (เพื่อรู้ factor ตอนรับเข้า)
 export function buildBarcodeIndex(barcodeMap) {
