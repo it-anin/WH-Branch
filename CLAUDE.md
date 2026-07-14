@@ -408,6 +408,7 @@ open → packing → closed → exported → received
 ### Box object — fields เสริม (นอกจาก id/status/packer/pos/skuCount/totalQty/updated/createdAt)
 | field | ตั้งค่าเมื่อ | ใช้ที่ | ล้างเมื่อ |
 |---|---|---|---|
+| `closedAt` | `doClose()` (PackScanC) — epoch ms | KPI เวลาเปิด→ปิดลัง คู่กับ `createdAt` — คอลัมน์ "เปิดลัง"/"ปิดลัง" ใน BoxList | — (ลังเก่าก่อนมี field นี้ = ไม่มีค่า → แสดง `—`) |
 | `textExported` | กดส่งออกไฟล์ Text (Outbound) | disable ปุ่มส่งออก Text กันส่งซ้ำ | clearBoxes (ลบ box) |
 | `receivePending` | Android กดยืนยันรับ (ผล ok) | Desktop receive แสดง card รออนุมัติ + tab badge | handleApprove (→ received) |
 | `receivedBy` | Android กดยืนยันรับ | BoxCard "ตรวจสอบโดย:" + staff filter (desktop) | — (คงไว้) |
@@ -462,18 +463,18 @@ open → packing → closed → exported → received
 - **`scannedLots` field** — breakdown จำนวนจริงต่อ **(LOT + หน่วย)** บน item (ต่างจาก `item.lot`/`item.scannedUnit` ที่เป็นค่าเดียวที่โดน overwrite ทุกครั้งที่สลับ) เก็บเป็น `[{lot, qty, exp, scannedBarcode, unit}]` — สร้าง/อัพเดทใน `addLotEntry()` ที่เรียกจาก `applyScan` **ทุกครั้ง** (ไม่ gate ด้วย `lot` แล้ว — ส่ง `lot || ''` เพื่อครอบ SKU ไม่มี LOT ด้วย): key = `l.lot === lot && (l.unit||'') === (unit||'')` — ถ้า (LOT, หน่วย) นั้นมีอยู่แล้ว → `qty += 1`, ไม่งั้น push entry ใหม่ — auto-survive เข้า `doClose()`/`itemsByBox` ผ่าน spread เดียวกับ `scannedBarcode` (ไม่ต้องแก้ `doClose`) → ใช้แยกแถวตอน export เมื่อ SKU เดียวกันในลังถูกสแกน**คนละ LOT หรือคนละหน่วย** (เช่นเบิก 8 แพ็ค แต่แพ็ค 2 แพ็ค + 1 ลัง → 2 แถว ไม่ยุบเป็นหน่วยล่าสุด — ดู *Outbound — ⇩ ส่งออกไฟล์ Text*) — ลังเก่าก่อน fix นี้ไม่มี field นี้ → export fallback ไปใช้ `item.lot`/`item.qty` แถวเดียวตามเดิม. **⚠ key ด้วย lot อย่างเดียว (เดิม) ทำให้สแกนปนหน่วยยุบเป็นหน่วยล่าสุด + บาร์โค้ดผิด → ส่ง POS หักสต็อกผิด**
 - Barcode lookup ใช้ `catalog` prop (ไม่ใช่ local `items`) เพื่อให้ unit validation ทำงานถูกต้อง
 - **Optimistic UI:** `setItems(newItems)` เรียกก่อน `await createNewBox()` — UI อัพทันที Firestore sync ใน background
-- `handleBarcode`: validate barcode → `setItems` ทันที → `createNewBox()` ถ้าไม่มี activeBoxId → `onScanProgress`
+- `handleBarcode`: validate barcode → `setItems` ทันที → `createNewBox()` ถ้าไม่มี activeBoxId (**Desktop เท่านั้น** — Android บังคับกด "เปิดลัง" ก่อนเสมอ ดู *เปิดลัง (Android)* ด้านล่าง) → `onScanProgress`
 - `isClosing` state — block การสแกนระหว่าง doClose กำลัง await createNewBox
 - ทุกครั้งที่สแกนสำเร็จ → เรียก `onScanProgress(boxId, newItems)` → Firestore `progress/{boxId}`
 - **`doClose()`** — component-level async function (ไม่ nested ใน handleCloseBox):
   1. `setIsClosing(true)` + capture `closingBoxId = activeBoxId`
-  2. บันทึก boxes + itemsByBox + clear progress
+  2. บันทึก boxes (+ **`closedAt: Date.now()`** — KPI เวลาปิดลัง คู่กับ `createdAt`) + itemsByBox + clear progress
   3. **reset `items` / `page` / `search` ทันที ก่อน await** — ป้องกันสแกนซ้ำลงลังเก่า
-  4. `await createNewBox()` — เปิดลังใหม่
+  4. **Android: `setActiveBoxId(null)`** (ต้องกด "เปิดลัง" ใหม่ก่อนแพ็คลังถัดไป — ดู *เปิดลัง (Android)*) · **Desktop: `await createNewBox()`** เปิดลังใหม่อัตโนมัติเหมือนเดิม
   5. `setIsClosing(false)`
 - **`confirmClose`** state — แทน `window.confirm`: ใช้ `createPortal(content, document.body)` render ตรงไปที่ root DOM — แสดง dialog ตรงกลางจอ ทำงานทั้ง Android และ Desktop โดยไม่ถูก stacking context ของ AndroidApp (`position: fixed; inset: 0`) บัง
   - Portal อยู่ที่ top-level ของ component (ก่อน `showHistory`) — ไม่อยู่ใน Android/Desktop branch ใดทั้งนั้น
-- เมื่อปิดลัง: บันทึกเฉพาะ item ที่ `got > 0`, ลบ item ที่ `got >= need` ออกจาก checklist, เปิดลังใหม่อัตโนมัติ
+- เมื่อปิดลัง: บันทึกเฉพาะ item ที่ `got > 0`, ลบ item ที่ `got >= need` ออกจาก checklist · **Desktop เปิดลังใหม่อัตโนมัติ / Android ต้องกด "เปิดลัง" เอง**
 - **ต้องเลือกพนักงานก่อน** ถึงจะเห็นรายการสินค้า — ถ้า `packer === null` แสดง placeholder แทน PackScanC
 - Toast: `'error'` สำหรับ scan ล้มเหลว, `'success'` สำหรับปิดลัง/เปิดลังใหม่สำเร็จ
   - ปิดลังสำเร็จ → `"ปิดลัง BX-xxxx แล้ว ✓"` (ไม่มีข้อความ "เปิดลังใหม่อัตโนมัติ")
@@ -487,11 +488,22 @@ open → packing → closed → exported → received
 - **กันปิดลังว่าง:** `handleCloseBox` guard แรก — ถ้า `!items.some(got > 0)` (ยังไม่มีสินค้าสแกนลงลัง เช่นเพิ่งเปิด/ยกของค้างมาแต่ยังไม่สแกน) → `playScanFail()` + toast `'error'` "⚠ ปิดลังไม่ได้ — ต้องสแกนสินค้าลงลังก่อน" แล้ว return (ไม่เข้า confirmClose/doClose)
 - **ปิดลังทั้งที่ยังไม่ครบ:** `handleCloseBox` เช็ค `items.every(gotBase >= need)` — ถ้าไม่ครบ → dialog "⚠ สินค้าไม่ครบ / ปิดลังเลยไหม?" (`confirmClose`) → ยืนยัน → `doClose`
 - **Android mode** (`isAndroid` = module-level const จาก `?android=1`):
-  - Layout 2 rows: barcode input + ปิดลัง (row 1) / search (row 2) — ไม่ใช้ `.btn.lg` / `.input.big`
-  - ไม่มีปุ่ม "+ ใหม่" บน Android — ปิดลังแล้วเปิดลังใหม่อัตโนมัติจาก `doClose()` เสมอ
-  - `barcodeRef` + `useEffect` (ไม่มี dependency) คืน focus กลับ barcode input หลังทุก render **ยกเว้นเมื่อ `showSearch === true`** — ป้องกัน focus ถูกดึงกลับขณะพิมพ์ค้นหา
+  - Layout 2 rows: barcode input + ปิดลัง (row 1) / search (row 2) — ไม่ใช้ `.btn.lg` / `.input.big`; **แถวที่ 1 สลับเป็นปุ่ม "▶ เปิดลัง" เต็มความกว้างแทน เมื่อ `!activeBoxId`** (ดู *เปิดลัง (Android)* ด้านล่าง)
+  - **ไม่มีปุ่ม "+ ใหม่" บน Android** — แต่ก็**ไม่ auto-open หลังปิดลังแล้วเหมือน Desktop** — ต้องกด "▶ เปิดลัง" เองทุกลัง (เปลี่ยนจากเดิมที่ auto-open — ดู *เปิดลัง (Android)*)
+  - `barcodeRef` + `useEffect` (ไม่มี dependency) คืน focus กลับ barcode input หลังทุก render **ยกเว้นเมื่อ `showSearch === true`** — ป้องกัน focus ถูกดึงกลับขณะพิมพ์ค้นหา (guard `barcodeRef.current &&` กัน error ตอน input ไม่ได้ render เพราะสลับไปโชว์ปุ่ม "เปิดลัง")
   - Card: padding/font เล็กลง, ยังแสดง barcode เหมือนเดิม
   - **Sort สินค้าที่ครบ (`got >= need`) ลงท้าย list** (stable sort) — ของยังไม่ครบขึ้นบน ไม่ต้อง scroll หา
+
+### เปิดลัง (Android) — KPI เวลาเปิด→ปิดลัง
+**เป้าหมาย:** เก็บเวลาที่พนักงานเริ่มไปหาสินค้าจริง (กดปุ่ม) แทนการนับจากสแกนชิ้นแรกได้ (เดิม auto-open เวลาจะไม่รวมช่วง "เดินไปหยิบลังเปล่า+เดินไปหาสินค้า")
+- **`activeBoxId === null`** (แอปเพิ่งเปิด/เพิ่งเลือกพนักงาน หรือเพิ่งปิดลังก่อนหน้า) → แถวสแกนเปลี่ยนเป็นปุ่ม **"▶ เปิดลัง"** เต็มความกว้าง (แทนที่ barcode input + 🔍 + ปิดลัง ทั้งแถว) — สแกน/ค้นหาไม่ได้จนกว่าจะกด
+- **`handleOpenBox()`** → `await createNewBox()` (เหมือน Desktop's "+ เปิดลังใหม่") + toast "เปิดลังแล้ว ✓" — `createNewBox()` เดิม set `createdAt: Date.now()` อยู่แล้ว = **จุดเริ่ม KPI**
+- **`processBarcode` guard บนสุด:** `if (isAndroid && !activeBoxId)` → `playScanFail()` + toast error `⚠ กด "เปิดลัง" ก่อนเริ่มสแกน` แล้ว return — กันสแกนหลุด (เช่นจากเครื่องสแกนภายนอกที่ยิงเข้ามาโดย input ไม่ได้ focus) ก่อนจะเข้า barcode matching/LOT logic ใดๆ
+- **`doClose()`** — Android: `setActiveBoxId(null)` แทน `await createNewBox()` (Desktop ยังคง auto-open) → ลังถัดไปต้องกด "▶ เปิดลัง" ใหม่เสมอ; พร้อมกันนี้ set **`closedAt: Date.now()`** บน box ที่เพิ่งปิด (ทุกแพลตฟอร์ม ไม่ใช่แค่ Android) = **จุดจบ KPI**
+- **`boxLabel`** (header) เปลี่ยนเป็น `'ยังไม่เปิดลัง'` แทน `'BX-????'` เมื่อ `isAndroid && !activeBoxId` (ชัดเจนกว่า placeholder เดิม)
+- **`setActiveBoxId` ต้องถูกส่งเป็น prop เข้า `PackScanC`** (มีอยู่แล้วใน `screenProps` ทั้ง App.jsx desktop tab และ AndroidApp.jsx spread — แค่เพิ่มเข้า destructure ของ PackScanC)
+- **`applyScan()` ยังมี auto-create fallback เดิม (`if (!activeBoxId) boxId = await createNewBox()`) ไม่ได้ลบ** — สำหรับ Android กลายเป็น dead path (เข้าไม่ถึงเพราะ `processBarcode` กันไว้ก่อนแล้ว), Desktop ยังใช้ path นี้ตามปกติ (auto-open ตอนสแกนชิ้นแรก)
+- **`activeBoxId` ไม่เคย persist ข้าม reload มาตั้งแต่เดิม** (`useState(null)` ล้วน ไม่มี localStorage) — reload กลางลังจะเจอปุ่ม "เปิดลัง" ทันที (เดิม auto-open เงียบๆ ทำให้เผลอเปิดลังใหม่ซ้อน) พฤติกรรมนี้ไม่ได้แย่ลงจากการแก้ครั้งนี้ เป็น pre-existing quirk
 
 ### LOT Selection (PackScanC Android)
 - รับ prop `lotMap` ผ่าน `screenProps` — มี structure `{[sku]: [{lot, qty, exp?}]}` (qty = สต็อกเริ่มต้น, exp = วันหมดอายุ ค.ศ. DD/MM/YYYY จากไฟล์ LOT+EXP — ไฟล์ R01.119 เดิมไม่มี)
@@ -617,7 +629,8 @@ open → packing → closed → exported → received
   3. 🖨 พิมพ์ใบปิดลัง — active เฉพาะหลัง `exported`
 
 ## BoxList — Logic สำคัญ
-- คอลัมน์ตาราง: Box ID / สถานะ / พนักงาน / SKU / ชิ้น / **เลขที่เอกสาร** / อัปเดต (ไม่มีปุ่ม action)
+- คอลัมน์ตาราง: Box ID / สถานะ / พนักงาน / SKU / ชิ้น / **เลขที่เอกสาร** / **เปิดลัง** / **ปิดลัง** / อัปเดต (ไม่มีปุ่ม action)
+  - **เปิดลัง/ปิดลัง** = `formatTime(b.createdAt)` / `formatTime(b.closedAt)` (BoxList.jsx) — แปลง epoch ms → `HH:MM` ด้วย `toLocaleTimeString('th-TH')`, ไม่มีค่า (ลังเก่าก่อนมี `closedAt` หรือลังที่ยังไม่ปิด) → `—`. ใช้ร่วมกันทั้งตารางหลัก + `HistoryEntry` (component `BoxTable` เดียวกัน)
 - Badge header นับ: กำลังแพ็ค = `open + packing`, ปิดลังแล้ว = `closed`, อนุมัติแล้ว = `exported`
 - ปุ่ม Export: **"⇩ Export รายการลังทั้งหมด"** (เดิม: Export ทั้งวัน)
 - **CSV format (`generateCSV` ใน App.jsx, ใช้ร่วม export ทั้งวัน + ประวัติ):** header `box_id,pos_number,packer,sku_count,total_qty,status,updated` — คอลัมน์ `packer` = `b.packer?.name`

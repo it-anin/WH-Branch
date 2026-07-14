@@ -354,7 +354,7 @@ function ItemCard({ c, done, partial, exiting, settled, onMarkOutOfStock }) {
   );
 }
 
-export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, catalogLoaded = true, packer, onScanProgress, catalogMeta, lotMap = {}, barcodeMap = {}, factorMap = {} }) {
+export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, catalogLoaded = true, packer, onScanProgress, catalogMeta, lotMap = {}, barcodeMap = {}, factorMap = {} }) {
   // โมเดลหน่วยฐาน: need/gotBase คิดเป็น "หน่วยฐาน" (factor=1) ส่วน got = จำนวนครั้งที่สแกน (ไว้ export ตามหน่วยที่สแกนจริง)
   // factorOf(sku, unit) = จำนวนหน่วยฐานต่อ 1 หน่วยนั้น เช่น โหล=12 → สแกนบาร์โค้ดโหล 1 ครั้ง = +12 หน่วยฐาน
   const factorOf = (sku, unit) => lookupFactor(factorMap, sku, unit);
@@ -434,7 +434,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     if (isAndroid && !showSearch && !pendingLot && barcodeRef.current) barcodeRef.current.focus();
   });
 
-  const boxLabel = activeBoxId || 'BX-????';
+  const boxLabel = activeBoxId || (isAndroid ? 'ยังไม่เปิดลัง' : 'BX-????');
   // ซ่อนรายการที่ปัดทำเครื่องหมาย "ของหมด" แล้ว ออกจาก checklist ที่แสดง (ของจริงยังอยู่ใน items เพื่อรักษายอดที่แพ็คไปแล้ว)
   const visibleItems = items.filter(it => !dismissedSkus.has(it.sku));
   const filtered = search.trim()
@@ -524,6 +524,12 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
   // Logic กลาง — ใช้ทั้ง HID keyboard (handleBarcode) และ Broadcast wh-scan (useEffect)
   async function processBarcode(val) {
     if (!val?.trim() || isClosing || pendingLot || confirmOver) return;
+    // Android: บังคับกด "เปิดลัง" ก่อนสแกนเสมอ (เก็บ KPI เวลาเปิดลัง — ดู handleOpenBox/doClose) — Desktop ยัง auto-open เหมือนเดิม
+    if (isAndroid && !activeBoxId) {
+      playScanFail();
+      showToast('⚠ กด "เปิดลัง" ก่อนเริ่มสแกน', 'error');
+      return;
+    }
     const barcode = val.trim();
     const catMatch = catalog.find(it => matchBarcode(it, barcode));
     if (!catMatch) { playScanFail(); showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
@@ -678,7 +684,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     const packedItems = items.filter(it => it.got > 0).map(it => ({ ...it, qty: it.got }));
     setBoxes(prev => prev.map(b =>
       b.id === closingBoxId
-        ? { ...b, status: 'closed', packer: packer || b.packer || null, skuCount: packedItems.length, totalQty: packedItems.reduce((s, it) => s + it.qty, 0), pos, updated: time }
+        ? { ...b, status: 'closed', packer: packer || b.packer || null, skuCount: packedItems.length, totalQty: packedItems.reduce((s, it) => s + it.qty, 0), pos, updated: time, closedAt: Date.now() }
         : b
     ));
     setItemsByBox(prev => ({ ...prev, [closingBoxId]: packedItems }));
@@ -698,9 +704,20 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
     exitTimeoutsRef.current = {};
     setHoldingSkus(new Set());
     setExitingSkus(new Set());
-    await createNewBox();
+    // Android: ต้องกด "เปิดลัง" ใหม่ทุกครั้ง (เก็บ KPI เวลาเริ่มลังถัดไปให้แม่นยำ) — Desktop เปิดลังใหม่อัตโนมัติเหมือนเดิม
+    if (isAndroid) {
+      setActiveBoxId(null);
+    } else {
+      await createNewBox();
+    }
     showToast(`ปิดลัง ${closingBoxId} แล้ว ✓`, 'success');
     setIsClosing(false);
+  }
+
+  // Android: กด "เปิดลัง" ก่อนเริ่มสแกนเสมอ — createdAt (ตั้งใน createNewBox) = เวลาเริ่ม KPI ของลังนี้
+  async function handleOpenBox() {
+    await createNewBox();
+    showToast('เปิดลังแล้ว ✓', 'success');
   }
 
   function handleCloseBox() {
@@ -928,30 +945,38 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setTab, showTo
       </div>
 
       <div style={{ padding: isAndroid ? 10 : 18 }}>
-        {/* ── Android: 2 rows — barcode+ปิดลัง / search ── */}
+        {/* ── Android: 2 rows — barcode+ปิดลัง / search — หรือปุ่ม "เปิดลัง" เดี่ยวถ้ายังไม่เปิดลัง ── */}
         {isAndroid ? (
           <>
-            <div className="row" style={{ marginBottom: 6, gap: 8 }}>
-              <input
-                ref={barcodeRef}
-                data-android-barcode="true"
-                inputMode="none"
-                className="input"
-                placeholder="ยิงบาร์โค้ด"
-                style={{ flex: 1, fontSize: 16, padding: '10px 12px' }}
-                onKeyDown={handleBarcode}
-              />
-              {/* ปุ่ม toggle ค้นหา — แยกออกจากช่องสแกน ป้องกัน focus ผิด */}
+            {!activeBoxId ? (
               <button
-                className={`btn sm ${showSearch ? 'primary' : 'ghost'}`}
-                style={{ flexShrink: 0, fontSize: 18, padding: '10px 12px' }}
-                onClick={() => {
-                  setShowSearch(v => !v);
-                  if (showSearch) { setSearch(''); setPage(0); }
-                }}
-              >🔍</button>
-              <button className="btn primary" style={{ fontSize: 15, padding: '10px 16px', whiteSpace: 'nowrap' }} onClick={handleCloseBox}>ปิดลัง</button>
-            </div>
+                className="btn primary lg"
+                style={{ width: '100%', fontSize: 17, padding: '14px', marginBottom: 6 }}
+                onClick={handleOpenBox}
+              >▶ เปิดลัง</button>
+            ) : (
+              <div className="row" style={{ marginBottom: 6, gap: 8 }}>
+                <input
+                  ref={barcodeRef}
+                  data-android-barcode="true"
+                  inputMode="none"
+                  className="input"
+                  placeholder="ยิงบาร์โค้ด"
+                  style={{ flex: 1, fontSize: 16, padding: '10px 12px' }}
+                  onKeyDown={handleBarcode}
+                />
+                {/* ปุ่ม toggle ค้นหา — แยกออกจากช่องสแกน ป้องกัน focus ผิด */}
+                <button
+                  className={`btn sm ${showSearch ? 'primary' : 'ghost'}`}
+                  style={{ flexShrink: 0, fontSize: 18, padding: '10px 12px' }}
+                  onClick={() => {
+                    setShowSearch(v => !v);
+                    if (showSearch) { setSearch(''); setPage(0); }
+                  }}
+                >🔍</button>
+                <button className="btn primary" style={{ fontSize: 15, padding: '10px 16px', whiteSpace: 'nowrap' }} onClick={handleCloseBox}>ปิดลัง</button>
+              </div>
+            )}
             {/* search input แสดงเฉพาะเมื่อกด 🔍 — ป้องกัน focus โดยบังเอิญขณะสแกน */}
             {showSearch && (
               <input

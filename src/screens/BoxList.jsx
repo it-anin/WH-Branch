@@ -8,6 +8,11 @@ const statusLabel = {
   received: { label: 'สาขารับสินค้าแล้ว', bg: '#f5b8d4', border: '#c04080' },
 };
 
+// เวลาเปิด/ปิดลัง (KPI พนักงานแพ็คกิ้ง) — createdAt/closedAt เป็น epoch ms; ลังเก่าก่อนมี closedAt หรือลังที่ยังไม่ปิด → '—'
+function formatTime(ms) {
+  return ms ? new Date(ms).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '—';
+}
+
 function BoxTable({ boxes, onOpen, onPrint }) {
   if (boxes.length === 0) return (
     <div style={{ padding: '20px 0', fontFamily: 'system-ui', color: 'var(--mute)', textAlign: 'center' }}>
@@ -19,7 +24,7 @@ function BoxTable({ boxes, onOpen, onPrint }) {
       <thead>
         <tr>
           <th>Box ID</th><th>สถานะ</th><th>พนักงาน</th><th>SKU</th><th>ชิ้น</th>
-          <th>เลขที่เอกสาร</th><th>อัปเดต</th>
+          <th>เลขที่เอกสาร</th><th>เปิดลัง</th><th>ปิดลัง</th><th>อัปเดต</th>
         </tr>
       </thead>
       <tbody>
@@ -31,6 +36,8 @@ function BoxTable({ boxes, onOpen, onPrint }) {
             <td>{b.skuCount}</td>
             <td>{b.totalQty}</td>
             <td className="num-col">{b.pos}</td>
+            <td className="mono" style={{ fontSize: 12, color: 'var(--mute)' }}>{formatTime(b.createdAt)}</td>
+            <td className="mono" style={{ fontSize: 12, color: 'var(--mute)' }}>{formatTime(b.closedAt)}</td>
             <td style={{ color: 'var(--mute)' }}>{b.updated}</td>
           </tr>
         ))}
