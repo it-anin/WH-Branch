@@ -621,6 +621,8 @@ open → packing → closed → exported → received
 - Badge header นับ: กำลังแพ็ค = `open + packing`, ปิดลังแล้ว = `closed`, อนุมัติแล้ว = `exported`
 - ปุ่ม Export: **"⇩ Export รายการลังทั้งหมด"** (เดิม: Export ทั้งวัน)
 - **CSV format (`generateCSV` ใน App.jsx, ใช้ร่วม export ทั้งวัน + ประวัติ):** header `box_id,pos_number,packer,sku_count,total_qty,status,updated` — คอลัมน์ `packer` = `b.packer?.name`
+  - **`csvCell()` escape** ทุกเซลล์ (quote ค่าที่มี `,`/`"`/newline, double-quote ตัว `"` ภายใน) กัน CSV parse ผิดแถวถ้าชื่อพนักงาน/ค่ามี comma
+  - **`triggerDownload` เติม UTF-8 BOM (`﻿`)** นำหน้า content เฉพาะไฟล์ `.csv` (เช็คจาก mimeType `text/csv`) — ไม่มี BOM ทำให้ Excel (Windows) เดา encoding เป็น ANSI/Windows-874 ผิด ชื่อพนักงานภาษาไทยกลายเป็นตัวอักษรมั่ว (mojibake); ไฟล์ที่ไม่ใช่ CSV (เช่น .txt ไฟล์ POS) ไม่เติม BOM
 - **ประวัติย้อนหลัง — ปุ่ม "⇩ CSV" ต่อวัน (`HistoryEntry.handleExport`, BoxList.jsx):** export **เฉพาะลังที่มีเลขที่เอกสาร** (`b.pos && b.pos !== '—'` = อนุมัติแล้ว) — ต่างจาก "Export รายการลังทั้งหมด" (ทั้งวัน) ที่ export ทุกลัง
 
 ## BranchReceive — Logic สำคัญ

@@ -400,16 +400,24 @@ export default function App() {
     }
   }
 
+  function csvCell(value) {
+    const text = value == null ? '' : String(value);
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  }
+
   function generateCSV(targetBoxes) {
-    const header = 'box_id,pos_number,packer,sku_count,total_qty,status,updated';
+    const header = ['box_id', 'pos_number', 'packer', 'sku_count', 'total_qty', 'status', 'updated'].join(',');
     const rows = targetBoxes.map(b =>
-      [b.id, b.pos, b.packer?.name || '', b.skuCount, b.totalQty, b.status, b.updated].join(',')
+      [b.id, b.pos, b.packer?.name || '', b.skuCount, b.totalQty, b.status, b.updated].map(csvCell).join(',')
     );
     return [header, ...rows].join('\n');
   }
 
   function triggerDownload(content, filename, mimeType) {
-    const blob = new Blob([content], { type: mimeType });
+    const isCsv = mimeType?.startsWith('text/csv');
+    const blob = new Blob(isCsv ? ['\ufeff', content] : [content], {
+      type: isCsv ? 'text/csv;charset=utf-8' : mimeType,
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
