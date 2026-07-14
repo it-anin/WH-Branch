@@ -620,6 +620,8 @@ open → packing → closed → exported → received
 - คอลัมน์ตาราง: Box ID / สถานะ / พนักงาน / SKU / ชิ้น / **เลขที่เอกสาร** / อัปเดต (ไม่มีปุ่ม action)
 - Badge header นับ: กำลังแพ็ค = `open + packing`, ปิดลังแล้ว = `closed`, อนุมัติแล้ว = `exported`
 - ปุ่ม Export: **"⇩ Export รายการลังทั้งหมด"** (เดิม: Export ทั้งวัน)
+- **CSV format (`generateCSV` ใน App.jsx, ใช้ร่วม export ทั้งวัน + ประวัติ):** header `box_id,pos_number,packer,sku_count,total_qty,status,updated` — คอลัมน์ `packer` = `b.packer?.name`
+- **ประวัติย้อนหลัง — ปุ่ม "⇩ CSV" ต่อวัน (`HistoryEntry.handleExport`, BoxList.jsx):** export **เฉพาะลังที่มีเลขที่เอกสาร** (`b.pos && b.pos !== '—'` = อนุมัติแล้ว) — ต่างจาก "Export รายการลังทั้งหมด" (ทั้งวัน) ที่ export ทุกลัง
 
 ## BranchReceive — Logic สำคัญ
 - **แยกหน้าที่ Android ↔ Desktop:**

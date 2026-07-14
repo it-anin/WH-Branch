@@ -401,9 +401,9 @@ export default function App() {
   }
 
   function generateCSV(targetBoxes) {
-    const header = 'box_id,pos_number,sku_count,total_qty,status,updated';
+    const header = 'box_id,pos_number,packer,sku_count,total_qty,status,updated';
     const rows = targetBoxes.map(b =>
-      [b.id, b.pos, b.skuCount, b.totalQty, b.status, b.updated].join(',')
+      [b.id, b.pos, b.packer?.name || '', b.skuCount, b.totalQty, b.status, b.updated].join(',')
     );
     return [header, ...rows].join('\n');
   }

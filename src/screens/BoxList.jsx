@@ -45,7 +45,9 @@ function HistoryEntry({ entry, generateCSV, triggerDownload, onDelete }) {
   const exported = entry.boxes.filter(b => b.status === 'exported' || b.status === 'received').length;
 
   function handleExport() {
-    const csv = generateCSV(entry.boxes);
+    // เฉพาะลังที่มีเลขที่เอกสาร (อนุมัติแล้ว) — box.pos = '—' คือยังไม่อนุมัติ
+    const withDoc = entry.boxes.filter(b => b.pos && b.pos !== '—');
+    const csv = generateCSV(withDoc);
     triggerDownload(csv, `history-${entry.dateKey}.csv`, 'text/csv');
   }
 
