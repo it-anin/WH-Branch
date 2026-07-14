@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
+import { lookupFactor, baseUnitOf } from '../units.js';
 
 // พนักงาน Android กรอก Exp เป็น ค.ศ. (ตรงกับที่พิมพ์บนสินค้าจริง) แต่ไฟล์ Text ต้องเป็น พ.ศ. — แปลงตอน export
 // ปี < 2400 ถือว่าเป็น ค.ศ. (+543) — ลังเก่าก่อนเปลี่ยน label ที่กรอกเป็น พ.ศ. ไว้แล้ว (ปี >= 2400) จะไม่ถูกแปลงซ้ำ
@@ -38,6 +39,29 @@ function lotRows(l, lotMap) {
     exp: l.exp || lotExp(fbLot),
     unit: fallbackUnit,
   }];
+}
+
+// แปลงแถวจาก lotRows เป็น "หน่วยฐาน" (factor=1 เช่น ขวด) — ใช้ทั้งตารางพรีวิว + ไฟล์ Text + Excel ให้ตรงกันเป๊ะ
+// เช่น เบิก 22 ขวด สแกน ครึ่งโหล×2 + ขวด×10 → รวมเป็นแถวเดียว [บาร์โค้ดขวด] qty 22
+// แถวที่ factor>1 แต่หาบาร์โค้ดหน่วยฐานไม่เจอ (R05.106 ไม่มีแถว factor=1 ของ SKU นั้น) → คงแถวเดิม + mark unconvertible
+// (ไฟล์ Text ใช้ธงนี้ block การส่งออก — ตาราง/Excel แสดงหน่วยเดิม + ⚠)
+function baseRows(l, lotMap, factorMap, barcodeMap) {
+  const rows = lotRows(l, lotMap).map(r => {
+    const factor = lookupFactor(factorMap, l.sku, r.unit || l.unit);
+    if (factor === 1) return r; // เป็นหน่วยฐานอยู่แล้ว — บาร์โค้ดที่สแกนคือบาร์โค้ดหน่วยฐานจริง
+    const baseUnit = baseUnitOf(factorMap, l.sku, '');
+    const baseBc = baseUnit ? (barcodeMap[`${l.sku}__${baseUnit}`] || [])[0] : null;
+    if (!baseBc) return { ...r, unconvertible: true };
+    return { ...r, qty: r.qty * factor, unit: baseUnit, barcode: baseBc };
+  });
+  // merge แถว lot เดียวกัน (หลังแปลง หน่วยเดียวกันหมด) — qty รวม, exp เอาตัวแรกที่มีค่า
+  const merged = [];
+  for (const r of rows) {
+    const hit = merged.find(m => m.lot === r.lot && (m.unit || '') === (r.unit || '') && !m.unconvertible && !r.unconvertible);
+    if (hit) { hit.qty += r.qty; if (!hit.exp && r.exp) hit.exp = r.exp; }
+    else merged.push({ ...r });
+  }
+  return merged;
 }
 
 // reverse-lookup barcode → unit สำหรับ SKU นั้น (ใช้ใน edit mode เพื่ออัปเดต unit อัตโนมัติเมื่อสแกน barcode)
@@ -148,7 +172,7 @@ function StickerLabel({ box }) {
   );
 }
 
-export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {}, barcodeMap = {}, catalog = [] }) {
+export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {}, barcodeMap = {}, factorMap = {}, catalog = [] }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
@@ -218,12 +242,19 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       return;
     }
     if (boxItems.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังนี้'); return; }
+    // แปลงทุกแถวเป็นหน่วยฐาน (baseRows) ก่อนส่ง POS — SKU ที่แปลงไม่ได้ (ไม่มีบาร์โค้ดหน่วยฐาน) → block ทั้งไฟล์
+    const perItem = boxItems.map(l => ({ l, rows: baseRows(l, lotMap, factorMap, barcodeMap) }));
+    const blocked = perItem.filter(({ rows }) => rows.some(r => r.unconvertible)).map(({ l }) => l.sku);
+    if (blocked.length > 0) {
+      showToast(`⚠ ${blocked.join(', ')} ไม่มีบาร์โค้ดหน่วยฐานใน R05.106 · ส่งออกไม่ได้`, 'error');
+      return;
+    }
     // บางสาขา (WRD/ONN) ส่งออกทุน × markup — สาขาอื่น markup=1 ค่าเดิม byte-identical
     const markup = COST_MARKUP[String(activeBox.branch || '').toUpperCase()] || 1;
-    const lines = boxItems.flatMap(l =>
+    const lines = perItem.flatMap(({ l, rows }) =>
       // โครงสร้าง POS: barcode TAB qty TAB cost + 6 TAB + lot TAB exp — exp แปลง ค.ศ.→พ.ศ. ตอนนี้
-      // ทุน = costMap[sku__หน่วยที่สแกนจริง] (เช่นสแกนกล่อง → ทุนต่อกล่อง) ไม่ใช่หน่วย picklist
-      lotRows(l, lotMap).map(r => {
+      // r.unit เป็นหน่วยฐานแล้ว → cost = ทุนต่อหน่วยฐาน (เช่นต่อขวด) อัตโนมัติ
+      rows.map(r => {
         const rawCost = costMap[`${l.sku}__${r.unit || l.unit}`] ?? 0;
         const cost = markup === 1 ? rawCost : Math.round(rawCost * markup * 100) / 100; // ปัด 2 ตำแหน่ง (เงิน)
         return `${r.barcode}\t${r.qty}\t${cost}\t\t\t\t\t\t${r.lot}\t${toBuddhistExp(r.exp)}`;
@@ -288,9 +319,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     const dateStr = `${dd}/${mm}/${yyyy}`;
     const headers = ['เลขที่ลังสินค้า', 'เลขที่เอกสาร', 'SKU', 'ชื่อสินค้า', 'Barcode', 'หน่วย', 'จำนวน', 'พนักงานแพ็คสินค้า', 'วันที่ส่งสินค้า'];
     const dataRows = closedBoxes.flatMap(b =>
-      // แตกแถวตาม (LOT + หน่วย) ด้วย lotRows — SKU เดียวสแกนปนหน่วย (แพ็ค + ลัง) แยกคนละแถว บาร์โค้ด/จำนวน/หน่วยของตัวเอง
+      // แถวเป็นหน่วยฐาน (baseRows) ตรงกับตาราง/ไฟล์ Text — แถวแปลงไม่ได้คงหน่วยที่สแกนเดิม
       (itemsByBox?.[b.id] || []).flatMap(l =>
-        lotRows(l, lotMap).map(r => [
+        baseRows(l, lotMap, factorMap, barcodeMap).map(r => [
           b.id,
           b.pos && b.pos !== '—' ? b.pos : '',
           l.sku,
@@ -806,7 +837,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'auto', maxHeight: 320, background: 'white' }}>
                   {boxItems.length > 0 ? (() => {
                     const tableRows = boxItems.flatMap(l =>
-                      lotRows(l, lotMap).map(r => ({ ...r, sku: l.sku, name: l.name, unit: r.unit || l.unit, location: l.location }))
+                      baseRows(l, lotMap, factorMap, barcodeMap).map(r => ({ ...r, sku: l.sku, name: l.name, unit: r.unit || l.unit, location: l.location }))
                     );
                     const hasExp = tableRows.some(r => r.exp);
                     return (
@@ -829,7 +860,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                               <td className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{r.sku}</td>
                               <td style={{ fontFamily: 'JetBrains Mono', maxWidth: 200, whiteSpace: 'normal', wordBreak: 'break-word' }}>{r.name}</td>
                               <td className="mono" style={{ fontSize: 11 }}>{r.barcode || '—'}</td>
-                              <td style={{ fontFamily: 'JetBrains Mono' }}>{r.unit}</td>
+                              <td style={{ fontFamily: 'JetBrains Mono' }}>{r.unconvertible ? '⚠ ' : ''}{r.unit}</td>
                               <td style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 700, textAlign: 'center' }}>×{r.qty}</td>
                               <td className="mono" style={{ fontSize: 11 }}>{r.lot || '—'}</td>
                               {hasExp && <td className="mono" style={{ fontSize: 11, color: 'var(--accent)' }}>{r.exp || '—'}</td>}
