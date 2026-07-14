@@ -253,7 +253,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const staffFilter = !isControlled && branchStaff ? branchStaff.code : null;
   const matchStaff = (b) => !staffFilter || b.receivedBy?.code === staffFilter || b.problemBy?.code === staffFilter;
   // กรองตามสาขา (Android): เห็นเฉพาะลังของสาขาตัวเอง — ลังไม่มี branch (legacy/untagged) เห็นได้ทุกสาขา
-  const matchBranch = (b) => !branch || !b.branch || b.branch === branch;
+  const matchBranch = (b) => !branch || b.branch === branch;
   // priority: problem (0) > receivePending (1) > exported รอสาขาสแกน (2) > อื่น (3)
   const sortRank = (b) =>
     b.problemReported && !b.problemResolved ? 0
@@ -280,6 +280,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const searchResults = searchQ
     ? boxes
         .filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received' || b.receivePending)
+        .filter(matchBranch)
         .flatMap(box =>
           (itemsByBox[box.id] || [])
             .filter(l => (l.sku || '').toLowerCase().includes(searchQ) || (l.name || '').toLowerCase().includes(searchQ))
@@ -344,9 +345,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     // Android ไม่แสดงเลขลัง (จอเล็ก) — Desktop แสดงเลขลังเพื่อแยกง่าย
     const boxLabel = isAndroid ? '' : `ลัง ${box.id} `;
     // กันสแกนลังของสาขาอื่น (ลังไม่มี branch = legacy → ปล่อยผ่าน)
-    if (branch && box.branch && box.branch !== branch) {
+    if (branch && box.branch !== branch) {
       playScanFail();
-      showToast(`⚠ ${boxLabel}เป็นของสาขา ${box.branch} ไม่ใช่ ${branch}`, 'error');
+      showToast(`⚠ ${boxLabel}เป็นของสาขา ${box.branch || 'ไม่ระบุ'} ไม่ใช่ ${branch}`, 'error');
       return;
     }
     if (box.status === 'received') {
