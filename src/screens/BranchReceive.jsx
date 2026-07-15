@@ -21,6 +21,11 @@ const statusLabel = {
 // fallback: baseUnit → scannedUnit (หน่วยที่แพ็คสแกน เช่น "กล่อง") → unit (หน่วย picklist) — ลังเก่าไม่มี baseUnit ตกไปตามลำดับ
 const unitOf = (l) => l?.baseUnit || l?.scannedUnit || l?.unit || '';
 
+// ของที่ต้องนับเกินจำนวนนี้ (หน่วยฐาน) → ให้แก้จำนวนในแถวได้ แทนการยิงซ้ำทีละชิ้น
+// ต่ำกว่านี้ยิงเอาเร็วกว่าและคุมความถูกต้องได้ดีกว่า
+// ⚠ ตัวช่องกรอกที่โผล่มาก็บอกใบ้กลาย ๆ ว่า "SKU นี้มีมากกว่า 10" (แต่ไม่บอกเลขจริง) — ยอมรับไว้แล้ว
+const QTY_EDIT_MIN = 10;
+
 // ย่อรูปหลักฐาน → base64 JPEG (กว้างสุด ~800px) เพื่อเก็บลง Firestore (1 doc ≤ 1MB)
 function compressImage(file, maxW = 800, quality = 0.7) {
   return new Promise((resolve) => {
@@ -45,7 +50,11 @@ function compressImage(file, maxW = 800, quality = 0.7) {
 }
 
 // Android: แถวสินค้าที่สแกนแล้ว ปัดซ้ายเกิน SWIPE_THRESHOLD → ถามยืนยัน → ลบรายการสแกน (เลิกนับ) กรณียิงเกิน/ผิด ให้สแกนใหม่
-function ScannedItemRow({ l, count, over, done, onRemove }) {
+// blind = ตรวจนับปกติ: ไม่บอกว่าครบ/ขาด/เกิน (สีกลางล้วน) เห็นสีจริงตอน phase result เท่านั้น
+//         — ถ้าโชว์สีตั้งแต่ตอนนับ พนักงานปรับเลขจนไฟเขียวได้โดยไม่ต้องนับของ = ด่านตรวจไร้ความหมาย
+// editable = แก้จำนวนได้ (เฉพาะ SKU ที่ของเยอะ ดู QTY_EDIT_MIN) — แถวโผล่ต่อเมื่อยิงบาร์โค้ดแล้วเท่านั้น
+//            (scannedItems filter count > 0) จึงยังต้องมีของจริงในมือก่อนถึงจะปรับจำนวนได้
+function ScannedItemRow({ l, count, over, done, onRemove, blind = false, editable = false, onQtyChange }) {
   const [dragX, setDragX] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const dragRef = useRef({ x: 0, dragging: false });
@@ -100,7 +109,8 @@ function ScannedItemRow({ l, count, over, done, onRemove }) {
         style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '10px 12px', borderRadius: 8,
-          background: over ? '#fff3cd' : done ? '#e8f0d8' : '#fde8e8',  // เกิน=เหลือง / ครบ=เขียว / ยังไม่ครบ=แดง
+          // blind = สีกลาง (ไม่ตัดสิน) / ไม่ blind = เกิน=เหลือง / ครบ=เขียว / ยังไม่ครบ=แดง
+          background: blind ? 'var(--paper-dark)' : over ? '#fff3cd' : done ? '#e8f0d8' : '#fde8e8',
           position: 'relative',
           transform: `translateX(${dragX}px)`,
           transition: dragRef.current.dragging ? 'none' : 'transform 0.2s',
@@ -111,9 +121,33 @@ function ScannedItemRow({ l, count, over, done, onRemove }) {
           <div style={{ fontFamily: 'system-ui', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</div>
         </div>
         <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', flexShrink: 0 }}>{unitOf(l)}</div>
-        <div style={{ fontFamily: 'system-ui', fontSize: 22, fontWeight: 700, color: over ? '#e67e22' : done ? 'var(--green)' : '#c0392b', minWidth: 28, textAlign: 'center', flexShrink: 0 }}>
-          {count}
-        </div>
+        {editable ? (
+          <input
+            type="number"
+            inputMode="numeric"
+            min="1"
+            value={count}
+            // แตะแล้วเลือกทั้งหมด — ไม่งั้นพิมพ์ทับเลขเดิมไม่ได้ ต้องลบทีละตัวบนจอ PDA
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => onQtyChange(l.sku, e.target.value)}
+            onTouchStart={(e) => e.stopPropagation()}  // กันปัดซ้าย-ลบ ตอนจะแตะช่องกรอก
+            style={{
+              width: 62, padding: '4px 6px', textAlign: 'center',
+              fontFamily: 'system-ui', fontSize: 20, fontWeight: 700,
+              border: '2px solid var(--line)', borderRadius: 8,
+              background: 'white', color: blind ? 'var(--ink)' : over ? '#e67e22' : done ? 'var(--green)' : '#c0392b',
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <div style={{
+            fontFamily: 'system-ui', fontSize: 22, fontWeight: 700,
+            color: blind ? 'var(--ink)' : over ? '#e67e22' : done ? 'var(--green)' : '#c0392b',
+            minWidth: 28, textAlign: 'center', flexShrink: 0,
+          }}>
+            {count}
+          </div>
+        )}
       </div>
       {confirming && createPortal(
         <div style={{
@@ -227,7 +261,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [scanError, setScanError]     = useState('');
   const [viewingId, setViewingId]     = useState(null);
   const [verifyResult, setVerifyResult] = useState(null); // 'ok' | 'fail'
-  const [confirmIncomplete, setConfirmIncomplete] = useState(false); // dialog ยืนยันตอนกดรับทั้งที่สแกนไม่ครบ
+  const [confirmIncomplete, setConfirmIncomplete] = useState(false); // dialog ยืนยันรับ — เด้งทุกครั้ง ไม่ว่าจะนับครบหรือไม่ (ดู requestConfirm)
   const [supervisorCode, setSupervisorCode] = useState('');
   const [reportOpen, setReportOpen]   = useState(false);
   const [reportImage, setReportImage] = useState(null);
@@ -423,9 +457,13 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   }
 
   // กดยืนยันรับ — ถ้าสแกนไม่ครบทุกรายการ เด้ง dialog ยืนยันก่อน (กันกดพลาดทั้งที่ยังสแกนไม่เสร็จ); ครบแล้ว → ยืนยันเลย
+  // เด้ง dialog "ทุกครั้ง" ไม่ว่าจะนับครบหรือไม่ — และ dialog ไม่บอกว่าครบ/เหลือเท่าไหร่
+  // ⚠ เดิมเด้งเฉพาะตอน !allChecked + บอก "(เหลืออีก N รายการ)" + กดยกเลิกกลับไปแก้ได้
+  //   = บอกคำตอบ พนักงานปรับเลข→กดยืนยัน→อ่านว่าเหลือเท่าไหร่→ยกเลิก→วนจนไม่เด้ง = รู้เลขที่ถูกโดยไม่ต้องนับ
+  //   ยิ่งแก้จำนวนในแถวได้ยิ่งง่าย → ต้องเป็นกลางเสมอ ไม่งั้นการซ่อนสีไม่มีความหมาย
+  //   ตัว dialog ยังทำหน้าที่เดิมคือกันกดพลาด (ผลลัพธ์ ok/over/fail ไปโผล่ที่ phase result เหมือนเดิม)
   function requestConfirm() {
-    if (!allChecked) { setConfirmIncomplete(true); return; }
-    handleConfirm();
+    setConfirmIncomplete(true);
   }
 
   function handleConfirm() {
@@ -620,6 +658,15 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   }
 
   // Android: ปัดลบรายการที่สแกนแล้ว (กรณียิงเกิน/ผิด) — เลิกนับ SKU นี้ทั้งหมด ให้สแกนใหม่
+  // แก้จำนวนในแถว (เฉพาะ SKU ที่ needed > QTY_EDIT_MIN) — ตั้งค่าตรง ไม่บวก factor
+  // เพราะพนักงานพิมพ์เป็นหน่วยฐานตามที่แถวโชว์อยู่แล้ว (unitOf = baseUnit)
+  // ขั้นต่ำ 1: แถวนี้โผล่ได้เพราะยิงบาร์โค้ดแล้ว ถ้าปล่อยเป็น 0 แถวจะหายจาก scannedItems (filter > 0)
+  // แล้วพิมพ์ต่อไม่ได้ — จะลบจริงต้องปัดซ้าย (handleRemoveScan)
+  function handleQtyChange(sku, val) {
+    const n = parseInt(val, 10);
+    setScanCounts(prev => ({ ...prev, [sku]: Number.isFinite(n) && n > 0 ? n : 1 }));
+  }
+
   function handleRemoveScan(sku) {
     setScanCounts(prev => {
       const next = { ...prev };
@@ -1276,7 +1323,16 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                                 const needed = getNeeded(l);
                                 const count = scanCounts[l.sku] || 0;
                                 return (
-                                  <ScannedItemRow key={l.sku} l={l} count={count} over={count > needed} done={count >= needed} onRemove={handleRemoveScan} />
+                                  <ScannedItemRow
+                                    key={l.sku} l={l} count={count}
+                                    over={count > needed} done={count >= needed}
+                                    onRemove={handleRemoveScan}
+                                    // recheck: โชว์สีได้ — เภสัชรู้อยู่แล้วว่าตัวไหนขาด/เกิน (ตั้งใจให้เห็น)
+                                    // ตรวจนับปกติ: ปิดสีไว้ ไม่งั้นปรับเลขจนไฟเขียวได้โดยไม่ต้องนับ
+                                    blind={!recheckMode}
+                                    editable={needed > QTY_EDIT_MIN}
+                                    onQtyChange={handleQtyChange}
+                                  />
                                 );
                               })}
                             </div>
@@ -1382,14 +1438,15 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
       {confirmIncomplete && createPortal(
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: 'white', borderRadius: 14, padding: '24px 28px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)', textAlign: 'center', minWidth: 280, maxWidth: 360 }}>
-            <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 8, color: 'var(--red)' }}>⚠ สแกนสินค้าไม่ครบ</div>
+            {/* ข้อความต้องเป็นกลาง — ห้ามบอกว่าครบ/ไม่ครบ/เหลือกี่รายการ (ดูเหตุผลใน requestConfirm) */}
+            <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 8 }}>ยืนยันรับสินค้า</div>
             <div style={{ fontSize: 14, color: '#555', marginBottom: 20, lineHeight: 1.5 }}>
-              ยังสแกนสินค้าในลังไม่ครบทุกรายการ{(() => { const n = verifyItems.filter(l => !fullyChecked(l)).length; return n > 0 ? ` (เหลืออีก ${n} รายการ)` : ''; })()}<br />
-              ต้องการยืนยันรับสินค้าหรือไม่?
+              ตรวจนับสินค้าในลังครบถ้วนแล้วใช่หรือไม่?<br />
+              ยืนยันแล้วจะแก้ไขจำนวนไม่ได้
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-              <button className="btn ghost" onClick={() => setConfirmIncomplete(false)}>ยกเลิก</button>
-              <button className="btn primary" onClick={handleConfirm}>ยืนยัน</button>
+              <button className="btn ghost" onClick={() => setConfirmIncomplete(false)}>ยกเลิก · ตรวจต่อ</button>
+              <button className="btn primary" onClick={handleConfirm}>ยืนยันรับ</button>
             </div>
           </div>
         </div>,

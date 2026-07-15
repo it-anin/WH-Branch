@@ -29,20 +29,33 @@ description: Use when touching the branch receive screen src/screens/BranchRecei
   ```
   - **`role: 'pharmacist'`** = สิทธิ์พิเศษตอน recheck: **พนักงานคนไหนก็สแกนซ้ำลัง `problemType='incomplete'` ได้** (แก้ scan พลาด) แต่ถ้ารีเช็คแล้ว**ยังขาด/เกินจริง** เฉพาะ pharmacist ที่ยืนยัน→แจ้งคลังได้ (พนักงานทั่วไปส่งต่อเภสัช) — ดู section *Pharmacist Recheck Flow*
 - Phase: `scan` → `verify` → `result` (3 phases) — **ใช้บน Android เท่านั้น** (Desktop เป็น approval-only ไม่เข้า phase verify/result)
-- **`scanCounts`** = `{[sku]: number}` นับจำนวนชิ้นที่สแกนจริงต่อ SKU (ไม่ใช่ binary Set)
-  - สแกน 1 ครั้ง = +1 ชิ้น
-  - **ไม่มี upper limit** — สแกนเกิน qty ได้ (กรณีสินค้ามาเกิน) → บันทึกจำนวนจริงเสมอ
-  - **⚠ ไม่คูณ factor (ตั้งใจ — ต่างจากหน้าแพ็ค):** การรับนับ "ชิ้นจริงในลัง" = จำนวนสแกน เทียบกับ `item.qty` ซึ่ง = จำนวนสแกนของคนแพ็ค (`it.got` ตอน `doClose`) → ตรงกันเสมอไม่ว่าหน่วยไหน (แพ็ค 12 กล่อง qty=12 → สาขาสแกน 12 ครั้ง). **ห้ามแปลงเป็นหน่วยฐาน** — สาขาสแกนได้แค่ของจริง (= จำนวนชิ้น) ไม่ใช่ base unit นามธรรม การคูณ factor จะทำให้เทียบผิด
-  - **Blind receiving:** ไม่มีคลิกแถวเพื่อติ๊ก, ไม่มีปุ่ม "ติ๊กครบทั้งหมด" — ติ๊กได้วิธีเดียวคือยิงบาร์โค้ดเท่านั้น
+- **`scanCounts`** = `{[sku]: number}` — **หน่วยฐาน** ต่อ SKU (local state ต่อเครื่อง **ไม่เขียน Firestore**; จะ persist ก็ต่อเมื่อ snapshot ลง `problemScanCounts` ตอนแจ้งปัญหา)
+  - **คูณ factor:** `handleItemScan` resolve หน่วยจากบาร์โค้ดที่ยิง → `scanCounts[sku] += factorOf(sku, scannedUnit)` — ยิงกล่อง (factor 24) = +24, ยิงชิ้น (factor 1) = +1 → รับได้ทุก multiple ปนกัน
+  - `getNeeded(item)` = `item.gotBase ?? item.qty ?? item.got ?? 0` (หน่วยฐาน) · `fullyChecked` = `scanCounts[sku] >= getNeeded(item)`
+  - **⚠ เอกสารเดิมเขียนผิด** ว่า "ไม่คูณ factor (ตั้งใจ) · ห้ามแปลงเป็นหน่วยฐาน" — โค้ดเปลี่ยนไปเป็นหน่วยฐานแล้วแต่เอกสารไม่ได้ตามมา (แก้ 15 ก.ค. 2026) **ยึดโค้ดเป็นหลัก**
+  - **ไม่มี upper limit** — นับเกินได้ (กรณีสินค้ามาเกิน) → บันทึกจำนวนจริงเสมอ
+  - **Blind receiving:** แถวจะโผล่ในรายการ**ต่อเมื่อยิงบาร์โค้ดแล้วเท่านั้น** (`scannedItems` filter `count > 0`) — ไม่มีคลิกแถวเพื่อติ๊ก ไม่มีปุ่ม "ติ๊กครบทั้งหมด" และพนักงานไม่เห็น `getNeeded`
+
+### แก้จำนวนในแถว + ปิดสีตอนนับ (Android) — กันการเดาเลขจนไฟเขียว
+- **`QTY_EDIT_MIN = 10`** (module scope) — SKU ที่ `getNeeded > 10` → แถวมี `<input type="number">` แก้จำนวนได้ แทนการยิงซ้ำทีละชิ้น; ต่ำกว่านั้นยิงเอา
+  - พิมพ์เป็น**หน่วยฐาน**ตรง ๆ (ตรงกับ `unitOf(l)` ที่แถวโชว์) — `handleQtyChange` **set ค่าตรง ไม่บวก factor** (ต่างจาก `handleItemScan`)
+  - **ขั้นต่ำ 1 เสมอ** — แถวนี้มีอยู่ได้เพราะยิงบาร์โค้ดแล้ว ถ้าปล่อยเป็น 0 แถวจะหายจาก `scannedItems` แล้วพิมพ์ต่อไม่ได้; จะลบจริงต้องปัดซ้าย (`handleRemoveScan`)
+  - `onFocus` → `select()` (พิมพ์ทับเลขเดิมได้บน PDA) · `onTouchStart` → `stopPropagation()` (กันปัดซ้าย-ลบตอนแตะช่อง)
+  - ⚠ ตัวช่องกรอกที่โผล่มา**บอกใบ้ว่า SKU นี้มี >10** (ไม่บอกเลขจริง) — ยอมรับแล้ว
+- **`blind` prop บน `ScannedItemRow`** = `!recheckMode` → ตรวจนับปกติแถวเป็น**สีกลาง** (`var(--paper-dark)` + ตัวเลข `var(--ink)`) เห็นสีแดง/เขียว/เหลืองตอน **phase `result`** เท่านั้น; **recheck mode ยังโชว์สี** (เภสัชต้องรู้ว่าตัวไหนขาด/เกิน — ตั้งใจ)
+- **`requestConfirm` เด้ง dialog ทุกครั้ง** ไม่ว่านับครบหรือไม่ และ dialog **เป็นกลาง** ("ยืนยันรับสินค้า · ตรวจนับครบถ้วนแล้วใช่หรือไม่?") ไม่บอกว่าครบ/เหลือกี่รายการ
+  - **⚠ ห้ามเอาข้อมูลความครบกลับเข้า dialog หรือคืนสีตอนนับ** — เดิม dialog เด้งเฉพาะ `!allChecked` + บอก "(เหลืออีก N รายการ)" + กดยกเลิกกลับไปแก้ได้ = **oracle**: ปรับเลข → กดยืนยัน → อ่านว่าเหลือเท่าไหร่ → ยกเลิก → วนจนไม่เด้ง = ได้เลขที่ถูกโดยไม่ต้องนับของ ยิ่งแก้จำนวนในแถวได้ยิ่งง่าย → **การซ่อนสีจะไร้ความหมายทันทีถ้า dialog บอกใบ้**
+  - dialog ยังทำหน้าที่เดิมคือกันกดพลาด; ผล `ok`/`over`/`fail` ไปโผล่ที่ phase `result` เหมือนเดิม
+- **`handleRecheck` ไม่มีใครเรียกแล้ว (dead code)** — กดยืนยันแล้วย้อนกลับมาแก้ในรอบเดียวกันไม่ได้ (การตรวจซ้ำต้องผ่าน problem flow ซึ่งหัวหน้าเห็น)
 - **เสียงสแกน:** `playScanSuccess()` (`src/sound.js`) เรียกใน `handleItemScan()` ทุกครั้งที่สแกนสินค้าเจอ (เหมือน PackScanC — ดู *เสียงสแกน* ใน section PackScanC ด้านบน)
 - `fullyChecked(item)` = `scanCounts[sku] >= item.qty`
 - `allChecked` = ทุก item ผ่าน fullyChecked
 - `hasOver` = มี item ใด item หนึ่งที่ `scanCounts[sku] > item.qty` (สแกนเกิน)
 - reset `scanCounts` เมื่อสแกนลังใหม่ / สแกนลังถัดไป / handleApprove / handleRecheck
 - **ตารางตรวจสอบสินค้า (phase verify):** แสดงคอลัมน์ SKU / ชื่อ / หน่วย / สแกนแล้ว
-  - **Android verify list (`ScannedItemRow`) เปลี่ยนสีแถบ+ตัวเลขตามสถานะครบ:** ยังไม่ครบ (`count < needed`)=**แดง** (`#fde8e8`/`#c0392b`) / ครบ (`=== needed`)=**เขียว** (`#e8f0d8`/`var(--green)`) / เกิน (`> needed`)=**เหลือง** (`#fff3cd`/`#e67e22`) — ส่ง `done={count>=needed}` + `over` (ชุดสีเดียวกับ result table [:1047-1050]). เดิมมี 2 สี (`over ? เหลือง : เขียว`) ครบ/ไม่ครบเขียวเหมือนกันแยกไม่ออก. **presentation-only** ไม่แตะ logic นับ/ยืนยัน; Desktop table + recheck panel 🧪 ไม่แตะ
+  - **`ScannedItemRow` มีชุดสี แดง(ไม่ครบ)/เขียว(ครบ)/เหลือง(เกิน)** (`#fde8e8`/`#c0392b` · `#e8f0d8`/`var(--green)` · `#fff3cd`/`#e67e22`) — **แต่ตอนตรวจนับปกติถูกปิดด้วย `blind` แล้ว** สีจะเห็นเฉพาะ recheck mode + phase `result` (ดู *แก้จำนวนในแถว + ปิดสีตอนนับ* ด้านบน)
   - **พนักงานสาขายังไม่เห็นจำนวนที่ควรมีในลัง (`needed`)** — เห็นแค่จำนวนที่สแกนไปแล้ว (`×count`) → semi-blind (สีบอกสถานะครบ แต่ไม่บอกว่าต้องกี่ชิ้น)
-- **กันกดยืนยันรับทั้งที่สแกนไม่ครบ:** ปุ่ม "✓ ยืนยันรับสินค้า" เรียก `requestConfirm` (ไม่ใช่ `handleConfirm` ตรง) — ถ้า `!allChecked` (ยังสแกนไม่ครบทุกรายการ) → เด้ง dialog (portal) **"⚠ ยังสแกนสินค้าไม่ครบ · เหลืออีก N รายการ · ต้องการยืนยันรับเลยหรือไม่?"** → "ยกเลิก · สแกนต่อ" (`setConfirmIncomplete(false)`) หรือ "ยืนยันรับ" (`handleConfirm` ต่อ → result `fail`); ครบแล้ว → `handleConfirm` เลยไม่ถาม (over ก็ครบ = ผ่านตรง ไม่เด้ง — ดูเฉพาะ "ไม่ครบ")
+- **ปุ่ม "✓ ยืนยันรับสินค้า" เรียก `requestConfirm`** (ไม่ใช่ `handleConfirm` ตรง) → เด้ง dialog (portal) **เป็นกลาง ทุกครั้ง** — ดู *แก้จำนวนในแถว + ปิดสีตอนนับ* ด้านบนว่าทำไมห้ามให้ dialog บอกความครบ
 - **Phase `result`** (Android — หลังกด ✓ ยืนยันรับสินค้า):
   - `verifyResult` = `'ok'` / `'over'` / `'fail'`
     - `'ok'`: allChecked && !hasOver → `handleConfirm` ตั้ง `receivePending: true` บน box → แสดงกล่อง **"✓ ส่งให้หัวหน้าอนุมัติเอกสารแล้ว"** (ไม่มีปุ่มอนุมัติบน Android — อนุมัติที่ Desktop)
