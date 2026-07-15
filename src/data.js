@@ -26,10 +26,18 @@ export function generatePOS(boxId) {
   return boxId.replace(/\D/g, '').padEnd(14, '0').slice(0, 14);
 }
 
+// item.barcode มักเป็น comma-separated หลายตัวต่อ SKU (ผลจาก applyBarcodeMap) — match ตัวใดตัวหนึ่งก็พอ
+//
+// `|| ''` เป็น guard กัน crash เท่านั้น ไม่เปลี่ยนพฤติกรรม: ถ้า barcode เป็น string อยู่แล้วจะได้ค่าเดิมเป๊ะ
+// ทำไมต้องมี: ฟังก์ชันนี้ถูกเรียกใน .find() ที่วนทั้ง catalog (PackScanC) และทั้งลัง (BranchReceive)
+// → ถ้ามี item สักตัวที่ไม่มี field barcode จะ throw แล้ว "การสแกนพังทั้งจอ" ไม่ใช่แค่ item นั้น
+// และพังแบบไม่สม่ำเสมอ (.find หยุดเมื่อเจอ → แถวเสียอยู่ก่อน=พัง อยู่หลัง=รอด) → debug ยากมาก
+// field หายได้จริงเพราะ firebase.js ตั้ง ignoreUndefinedProperties: true = undefined ถูกตัดทิ้งตอนเขียน
+// (ปัจจุบันยังไม่มีเส้นทางไหนผลิต undefined — นี่คือประกันราคาศูนย์ ไม่ใช่การแก้บั๊กที่เกิดอยู่)
 export function matchBarcode(item, val) {
   if (!val) return false;
   if (item.sku === val) return true;
-  return item.barcode.split(',').map(b => b.trim()).includes(val);
+  return (item.barcode || '').split(',').map(b => b.trim()).includes(val);
 }
 
 export const checklist = [
