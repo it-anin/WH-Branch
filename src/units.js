@@ -19,6 +19,11 @@ export const UNIT_FACTOR_OVERRIDE = {
 export const lookupFactor = (factorMap, sku, unit) =>
   factorMap[`${sku}__${unit}`] ?? UNIT_FACTOR_OVERRIDE[`${sku}__${unit}`] ?? STANDARD_UNIT_FACTOR[unit] ?? 1;
 
+// เติมชื่อสินค้าจาก nameMap (R05.106 CF_ITEMNAME) เมื่อ item ไม่มีชื่อ หรือชื่อเป็นเลข SKU
+// (เกิดจาก lookupByScan เดิมที่ fallback เป็น sku ตอนสแกนเพิ่มสินค้านอก Picklist) — heal ตอน render, ไม่แตะข้อมูลจริง
+export const fixItemName = (l, nameMap) =>
+  (!l.name || l.name === l.sku) && nameMap[l.sku] ? { ...l, name: nameMap[l.sku] } : l;
+
 // index บาร์โค้ด → { sku, unit } จาก barcodeMap ({ sku__unit: [barcodes] })
 // ใช้ resolve ว่าบาร์โค้ดที่พนักงานสาขาสแกนเป็นหน่วยอะไรของ SKU ไหน (เพื่อรู้ factor ตอนรับเข้า)
 export function buildBarcodeIndex(barcodeMap) {
