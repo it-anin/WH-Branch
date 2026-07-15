@@ -40,11 +40,6 @@ const ACCENT_SOFT = '#f5c9a8';
 const LOTMAP_MAX_CHUNKS = 10;
 const LOTMAP_CHUNK_BUDGET = 700_000; // ~700KB ต่อ doc (JSON length โดยประมาณ)
 
-// nameMap (ชื่อสินค้าต่อ SKU จาก R05.106 ColF) — วัดจริง ~542KB (7.9k SKU) เกินครึ่งลิมิต 1MB/doc → shard ตั้งแต่แรกตาม Known Pitfall
-// วันนี้ 1 doc พอ แต่โครงพร้อมโต: config/nameMap (chunk 0) + nameMap_1..N
-const NAMEMAP_MAX_CHUNKS = 5;
-const NAMEMAP_CHUNK_BUDGET = 700_000;
-
 const isAndroidMode = new URLSearchParams(window.location.search).get('android') === '1';
 
 export default function App() {
@@ -214,15 +209,6 @@ export default function App() {
       })));
       setLotMapMeta(meta);
     }, onErr('lotMap'));
-    // nameMap (ชื่อสินค้าต่อ SKU จาก R05.106) — sharded เหมือน lotMap: query ทุก doc ที่ id ขึ้นต้น 'nameMap' แล้วรวม entries
-    // upper bound ประกอบด้วย String.fromCharCode(0xf8ff) — ห้ามพิมพ์ escape ตรงๆ (Known Pitfall: กลายเป็น literal char ล่องหน)
-    const nameMapQuery = query(collection(db, 'config'),
-      where(documentId(), '>=', 'nameMap'), where(documentId(), '<=', 'nameMap' + String.fromCharCode(0xf8ff)));
-    const unsubNameMap = onSnapshot(nameMapQuery, snap => {
-      const entries = [];
-      snap.docs.forEach(d => { entries.push(...(d.data().entries || [])); });
-      setNameMap(Object.fromEntries(entries.map(e => [e.key, e.name])));
-    }, onErr('nameMap'));
     const unsubZone = onSnapshot(doc(db, 'config', 'zoneAssignments'), snap => {
       if (snap.exists()) setZoneAssignments(snap.data().assignments || {});
     }, onErr('zoneAssignments'));
@@ -231,7 +217,7 @@ export default function App() {
         .sort((a, b) => new Date(b.clearedAt) - new Date(a.clearedAt));
       setHistory(data);
     }, onErr('history'));
-    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); unsubFactorMap(); unsubLotMap(); unsubNameMap(); unsubZone(); unsubHistory(); };
+    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); unsubFactorMap(); unsubLotMap(); unsubZone(); unsubHistory(); };
   }, []);
 
   function setBoxes(updater) {
@@ -406,8 +392,6 @@ export default function App() {
       batch.delete(doc(db, 'config', 'factorMap'));
       batch.delete(doc(db, 'config', 'lotMap'));
       for (let i = 1; i < LOTMAP_MAX_CHUNKS; i++) batch.delete(doc(db, 'config', `lotMap_${i}`)); // ลบ shard ทุกตัว (no-op ถ้าไม่มี)
-      batch.delete(doc(db, 'config', 'nameMap'));
-      for (let i = 1; i < NAMEMAP_MAX_CHUNKS; i++) batch.delete(doc(db, 'config', `nameMap_${i}`));
       await batch.commit();
       boxesRef.current = [];
       itemsByBoxRef.current = {};
@@ -419,7 +403,6 @@ export default function App() {
       setCatalogByPacker({});
       setBarcodeMap({});
       setFactorMap({});
-      setNameMap({});
       setCostMap({});
       setLotMap({});
       setHistory([]);
@@ -474,7 +457,6 @@ export default function App() {
   const [catalogByPacker, setCatalogByPacker] = useState({});
   const [barcodeMap, setBarcodeMap] = useState({});
   const [factorMap, setFactorMap] = useState({}); // {sku__unit: ตัวคูณหน่วยฐาน} จาก R05.106 ColH — ใช้แปลงหน่วย picklist↔หน่วยที่สแกน
-  const [nameMap, setNameMap] = useState({}); // {sku: ชื่อสินค้า} จาก R05.106 ColF — แหล่งชื่อสำรอง (สแกนเพิ่มนอก Picklist / heal ชื่อ=เลข SKU)
   const [costMap, setCostMap] = useState({});
   const [lotMap, setLotMap] = useState({});
   const [catalogMeta, setCatalogMeta] = useState(null);
@@ -554,7 +536,7 @@ export default function App() {
     });
   }
 
-  function handleBarcodeMapImport(map, importedFactorMap, importedNameMap, meta) {
+  function handleBarcodeMapImport(map, importedFactorMap, meta) {
     setBarcodeMap(map);
     const mapEntries = Object.entries(map).map(([key, barcodes]) => ({ key, barcodes }));
     setDoc(doc(db, 'config', 'barcodeMap'), { entries: mapEntries, ...(meta ? { _meta: meta } : {}) })
@@ -565,25 +547,6 @@ export default function App() {
       const factorEntries = Object.entries(importedFactorMap).map(([key, factor]) => ({ key, factor }));
       setDoc(doc(db, 'config', 'factorMap'), { entries: factorEntries })
         .catch(err => console.error('factorMap write failed:', err.code));
-    }
-    // ชื่อสินค้า (ColF) มากับไฟล์เดียวกัน — sync แบบ sharded (วัดจริง ~542KB → shard ตั้งแต่แรก; chunk logic แยกจาก lotMap ไม่แตะ path เดิม)
-    if (importedNameMap && Object.keys(importedNameMap).length > 0) {
-      setNameMap(importedNameMap);
-      const nameEntries = Object.entries(importedNameMap).map(([key, name]) => ({ key, name }));
-      const chunks = [];
-      let cur = [], curSize = 0;
-      for (const e of nameEntries) {
-        const size = JSON.stringify(e).length + 1;
-        if (curSize + size > NAMEMAP_CHUNK_BUDGET && cur.length > 0) { chunks.push(cur); cur = []; curSize = 0; }
-        cur.push(e); curSize += size;
-      }
-      if (cur.length > 0) chunks.push(cur);
-      const nb = writeBatch(db);
-      chunks.slice(0, NAMEMAP_MAX_CHUNKS).forEach((chunkEntries, i) => {
-        nb.set(doc(db, 'config', i === 0 ? 'nameMap' : `nameMap_${i}`), { entries: chunkEntries });
-      });
-      for (let i = Math.max(chunks.length, 1); i < NAMEMAP_MAX_CHUNKS; i++) nb.delete(doc(db, 'config', `nameMap_${i}`)); // ลบ chunk เก่าที่เกินรอบนี้ (no-op ถ้าไม่มี)
-      nb.commit().catch(err => console.error('nameMap write failed:', err.code));
     }
     const updated = applyBarcodeMap(catalog, map);
     const matched = updated.filter(it => it.barcode).length; // จำนวนรายการเบิกที่ได้ barcode หลัง merge
@@ -673,7 +636,7 @@ export default function App() {
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
-  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   // Gate: ยังไม่ login → แสดงหน้า Login (ทั้ง Android + Desktop)
   if (!profile) {

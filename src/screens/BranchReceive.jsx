@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { matchBarcode } from '../data.js';
 import { ALL_BRANCH_STAFF } from '../branches.js';
 import { playScanSuccess, playBoxScan, playScanFail } from '../sound.js';
-import { lookupFactor, buildBarcodeIndex, fixItemName } from '../units.js';
+import { lookupFactor, buildBarcodeIndex } from '../units.js';
 
 // Desktop staff filter dropdown ใช้รายชื่อรวมทุกสาขา; Android ใช้ staff ของสาขาที่เลือก (controlled mode)
 const BRANCH_STAFF = ALL_BRANCH_STAFF;
@@ -212,7 +212,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onClick }) {
   );
 }
 
-export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null, barcodeMap = {}, factorMap = {}, nameMap = {} }) {
+export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null, barcodeMap = {}, factorMap = {} }) {
   const [internalBranchStaff, setInternalBranchStaff] = useState(null);
   const isControlled = branchStaffProp !== undefined;
   const branchStaff = isControlled ? branchStaffProp : internalBranchStaff;
@@ -246,7 +246,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const isReceived     = foundBox?.status === 'received';
   const isViewingOther = viewingId !== null && phase !== 'result';
   const viewingBox     = viewingId ? boxes.find(b => b.id === viewingId) : null;
-  const viewingItems   = (viewingId ? (itemsByBox[viewingId] || []) : []).map(l => fixItemName(l, nameMap));
+  const viewingItems   = viewingId ? (itemsByBox[viewingId] || []) : [];
 
   // ลังที่พนักงานหน้าร้านสแกนรับแล้ว (รออนุมัติ) หรือเคยเข้ารับใน session นี้ — pending ขึ้นก่อน
   // Desktop: ปุ่มเลือกพนักงาน = filter เฉพาะลังที่พนักงานคนนั้นสแกน (receivedBy)
@@ -283,7 +283,6 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         .filter(matchBranch)
         .flatMap(box =>
           (itemsByBox[box.id] || [])
-            .map(l => fixItemName(l, nameMap))
             .filter(l => (l.sku || '').toLowerCase().includes(searchQ) || (l.name || '').toLowerCase().includes(searchQ))
             .map(l => ({ boxId: box.id, status: box.status, sku: l.sku, name: l.name, unit: l.unit, scannedUnit: l.scannedUnit, baseUnit: l.baseUnit, qty: l.gotBase ?? l.qty ?? l.got ?? 0 }))
         )
@@ -631,7 +630,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     showToast('ลบออกจากรายการแล้ว', 'error');
   }
 
-const boxItems         = (foundBox ? (itemsByBox[foundBox.id] || []) : []).map(l => fixItemName(l, nameMap));
+const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
   // resolve บาร์โค้ด→หน่วย + factor (แปลงหน่วยตอนรับเข้า เช่น 1 กล่อง = 24 ม้วน)
   const barcodeIndex     = useMemo(() => buildBarcodeIndex(barcodeMap), [barcodeMap]);
   const factorOf         = (sku, unit) => lookupFactor(factorMap, sku, unit);

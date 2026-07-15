@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
-import { fixItemName } from '../units.js';
 
 // พนักงาน Android กรอก Exp เป็น ค.ศ. (ตรงกับที่พิมพ์บนสินค้าจริง) แต่ไฟล์ Text ต้องเป็น พ.ศ. — แปลงตอน export
 // ปี < 2400 ถือว่าเป็น ค.ศ. (+543) — ลังเก่าก่อนเปลี่ยน label ที่กรอกเป็น พ.ศ. ไว้แล้ว (ปี >= 2400) จะไม่ถูกแปลงซ้ำ
@@ -53,19 +52,18 @@ function lookupUnitByBarcode(barcodeMap, sku, barcode) {
 }
 
 // general scan lookup — รับ barcode หรือ SKU → คืน {sku, unit} หรือ null (ค้นใน barcodeMap ทุก entry)
-// nameMap (R05.106 ColF) = แหล่งชื่อสำรองเมื่อ SKU ไม่อยู่ใน Picklist ปัจจุบัน — เดิม fallback เป็นเลข sku ทำให้ตารางโชว์เลขแทนชื่อ
-function lookupByScan(barcodeMap, catalog, val, nameMap = {}) {
+function lookupByScan(barcodeMap, catalog, val) {
   const v = val.trim();
   if (!v) return null;
   // 1) ตรงกับ SKU ใน catalog ตรงๆ
   const byCatalogSku = catalog.find(c => c.sku === v);
   if (byCatalogSku) return { sku: byCatalogSku.sku, unit: byCatalogSku.unit, name: byCatalogSku.name, location: byCatalogSku.location || '' };
-  // 2) ค้น barcode ใน barcodeMap → ได้ sku__unit → lookup ชื่อจาก catalog → nameMap → เลข sku (ทางสุดท้าย)
+  // 2) ค้น barcode ใน barcodeMap → ได้ sku__unit → lookup ชื่อจาก catalog
   for (const [key, barcodes] of Object.entries(barcodeMap)) {
     if (Array.isArray(barcodes) && barcodes.includes(v)) {
       const [sku, unit] = key.split('__');
       const cat = catalog.find(c => c.sku === sku && c.unit === unit) || catalog.find(c => c.sku === sku);
-      return { sku, unit: unit || cat?.unit || '', name: cat?.name || nameMap[sku] || sku, location: cat?.location || '' };
+      return { sku, unit: unit || cat?.unit || '', name: cat?.name || sku, location: cat?.location || '' };
     }
   }
   return null;
@@ -150,7 +148,7 @@ function StickerLabel({ box }) {
   );
 }
 
-export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {}, barcodeMap = {}, nameMap = {}, catalog = [] }) {
+export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {}, barcodeMap = {}, catalog = [] }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
@@ -193,13 +191,12 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     .sort((a, b) => a.id.localeCompare(b.id)); // เรียงเลขที่ลังน้อย→มาก
 
   const activeBox = boxes.find(b => b.id === selectedId) || null;
-  // heal ชื่อที่เป็นเลข SKU (ลังเก่าจาก lookupByScan เดิม) ด้วย nameMap ตั้งแต่จุด derive — ตาราง/Excel/edit ได้ชื่อครบโดยไม่แตะทีละ render
-  const boxItems = (selectedId ? (itemsByBox?.[selectedId] || []) : []).map(l => fixItemName(l, nameMap));
+  const boxItems = selectedId ? (itemsByBox?.[selectedId] || []) : [];
 
   // global search across all closed boxes
   const searchResults = globalSearch.trim()
     ? closedBoxes.flatMap(b => {
-        const items = (itemsByBox?.[b.id] || []).map(l => fixItemName(l, nameMap));
+        const items = itemsByBox?.[b.id] || [];
         return items
           .filter(l =>
             l.name.toLowerCase().includes(globalSearch.toLowerCase()) ||
@@ -292,7 +289,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     const headers = ['เลขที่ลังสินค้า', 'เลขที่เอกสาร', 'SKU', 'ชื่อสินค้า', 'Barcode', 'หน่วย', 'จำนวน', 'พนักงานแพ็คสินค้า', 'วันที่ส่งสินค้า'];
     const dataRows = closedBoxes.flatMap(b =>
       // แตกแถวตาม (LOT + หน่วย) ด้วย lotRows — SKU เดียวสแกนปนหน่วย (แพ็ค + ลัง) แยกคนละแถว บาร์โค้ด/จำนวน/หน่วยของตัวเอง
-      (itemsByBox?.[b.id] || []).map(l => fixItemName(l, nameMap)).flatMap(l =>
+      (itemsByBox?.[b.id] || []).flatMap(l =>
         lotRows(l, lotMap).map(r => [
           b.id,
           b.pos && b.pos !== '—' ? b.pos : '',
@@ -361,7 +358,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     if (e.key !== 'Enter') return;
     const val = addScan.trim();
     if (!val) return;
-    const found = lookupByScan(barcodeMap, catalog, val, nameMap);
+    const found = lookupByScan(barcodeMap, catalog, val);
     if (!found) {
       setAddScanErr(`⚠ ไม่พบ "${val}" ใน Catalog / R05.106`);
       return;

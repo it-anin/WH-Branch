@@ -29,13 +29,11 @@ function toStr(val) {
   return s;
 }
 
-// ColA(0)=barcode  ColE(4)=sku  ColF(5)=ชื่อสินค้า (CF_ITEMNAME)  ColG(6)=unit  ColH(7)=ตัวคูณหน่วยฐาน (CF_BASEMULTIPLE)
-// คืน { map, factorMap, nameMap } — map = {sku__unit: [barcode]}, factorMap = {sku__unit: factor},
-// nameMap = {sku: ชื่อ} (first-wins) — ใช้เป็นแหล่งชื่อสำรองตอนสแกนเพิ่มสินค้านอก Picklist / heal ลังเก่าที่ชื่อเป็นเลข SKU
+// ColA(0)=barcode  ColE(4)=sku  ColG(6)=unit  ColH(7)=ตัวคูณหน่วยฐาน (CF_BASEMULTIPLE)
+// คืน { map, factorMap } — map = {sku__unit: [barcode]}, factorMap = {sku__unit: factor} (จำนวนหน่วยฐานต่อ 1 หน่วยนี้ เช่น โหล=12)
 function rowsToMap(rows) {
   const map = {};
   const factorMap = {};
-  const nameMap = {};
   rows.slice(1).forEach(vals => {
     const barcode = toStr(vals[0]);
     const sku     = toStr(vals[4]);
@@ -45,15 +43,12 @@ function rowsToMap(rows) {
     // ตัวคูณผูกกับ sku__unit (ไม่ใช่ชื่อหน่วยล้วน — กล่อง/โหล มี factor ต่างกันตาม SKU) — first-wins
     const f = Number(vals[7]);
     if (Number.isFinite(f) && f > 0 && !(key in factorMap)) factorMap[key] = f;
-    // ชื่อสินค้าต่อ SKU (ไม่ผูก unit) — first-wins, ข้ามค่าว่าง
-    const name = String(vals[5] ?? '').trim();
-    if (name && !(sku in nameMap)) nameMap[sku] = name;
     if (barcode) {
       if (!map[key]) map[key] = [];
       if (!map[key].includes(barcode)) map[key].push(barcode);
     }
   });
-  return { map, factorMap, nameMap };
+  return { map, factorMap };
 }
 
 function parseCSV(text) {
@@ -87,7 +82,7 @@ export default function ImportBarcodeMap({ matchCount, meta, onImport }) {
     }
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const { map, factorMap, nameMap } = parseXLSX(ev.target.result);
+      const { map, factorMap } = parseXLSX(ev.target.result);
       if (Object.keys(map).length === 0) {
         alert('ไม่พบข้อมูล Barcode กรุณาตรวจสอบรูปแบบไฟล์');
         return;
@@ -97,7 +92,7 @@ export default function ImportBarcodeMap({ matchCount, meta, onImport }) {
       const d = new Date(); // วันที่อัปโหลดจริง (ไม่ใช่ file.lastModified ที่เป็นวันแก้ไขไฟล์)
       const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
       setUploadedAt(fd);
-      onImport(map, factorMap, nameMap, { fileName: name, fileDate: fd });
+      onImport(map, factorMap, { fileName: name, fileDate: fd });
     };
     reader.readAsArrayBuffer(file);
     e.target.value = '';
