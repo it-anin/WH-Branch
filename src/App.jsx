@@ -225,11 +225,23 @@ export default function App() {
     const next = typeof updater === 'function' ? updater(prev) : updater;
     boxesRef.current = next;
     _setBoxes(next);
+    // ⚠ เขียน "เฉพาะลังที่เปลี่ยนจริง" (ลังใหม่ หรือ object reference ต่างจากเดิม) — ห้ามเขียนลังทุกใบทั้งชุด
+    // เดิมเขียนทุกใบจาก snapshot เครื่องนี้ → เครื่องอื่นที่เพิ่งปิดลัง (snapshot ยังไม่ sync มา) ถูกเขียนทับกลับเป็น open → ลังปิดแล้วหาย
+    // callers ทุกตัวใช้ prev.map(b => id===X ? {...b} : b) → ลังไม่เปลี่ยนคง reference เดิม → เทียบ !== ตรวจได้แม่น (pattern เดียวกับ setItemsByBox)
+    const prevById = new Map(prev.map(b => [b.id, b]));
     const batch = writeBatch(db);
-    next.forEach(box => batch.set(doc(db, 'boxes', box.id), box));
+    let changes = 0;
+    next.forEach(box => {
+      if (prevById.get(box.id) !== box) { batch.set(doc(db, 'boxes', box.id), box); changes++; }
+    });
     prev.filter(b => !next.find(n => n.id === b.id))
-        .forEach(b => batch.delete(doc(db, 'boxes', b.id)));
-    batch.commit();
+        .forEach(b => { batch.delete(doc(db, 'boxes', b.id)); changes++; });
+    if (changes > 0) {
+      batch.commit().catch(err => {
+        console.error('setBoxes commit failed:', err.code, err.message);
+        showToast('⚠ บันทึกลังไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+      });
+    }
   }
 
   function setItemsByBox(updater) {
