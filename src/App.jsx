@@ -478,6 +478,19 @@ export default function App() {
   const [zoneAssignments, setZoneAssignments] = useState({});
   const [showZoneAssign, setShowZoneAssign] = useState(false);
 
+  // ── ลำดับอัปโหลด 4 ไฟล์ (Tab: รายการเบิกสินค้า) — Picklist → R05.106 → R05.105 → LOT+EXP
+  // ⚠ ต้องอยู่ "หลัง" useState ของ catalog/barcodeMap/costMap เสมอ — const อยู่ใน temporal dead zone
+  // ถ้าย้ายบล็อกนี้ขึ้นไปก่อนบรรทัดประกาศ จะได้ ReferenceError ตอนรัน = แอปขาวทั้งจอ (build ไม่จับให้)
+  // ปุ่มที่ยังไม่ถึงคิวถูก disable. เช็คจาก "มีข้อมูลจริงหรือยัง" ไม่ใช่ _meta เพราะ meta อาจว่างได้
+  // ในข้อมูลเก่าที่ import ไว้ก่อนจะมี field _meta ทั้งที่ข้อมูลมาครบแล้ว
+  // เหตุผลเชิงข้อมูล (ไม่ใช่แค่ UX): LOT+EXP ต้องมาหลัง R05.106 เพราะ ImportLotMap เอา factorMap
+  // ไปคูณแปลง qty เป็นหน่วยฐานตั้งแต่ตอน import — ถ้า factorMap ยังว่างจะได้ factor=1 ทุกแถว
+  // แล้วสต็อกผิดทั้งก้อนแบบเงียบๆ (ดู skill wms-import)
+  // หมายเหตุ: ครบทั้ง 4 แล้วปุ่มปลดล็อกหมด — re-import ไฟล์ใดไฟล์เดียวได้ตามปกติ ไม่ต้องไล่ใหม่ทั้งชุด
+  const hasCatalog    = catalog.length > 0;
+  const hasBarcodeMap = Object.keys(barcodeMap).length > 0;
+  const hasCostMap    = Object.keys(costMap).length > 0;
+
   // debug helper — พิมพ์ใน console: __wh.sku('708422') | __wh.info()
   useEffect(() => {
     window.__wh = {
@@ -760,17 +773,23 @@ export default function App() {
                 matchCount={Object.keys(barcodeMap).length}
                 meta={barcodeMapMeta}
                 onImport={handleBarcodeMapImport}
+                locked={!hasCatalog}
+                lockedHint="อัปโหลดไฟล์ Picklist ก่อน"
               />
               <ImportCostMap
                 matchCount={Object.keys(costMap).length}
                 meta={costMapMeta}
                 onImport={handleCostMapImport}
+                locked={!hasBarcodeMap}
+                lockedHint="อัปโหลดไฟล์ R05.106 ก่อน"
               />
               <ImportLotMap
                 matchCount={Object.keys(lotMap).length}
                 meta={lotMapMeta}
                 onImport={handleLotMapImport}
                 factorMap={factorMap}
+                locked={!hasCostMap}
+                lockedHint="อัปโหลดไฟล์ R05.105 ก่อน"
               />
             </div>
             <BoxList {...screenProps} />

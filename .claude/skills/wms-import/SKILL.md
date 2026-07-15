@@ -76,14 +76,22 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 **LOT structure backward-compat:** Firestore listener รับได้ทั้งรูปแบบเก่า (`lots: [string]` → จะ normalize เป็น `{lot, qty: Infinity}`) และใหม่ (`lots: [{lot, qty, exp?}]`) — ต้อง re-import เพื่อ get qty จริง; ต้อง re-import **ไฟล์ LOT+EXP** เพื่อ get exp (ไฟล์ R01.119 เดิม → exp ว่างทุก lot)
 
 ### Import Button UX (หน้า Tab: รายการเบิกสินค้า)
-ปุ่ม 4 ปุ่มเรียงเป็น column แยกแถว:
+ปุ่ม 4 ปุ่มเรียงเป็น column แยกแถว **มีเลขลำดับนำหน้า `1 · ` … `4 · `** และ **บังคับลำดับ** (ดู *ลำดับอัปโหลด* ด้านล่าง):
 
 | ปุ่ม | ก่อนอัปโหลด | หลังอัปโหลด |
 |---|---|---|
-| ImportCatalog | `⇑ อัปโหลดไฟล์ Picklist` (ไม่มีสี) | `✅ อัปโหลดไฟล์ Picklist_XXX แล้ว` (สีส้ม) + badge `✅ รายการเบิก: N รายการ · ไฟล์วันที่ D/M/YYYY` |
-| ImportBarcodeMap | `⇑ อัปโหลดไฟล์ R05.106` (ไม่มีสี) — **รับ `.xlsx` เท่านั้น** (.csv ทำเลข 0 นำหน้าหาย) | `✅ อัปโหลดไฟล์ {filename} แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
-| ImportCostMap | `⇑ อัปโหลดไฟล์ R05.105` (ไม่มีสี) | `✅ อัปโหลดไฟล์ R05.105 แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
-| ImportLotMap | `⇑ อัปโหลดไฟล์ LOT+EXP` (ไม่มีสี) | `✅ อัปโหลดไฟล์ LOT+EXP แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
+| ImportCatalog | `1 · ⇑ อัปโหลดไฟล์ Picklist` (ไม่มีสี) | `1 · ✅ อัปโหลดไฟล์ Picklist_XXX แล้ว` (สีส้ม) + badge `✅ รายการเบิก: N รายการ · ไฟล์วันที่ D/M/YYYY` |
+| ImportBarcodeMap | `2 · ⇑ อัปโหลดไฟล์ R05.106` (ไม่มีสี) — **รับ `.xlsx` เท่านั้น** (.csv ทำเลข 0 นำหน้าหาย) | `2 · ✅ อัปโหลดไฟล์ {filename} แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
+| ImportCostMap | `3 · ⇑ อัปโหลดไฟล์ R05.105` (ไม่มีสี) | `3 · ✅ อัปโหลดไฟล์ R05.105 แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
+| ImportLotMap | `4 · ⇑ อัปโหลดไฟล์ LOT+EXP` (ไม่มีสี) | `4 · ✅ อัปโหลดไฟล์ LOT+EXP แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
+
+#### ลำดับอัปโหลด (บังคับ) — Picklist → R05.106 → R05.105 → LOT+EXP
+- **ปุ่มที่ยังไม่ถึงคิวถูก `disabled`** + แสดง chip `🔒 อัปโหลดไฟล์ {ไฟล์ก่อนหน้า} ก่อน` แทน badge วันที่
+- **props:** ทุก component (ยกเว้น ImportCatalog ที่เป็นขั้น 1 ไม่เคยล็อก) รับ `locked` + `lockedHint`; `handleFile` มี guard `if (locked) return` ซ้ำอีกชั้น กันไฟล์หลุดเข้ามาทางอื่น
+- **เงื่อนไขคิว (App.jsx, ใกล้ `showAll`):** `hasCatalog = catalog.length > 0` · `hasBarcodeMap` / `hasCostMap` = `Object.keys(...).length > 0` — **เช็คจากข้อมูลจริง ไม่ใช่ `_meta`** เพราะข้อมูลเก่าที่ import ก่อนจะมี field `_meta` จะมี data ครบแต่ meta ว่าง → ถ้า gate ด้วย meta ปุ่มจะล็อกค้างทั้งที่ข้อมูลมาแล้ว
+- **⚠ เหตุผลเชิงข้อมูล ไม่ใช่แค่ UX:** LOT+EXP ต้องมาหลัง R05.106 เพราะ `ImportLotMap` เอา `factorMap` ไปคูณแปลง qty เป็นหน่วยฐาน**ตั้งแต่ตอน import** — ถ้า factorMap ยังว่างจะได้ `factor=1` ทุกแถว แล้ว**สต็อกผิดทั้งก้อนแบบเงียบๆ ไม่มี error** (ดู *LOT aggregation logic* ด้านบน)
+- **ครบ 4 แล้วปลดล็อกหมด** — re-import รายไฟล์ได้ตามปกติ ไม่ต้องไล่ใหม่ทั้งชุด. `clearBoxes` (เริ่มวันถัดไป) **ไม่** reset → วันรุ่งขึ้นอัปแค่ Picklist ใหม่ได้เลย; `clearFirestore` (ล้างทั้งระบบ) reset ทั้ง 3 → กลับไปล็อกเหลือขั้น 1
+- **`.btn:disabled` (styles.css)** — เพิ่มพร้อมฟีเจอร์นี้ (เดิม**ไม่มี**สไตล์ disabled เลย ปุ่มที่ disable หน้าตาเหมือนปุ่มปกติ): `opacity .4` + `grayscale(.55)` + ยุบเงา. เป็น global → กระทบปุ่ม disabled อื่นที่มีอยู่เดิมด้วย (ส่งออกไฟล์ Text, แจ้งคลังสินค้า, pagination PackScanC, Login) ซึ่งล้วนได้สไตล์ที่ควรมีตั้งแต่แรก
 
 - **XXX** ใน Picklist — parse จาก filename pattern `Picklist_XXX` (regex `picklist[_-]([A-Za-z0-9]+)`) เช่น `Picklist_SRC` → `SRC`
 - **{filename}** ใน Barcode — ชื่อไฟล์ไม่มีนามสกุล เช่น `R05.106`

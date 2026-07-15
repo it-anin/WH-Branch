@@ -44,7 +44,7 @@ function parseXLSX(buffer) {
   return rowsToMap(rows);
 }
 
-export default function ImportCostMap({ matchCount, meta, onImport }) {
+export default function ImportCostMap({ matchCount, meta, onImport, locked = false, lockedHint = '' }) {
   const fileRef = useRef(null);
   const [uploadedAt, setUploadedAt] = useState(null);
 
@@ -53,6 +53,7 @@ export default function ImportCostMap({ matchCount, meta, onImport }) {
   function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (locked) { e.target.value = ''; return; } // กันไฟล์หลุดเข้ามาตอนยังไม่ถึงคิว
     const isXLSX = /\.xlsx?$/i.test(file.name);
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -74,10 +75,18 @@ export default function ImportCostMap({ matchCount, meta, onImport }) {
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className={`btn sm${displayUploadedAt ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
+      <button
+        className={`btn sm${displayUploadedAt ? ' primary' : ''}`}
+        style={{ minWidth: 240 }}
+        disabled={locked}
+        onClick={() => fileRef.current?.click()}
+      >
+        {'3 · '}
         {displayUploadedAt ? '✅ อัปโหลดไฟล์ R05.105 แล้ว' : '⇑ อัปโหลดไฟล์ R05.105'}
       </button>
-      {displayUploadedAt && (
+      {locked ? (
+        <span className="chip" style={{ fontFamily: 'system-ui', fontSize: 13 }}>🔒 {lockedHint}</span>
+      ) : displayUploadedAt && (
         <span className="chip ok" style={{ fontFamily: 'system-ui', fontSize: 13 }}>
           ไฟล์วันที่ {displayUploadedAt}
         </span>

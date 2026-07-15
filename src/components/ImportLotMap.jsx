@@ -75,7 +75,7 @@ const STAGE = {
   done:    { label: '✅ เสร็จสมบูรณ์', pct: 100 },
 };
 
-export default function ImportLotMap({ matchCount, meta, onImport, factorMap = {} }) {
+export default function ImportLotMap({ matchCount, meta, onImport, factorMap = {}, locked = false, lockedHint = '' }) {
   const fileRef = useRef(null);
   const [uploadedAt, setUploadedAt] = useState(null);
   const [stage, setStage] = useState(null); // null = ไม่ได้กำลังอัปโหลด
@@ -85,6 +85,9 @@ export default function ImportLotMap({ matchCount, meta, onImport, factorMap = {
   function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
+    // กันไฟล์หลุดเข้ามาตอนยังไม่ถึงคิว — สำคัญกว่าไฟล์อื่น: ถ้า factorMap (R05.106) ยังไม่มา
+    // parseWorkbook จะได้ factor=1 ทุกแถว → qty ทั้งก้อนผิดหน่วยแบบเงียบๆ ไม่มี error
+    if (locked) { e.target.value = ''; return; }
     setStage('reading');
     const reader = new FileReader();
     const isCsv = /\.csv$/i.test(file.name);
@@ -126,12 +129,15 @@ export default function ImportLotMap({ matchCount, meta, onImport, factorMap = {
       <button
         className={`btn sm${displayUploadedAt ? ' primary' : ''}`}
         style={{ minWidth: 240 }}
-        disabled={uploading}
+        disabled={uploading || locked}
         onClick={() => fileRef.current?.click()}
       >
+        {'4 · '}
         {uploading ? '⏳ กำลังอัปโหลด...' : displayUploadedAt ? '✅ อัปโหลดไฟล์ LOT+EXP แล้ว' : '⇑ อัปโหลดไฟล์ LOT+EXP'}
       </button>
-      {uploading ? (
+      {locked ? (
+        <span className="chip" style={{ fontFamily: 'system-ui', fontSize: 13 }}>🔒 {lockedHint}</span>
+      ) : uploading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 220 }}>
           <div style={{
             height: 8, borderRadius: 999, background: 'var(--paper-dark)',

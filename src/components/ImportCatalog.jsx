@@ -130,6 +130,7 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
       <button className={`btn sm${displayFileDate ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
+        {'1 · '}
         {displayFileDate
           ? displayBranch ? `✅ อัปโหลดไฟล์ Picklist_${displayBranch} แล้ว` : '✅ อัปโหลดไฟล์ Picklist แล้ว'
           : '⇑ อัปโหลดไฟล์ Picklist'}

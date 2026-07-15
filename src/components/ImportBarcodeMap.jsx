@@ -63,7 +63,7 @@ function parseXLSX(buffer) {
   return rowsToMap(rows);
 }
 
-export default function ImportBarcodeMap({ matchCount, meta, onImport }) {
+export default function ImportBarcodeMap({ matchCount, meta, onImport, locked = false, lockedHint = '' }) {
   const fileRef = useRef(null);
   const [label, setLabel] = useState(null);
   const [uploadedAt, setUploadedAt] = useState(null);
@@ -74,6 +74,7 @@ export default function ImportBarcodeMap({ matchCount, meta, onImport }) {
   function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (locked) { e.target.value = ''; return; } // กันไฟล์หลุดเข้ามาตอนยังไม่ถึงคิว (เช่น drag-drop / เรียกซ้ำ)
     // บังคับ .xlsx เท่านั้น — .csv ทำเลข 0 นำหน้าของ barcode/SKU หาย (accept เป็นแค่ filter ของ picker เลี่ยงด้วย "All files" ได้ → ต้อง guard ซ้ำ)
     if (!/\.xlsx$/i.test(file.name)) {
       alert('กรุณาอัปโหลดไฟล์ .xlsx เท่านั้น\n(ไฟล์ .csv ทำให้เลข 0 นำหน้าของบาร์โค้ด/SKU หาย)');
@@ -102,12 +103,20 @@ export default function ImportBarcodeMap({ matchCount, meta, onImport }) {
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       {/* บังคับ .xlsx เท่านั้น — ไฟล์ .csv (เช่น R05.106 ดิบ) ทำเลข 0 นำหน้าของ barcode/SKU หาย ต้อง save เป็น .xlsx ก่อนอัป */}
       <input ref={fileRef} type="file" accept=".xlsx" style={{ display: 'none' }} onChange={handleFile} />
-      <button className={`btn sm${displayUploadedAt ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
+      <button
+        className={`btn sm${displayUploadedAt ? ' primary' : ''}`}
+        style={{ minWidth: 240 }}
+        disabled={locked}
+        onClick={() => fileRef.current?.click()}
+      >
+        {'2 · '}
         {displayUploadedAt
           ? `✅ อัปโหลดไฟล์ ${displayLabel || 'R05.106'} แล้ว`
           : '⇑ อัปโหลดไฟล์ R05.106'}
       </button>
-      {displayUploadedAt && (
+      {locked ? (
+        <span className="chip" style={{ fontFamily: 'system-ui', fontSize: 13 }}>🔒 {lockedHint}</span>
+      ) : displayUploadedAt && (
         <span className="chip ok" style={{ fontFamily: 'system-ui', fontSize: 13 }}>
           ไฟล์วันที่ {displayUploadedAt}
         </span>

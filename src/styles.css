@@ -105,6 +105,16 @@ body {
 .btn.sm { font-size: 14px; padding: 4px 10px; }
 .btn.lg { font-size: 22px; padding: 14px 28px; font-family: system-ui, sans-serif; font-weight: 700; }
 
+/* ── ปุ่มที่ยังกดไม่ได้ (:disabled) ── ยุบเงา + จาง + เทา ให้รู้ว่ากดไม่ได้
+   ก่อนหน้านี้ไม่มีสไตล์นี้เลย → ปุ่ม disabled หน้าตาเหมือนปุ่มปกติทุกอย่าง กดแล้วเงียบ ไม่รู้ว่าทำไม
+   กระทบทุกปุ่มที่ใช้ disabled อยู่แล้ว: ลำดับอัปโหลด 4 ไฟล์, ส่งออกไฟล์ Text, แจ้งคลังสินค้า, pagination, Login
+   :disabled:hover ต้องมีเพราะ .btn:hover ยังคง match ปุ่มที่ disabled อยู่ */
+.btn:disabled {
+  opacity: .4; cursor: not-allowed; filter: grayscale(.55);
+  box-shadow: none; transform: none;
+}
+.btn:disabled:hover { transform: none; box-shadow: none; }
+
 /* ── Button press: "กดยุบเงา" (แบบ 1) ── ยุบปุ่มลงไปชนเงาตอนกด
    ครอบคลุมทุกปุ่ม รวม inline-style ใน Android (chips/แท็บ/เลือกสาขา) ที่ตั้ง :active ผ่าน inline ไม่ได้
    + portal dialogs (ยืนยันปิดลัง/เลือก LOT) ที่ render ไป document.body
