@@ -89,6 +89,12 @@ function receiveBadge(b) {
 // ชื่อสาขาเต็ม (ผู้รับบนสติกเกอร์) — map จาก box.branch (= suffix ของ Picklist_XXX)
 const BRANCH_NAMES = { SRC: 'สาขาชากค้อ', KKL: 'สาขาเก้ากิโล', SSS: 'สาขาสวนเสือศรีราชา' };
 const branchLabel = (code) => code ? (BRANCH_NAMES[code] || `สาขา ${code}`) : 'สาขาปลายทาง';
+// ถังของลังที่ไม่มี box.branch ในตัวกรองสาขา
+// ⚠ ลังพวกนี้ "สาขารับไม่ได้เลย" — BranchReceive กรอง b.branch === branch ตรงๆ (ตั้งใจ ตั้งแต่ commit 2a23385
+//   กันลังสาขาหนึ่งไปโผล่อีกสาขา) → null ไม่ match สาขาไหนทั้งนั้น และ box.branch แก้ย้อนหลังไม่ได้
+//   (set ครั้งเดียวใน createNewBox) → หน้า Outbound คือที่เดียวที่ลังพวกนี้โผล่ ห้ามให้ตัวกรองกลบ
+// lowercase ชนกับ code จริงไม่ได้ เพราะ extractBranch() uppercase เสมอ
+const NO_BRANCH = '__none';
 // ราคาทุน × markup เฉพาะบางสาขา (key = box.branch = suffix ของ Picklist_XXX, uppercase) — ใช้เฉพาะคอลัมน์ทุนในไฟล์ Text
 // สาขาที่ไม่มี key → markup 1 (ค่าทุนเดิมไม่เปลี่ยน); เพิ่มสาขาใหม่แก้ที่นี่จุดเดียว
 const COST_MARKUP = { WRD: 1.013, ONN: 1.013 };
@@ -161,6 +167,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const [docNumber, setDocNumber] = useState('');
   const [outboundFilter, setOutboundFilter] = useState('all'); // all | pending | approved
   const [packerFilter, setPackerFilter] = useState('all');     // all | packer.code
+  // all | box.branch | NO_BRANCH — ไม่ persist (เหมือน filter อีก 2 ตัว): ถ้าจำค่าไว้ พนักงานเปิดจอ
+  // เช้าวันถัดไปจะเจอมุมมองสาขาเดียวค้างจากเมื่อวาน แล้วแจ้งว่า "ลังหาย"
+  const [branchFilter, setBranchFilter] = useState('all');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null); // boxId รอยืนยันลบ (ยกเลิกรายการเบิก) — null = ไม่แสดง dialog
   const [editMode, setEditMode]     = useState(false);          // แก้ไขตารางรายชื่อสินค้าในลัง
   const [editItems, setEditItems]   = useState([]);             // สำเนา boxItems สำหรับแก้ไข (ออกจาก editMode = ทิ้ง)
@@ -172,10 +181,29 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   // อนุมัติแล้ว = exported/received, รออนุมัติ = closed (ยังไม่ส่ง POS)
   const isApproved = (b) => b.status === 'exported' || b.status === 'received';
   // รายชื่อพนักงานแพ็คที่มีลังจริง (unique by code)
+  // ⚠ derive จาก closedBoxes ไม่ใช่ branchBoxes โดยตั้งใจ — ไม่งั้นชิปพนักงานหาย ๆ โผล่ ๆ ตามสาขาที่กรอง
+  //   อ่านเหมือน "ลังของพนักงานคนนี้หายไป" ซึ่งเป็นสิ่งที่ตัวกรองนี้พยายามเลี่ยงที่สุด
   const packers = [...new Map(closedBoxes.filter(b => b.packer?.code).map(b => [b.packer.code, b.packer])).values()]
     .sort((a, b) => a.code.localeCompare(b.code));
-  // กรองตามพนักงานก่อน → ใช้คำนวณ count ของ filter สถานะ
-  const packerBoxes = closedBoxes.filter(b => packerFilter === 'all' || b.packer?.code === packerFilter);
+
+  // ── ตัวกรองสาขา (ชั้นแรกสุด: closedBoxes → branchBoxes → packerBoxes → visibleBoxes) ──
+  // นับจาก data จริง ไม่ใช่ BRANCH_NAMES — code ที่ไม่รู้จัก (เช่น SRC2 จากชื่อไฟล์เพี้ยน) ต้องโผล่ด้วย
+  const branchCounts = closedBoxes.reduce((m, b) => {
+    const k = b.branch || NO_BRANCH;
+    m[k] = (m[k] || 0) + 1;
+    return m;
+  }, {});
+  const branchOpts = Object.keys(branchCounts).filter(k => k !== NO_BRANCH).sort();
+  const untaggedN = branchCounts[NO_BRANCH] || 0;
+  // เข้มงวด: ลัง untagged ไม่ leak เข้ามุมมองสาขาใด ๆ — ให้ตรงกับ matchBranch ฝั่ง receive (2a23385)
+  const branchBoxes = closedBoxes.filter(b =>
+    branchFilter === 'all' ? true
+    : branchFilter === NO_BRANCH ? !b.branch
+    : b.branch === branchFilter
+  );
+
+  // กรองตามพนักงานต่อ → ใช้คำนวณ count ของ filter สถานะ (จึง scope ตามสาขาที่เลือกไปด้วย)
+  const packerBoxes = branchBoxes.filter(b => packerFilter === 'all' || b.packer?.code === packerFilter);
   const pendingN = packerBoxes.filter(b => !isApproved(b)).length;
   const approvedN = packerBoxes.filter(isApproved).length;
   // ลังที่เภสัชแจ้งปัญหา (problemReviewed=true จาก pharmacist recheck-fail หรือหัวหน้ากด "แจ้งคลังสินค้า")
@@ -193,6 +221,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const activeBox = boxes.find(b => b.id === selectedId) || null;
   const boxItems = selectedId ? (itemsByBox?.[selectedId] || []) : [];
 
+  const resetFilters = () => { setBranchFilter('all'); setPackerFilter('all'); setOutboundFilter('all'); };
+
   // global search across all closed boxes
   const searchResults = globalSearch.trim()
     ? closedBoxes.flatMap(b => {
@@ -206,6 +236,27 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       })
     : [];
   const isSearching = globalSearch.trim().length > 0;
+
+  // ลังที่เลือกอยู่ถูกตัวกรองซ่อนจากรายการซ้าย แต่แผงขวายังโชว์อยู่ พร้อมปุ่มอนุมัติที่กดได้
+  // → เสี่ยงอนุมัติผิดลัง เตือนให้ชัดตรงจุดที่จะกด (ผู้ใช้เลือก: เตือนแดง แต่ยังกดได้ ไม่ปิดปุ่ม)
+  // เกิดได้เพราะ activeBox หาจาก `boxes` ที่ยังไม่กรอง (ดูบรรทัด const activeBox)
+  // ⚠ ห้าม auto-deselect (แผงที่กำลังทำงานอยู่ว่างเปล่า = "ลังหาย" ของจริง) และห้าม auto-select ตัวแรก
+  //   (selection ขยับเองตอนคนกำลังจะกดอนุมัติ = อันตรายกว่าเดิม) — เตือนแล้วให้คนตัดสินใจเอง
+  // quirk นี้มีอยู่เดิมกับ packerFilter/outboundFilter อยู่แล้ว แถบนี้เลยแก้ให้ทั้งหมดไปพร้อมกัน
+  // ⚠ ต้องอยู่หลัง isSearching/visibleBoxes/activeBox เสมอ — const อยู่ใน TDZ ถ้าย้ายขึ้นไปจะ ReferenceError ตอนรัน
+  const selectedHidden = !!activeBox && !isSearching && !visibleBoxes.some(b => b.id === activeBox.id);
+  // gridColumn '1 / -1' จำเป็น — arm ปกติของแผงขวาเป็น grid '1fr 380px' ถ้าไม่ใส่แถบจะไปแทรกในคอลัมน์ 1fr
+  const hiddenBanner = selectedHidden ? (
+    <div style={{
+      gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      marginBottom: 12, padding: '8px 12px', borderRadius: 8,
+      background: '#fde8e8', border: '1.5px solid var(--red)',
+      fontFamily: 'JetBrains Mono', fontSize: 12, color: '#c0392b', fontWeight: 700,
+    }}>
+      ⚠ ลัง {activeBox.id} ({branchLabel(activeBox.branch)}) ไม่อยู่ในตัวกรองที่เลือกอยู่ — ตรวจสอบก่อนอนุมัติ
+      <button className="btn sm ghost" onClick={resetFilters}>แสดงทุกลัง</button>
+    </div>
+  ) : null;
 
   function handleExportBarcode() {
     if (!activeBox) return;
@@ -437,6 +488,36 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           overflowY: 'auto', maxHeight: 600,
           background: 'var(--paper-dark)',
         }}>
+          {/* แถวสาขา — อยู่บนสุดเพราะเป็น scope กว้างสุด และอธิบายว่าทำไมตัวเลขแถวสถานะข้างล่างขยับ
+              ⚠ ทุกชิปต้องมีจำนวน (ต่างจากชิปพนักงานที่ไม่มี) — ให้พนักงานบวกเลขเองได้ว่าเท่ากับ "ทุกสาขา"
+                 = พิสูจน์ด้วยตาว่าไม่มีลังตกอยู่นอกถังไหน โดยไม่ต้องคลิกดูทีละอัน */}
+          {closedBoxes.length > 0 && (
+            <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--mute)' }}>สาขา:</span>
+              {[
+                { k: 'all', label: 'ทุกสาขา', n: closedBoxes.length },
+                ...branchOpts.map(c => ({ k: c, label: branchLabel(c), n: branchCounts[c] })),
+                // ถังลังไม่ระบุสาขา — โผล่ตลอดเมื่อมี ไม่ว่าจะเลือกตัวกรองไหนอยู่ (ลังพวกนี้สาขารับไม่ได้ ต้องเห็น)
+                ...(untaggedN > 0 ? [{ k: NO_BRANCH, label: '⚠ ไม่ระบุสาขา', n: untaggedN, accentColor: 'var(--red)' }] : []),
+              ].map(f => {
+                const on = branchFilter === f.k;
+                const color = f.accentColor || 'var(--accent)';
+                return (
+                  <button
+                    key={f.k}
+                    onClick={() => setBranchFilter(f.k)}
+                    style={{
+                      padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
+                      border: `1.5px solid ${on ? color : 'var(--line)'}`,
+                      background: on ? color : 'white',
+                      color: on ? 'white' : (f.accentColor ? color : 'var(--ink)'),
+                      fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: on ? 700 : 400,
+                    }}
+                  >{f.label} ({f.n})</button>
+                );
+              })}
+            </div>
+          )}
           <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
             {[
               { k: 'all', label: 'ทั้งหมด', n: packerBoxes.length },
@@ -484,7 +565,15 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           )}
           {visibleBoxes.length === 0 && (
             <div style={{ gridColumn: '1 / -1', fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--mute)', textAlign: 'center', marginTop: 20 }}>
-              {closedBoxes.length === 0 ? 'ยังไม่มีลังที่ปิด' : 'ไม่มีลังในกลุ่มนี้'}
+              {/* "ไม่มีลังในกลุ่มนี้" เฉยๆ คือสิ่งที่ทำให้คนคิดว่าลังหาย — บอกจำนวนที่ถูกซ่อน + ให้กดกลับได้ในคลิกเดียว */}
+              {closedBoxes.length === 0 ? 'ยังไม่มีลังที่ปิด' : (
+                <>
+                  ไม่มีลังในกลุ่มนี้ ({closedBoxes.length} ลังถูกซ่อนโดยตัวกรอง)
+                  <div style={{ marginTop: 8 }}>
+                    <button className="btn sm ghost" onClick={resetFilters}>× ล้างตัวกรอง</button>
+                  </div>
+                </>
+              )}
             </div>
           )}
           {visibleBoxes.map(b => {
@@ -517,6 +606,13 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--mute)', textAlign: 'center' }}>
                     {b.packer.name}
                   </div>
+                )}
+                {/* เฉพาะลังที่ไม่มีสาขา — ไม่ใส่ชิปสาขาให้ลังปกติ (การ์ดแน่นอยู่แล้วใน grid 3 คอลัมน์ 440px
+                    และข้อมูลซ้ำกับแถวชิป+สติกเกอร์) ลังพวกนี้สาขาสแกนรับไม่ได้เลย → ต้องสะดุดตาในมุมมอง "ทุกสาขา" */}
+                {!b.branch && (
+                  <span className="chip" style={{ fontSize: 10, padding: '2px 8px', background: '#fde8e8', borderColor: 'var(--red)', color: '#c0392b', fontWeight: 700 }}>
+                    ⚠ ไม่ระบุสาขา
+                  </span>
                 )}
                 {hasProblem ? (
                   <span className="chip" style={{ fontSize: 10, padding: '2px 8px', background: 'var(--red)', borderColor: 'var(--red)', color: 'white', fontWeight: 700 }}>คลัง: แจ้งปัญหา</span>
@@ -584,6 +680,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           </div>
         ) : activeBox && activeBox.problemReviewed && !activeBox.problemResolved && !problemEditing ? (
           <div style={{ padding: 20 }}>
+            {hiddenBanner}
             <div className="row" style={{ marginBottom: 12, gap: 10, flexWrap: 'wrap' }}>
               <b className="hand" style={{ fontSize: 22, color: 'var(--red)' }}>🔴 แก้ไขสินค้าที่มีปัญหา · {activeBox.id}</b>
               {activeBox.problemBy && (
@@ -668,6 +765,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
           </div>
         ) : activeBox ? (
           <div style={{ padding: 20, display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24, alignItems: 'start' }}>
+            {hiddenBanner}
 
             {/* LEFT: รายชื่อสินค้าในลัง — minWidth:0 ให้ track 1fr หดได้ (ไม่งั้นชื่อ nowrap ดันคอลัมน์สติกเกอร์หลุดขอบ) */}
             <div style={{ minWidth: 0 }}>

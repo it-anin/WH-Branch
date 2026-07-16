@@ -138,12 +138,16 @@ export const resolveProfile = (code) => ...             // code → profile obje
 - **Desktop รับสินค้า scope:** `<BranchReceive branch={profile.role==='branch' ? profile.code : null} />` → สาขาเห็นเฉพาะตัวเอง (reuse `matchBranch`, ดู *กรองลังตามสาขา* ด้านล่าง), **คลัง (null) เห็นทุกสาขา**
 - **⚠ ต้องตั้ง `config/auth.passwords` ใน Firebase console ก่อน deploy** ไม่งั้น login ไม่ผ่าน; ทุกคน login ใหม่หลัง deploy (ไม่มี `wh_profile` เดิม)
 
-### กรองลังตามสาขา (Android receive + Desktop login)
+### กรองลังตามสาขา (Android receive + Desktop login + Outbound)
 - **`box.branch`** (field บน box) — set ตอน `createNewBox` จาก `catalogMeta?.branch` (สาขาของ Picklist ที่ import ล่าสุด) → sync Firestore `boxes/{id}`
+  - **⚠ write-once ไม่มีที่ไหนแก้ย้อนหลัง** — ทุก `setBoxes` ในระบบเป็น `{...b, <field อื่น>}` ที่ไม่แตะ branch. ลังที่เกิดมาเป็น `null` จะ **สาขาสแกนรับไม่ได้ตลอดไป** ต้องปิดทิ้งเปิดใหม่
+  - **ได้ `null` เมื่อ:** เปิดลังก่อนอัป Picklist · หลัง `clearFirestore` · Android cold start ก่อน onSnapshot ตอบ · **ชื่อไฟล์ Picklist ไม่เข้าแพทเทิร์น** (`Picklist SRC.xlsx` เว้นวรรค / `Picklist.xlsx` / `PL_SRC.xlsx`) — ตอนนี้มี `window.confirm` เตือนตอน import แล้ว (ดู skill `wms-import`)
 - BranchReceive รับ prop `branch` (Android = สาขาที่เลือก, Desktop = `profile.code` ถ้า role='branch' หรือ `null` ถ้าเป็นคลัง = เห็นทุกสาขา):
   - **`matchBranch(b)` = `!branch || b.branch === branch`** (เข้มขึ้นจากเดิม — commit "Tighten branch filtering") → กรอง `approvalBoxes` + `pendingCount`/`problemCount` + **`searchResults`** (ค้นหา SKU ข้ามลัง ก็ผูกกับสาขาแล้ว ไม่ใช่ global อีกต่อไป)
   - **`handleScan`:** block + toast แดง ถ้า `branch && box.branch !== branch` — ข้อความ `"เป็นของสาขา {box.branch || 'ไม่ระบุ'} ไม่ใช่ {branch}"`
   - **⚠ ลังไม่มี `branch` (legacy/Picklist ไม่มี suffix) → มองไม่เห็น/สแกนไม่ได้จากโปรไฟล์สาขาใดๆ อีกแล้ว** (เดิม fallback ให้ผ่านได้ทุกสาขา — ตัดออกเพราะเสี่ยงลังสาขาหนึ่งไปโผล่อีกสาขา) เห็นได้เฉพาะตอน `branch=null` (คลัง/ไม่ scope)
+    - **ห้ามใส่ fallback `!b.branch ||` กลับเข้าไปโดยไม่แจ้ง** — คอมเมนต์ในโค้ดเคยค้างเก่าบอกว่า "legacy → ปล่อยผ่าน" ซึ่งขัดกับ logic (แก้แล้ว)
+- **Outbound มีตัวกรองสาขาของตัวเอง** (`branchFilter` + ถัง `⚠ ไม่ระบุสาขา`) — คนละเรื่องกับ scope ของ role: tab นี้ warehouse-only ทุกคนเห็นทุกสาขาอยู่แล้ว เป็นแค่ตัวกรองบนจอ ไม่ส่ง prop จาก App.jsx. **เป็นที่เดียวที่ลัง `branch: null` โผล่ให้เห็น** → ดู skill `wms-outbound`
 
 ---
 

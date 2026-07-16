@@ -17,11 +17,31 @@ description: Use when touching the outbound screen src/screens/BoxClosedLabel.js
 - **Frame กว้างพิเศษ:** App.jsx ใส่ class `canvas-wide` บน `.canvas` เฉพาะ tab `closed` (`!showAll && tab === 'closed'`) → `max-width: 1920px` (ปกติ `.canvas` cap `1600px`) — ให้ตาราง "รายชื่อสินค้าในลัง" หลายคอลัมน์มีที่พอ; หน้าอื่นไม่กระทบ
   - **⚠ คอลัมน์ชื่อสินค้าตัดบรรทัด (`maxWidth: 200` + `whiteSpace: normal` + `wordBreak`) ไม่ใช่ `nowrap` แล้ว** — เดิม nowrap ทำให้ชื่อยาว (เช่น "Glucerna SR/Gold (Triple Care)...") ดัน track `1fr` กว้างเกินจน**คอลัมน์สติกเกอร์ 380px หลุดขอบขวา** → แก้ด้วย `minWidth: 0` บน div คอลัมน์ซ้าย (ให้ `1fr` หดได้) + จำกัดชื่อ 200px ตัดบรรทัด
 - **Layout:** grid `440px 1fr`
-  - ซ้าย (440px) = การ์ดลัง **grid 3 คอลัมน์** เรียงตาม id น้อย→มาก + **ปุ่ม filter 2 แถว**:
+  - ซ้าย (440px) = การ์ดลัง **grid 3 คอลัมน์** เรียงตาม id น้อย→มาก + **ปุ่ม filter 3 แถว**:
+    - **สาขา (`branchFilter`)** — แถวบนสุด ดู *ตัวกรองสาขา* ด้านล่าง
     - สถานะ (`outboundFilter`): ทั้งหมด / รออนุมัติ (`status closed`) / อนุมัติแล้ว (`exported`/`received`) / **🔴 แจ้งปัญหา** (`problemReviewed && !problemResolved`)
-    - พนักงานแพ็ค (`packerFilter`): ทุกคน + รายชื่อ packer ที่มีลังจริง (derive จาก closedBoxes)
-    - 2 filter ทำงานร่วมกัน → `packerBoxes` (กรอง packer) → count สถานะ → `visibleBoxes`
+    - พนักงานแพ็ค (`packerFilter`): ทุกคน + รายชื่อ packer ที่มีลังจริง (**derive จาก `closedBoxes` ไม่ใช่ `branchBoxes`** — ไม่งั้นชิปพนักงานหาย ๆ โผล่ ๆ ตามสาขา อ่านเหมือน "ลังของคนนี้หายไป")
+    - 3 filter ทำงานร่วมกัน: `closedBoxes` → **`branchBoxes`** → `packerBoxes` (ใช้คำนวณ count สถานะ) → `visibleBoxes`
     - **ปุ่ม "🔴 แจ้งปัญหา"** ใช้สีแดง (`var(--red)`) แทนส้ม + ตัวอักษรแดงเมื่อ inactive และ N > 0 (เรียกความสนใจหัวหน้า)
+
+### ตัวกรองสาขา (`branchFilter`) + ถัง `NO_BRANCH` — กันลัง "หายจากสายตา"
+- **`NO_BRANCH = '__none'`** (module scope) = ถังลังที่ `!b.branch` — lowercase ชนกับ code จริงไม่ได้เพราะ `extractBranch()` uppercase เสมอ
+- **`branchFilter`**: `'all' | box.branch | NO_BRANCH` — **ไม่ persist** (เหมือน filter อีก 2 ตัว): ถ้าจำค่าไว้ พนักงานเปิดจอเช้าวันถัดไปเจอมุมมองสาขาเดียวค้าง แล้วแจ้งว่า "ลังหาย"
+- **`branchCounts` / `branchOpts` / `untaggedN`** derive จาก `closedBoxes` จริง **ไม่ใช่ `BRANCH_NAMES`** — code ที่ไม่รู้จัก (เช่น `SRC2` จากชื่อไฟล์เพี้ยน) ต้องโผล่ด้วย; label ใช้ `branchLabel()` ที่ fallback `สาขา {code}` อยู่แล้ว
+- **ทุกชิปต้องมีจำนวน** (ต่างจากชิปพนักงานที่ไม่มี) — `ทุกสาขา (8)` · `สาขาชากค้อ (4)` · `สาขาเก้ากิโล (2)` · `สาขาสวนเสือศรีราชา (1)` · `⚠ ไม่ระบุสาขา (1)` → **4+2+1+1 = 8 ให้พนักงานบวกเองได้ว่าไม่มีลังตกนอกถังไหน = คำตอบของ "ลังหายไหม" ที่พิสูจน์ได้โดยไม่ต้องคลิก** ห้ามเอาจำนวนออก
+- **⚠ ห้าม leak ลัง untagged เข้ามุมมองสาขา** — `b.branch === branchFilter` เข้มงวด (ห้ามใส่ `!b.branch ||`) ให้ตรงกับ `matchBranch` ฝั่ง receive ที่ commit `2a23385` ตัด fallback ออกไปแล้วเพราะเสี่ยงลังสาขาหนึ่งไปโผล่อีกสาขา
+- **ทำไมต้องมีถัง `⚠ ไม่ระบุสาขา` + ชิปแดงบนการ์ด:** ลัง `branch: null` **สาขาสแกนรับไม่ได้เลยทุกสาขา** (matchBranch เข้มงวด) และ `box.branch` set ครั้งเดียวใน `createNewBox` **แก้ย้อนหลังไม่ได้** → หน้านี้คือที่เดียวที่ลังพวกนี้โผล่ ถ้าตัวกรองกลบก็ตกค้างถาวรโดยไม่มีใครรู้ (ต้นเหตุ = ชื่อไฟล์ Picklist ไม่เข้าแพทเทิร์น → ดู skill `wms-import`)
+- **empty state บอกจำนวนที่ถูกซ่อน + ปุ่ม `× ล้างตัวกรอง`** (`resetFilters` ล้างทั้ง 3 filter) — "ไม่มีลังในกลุ่มนี้" เฉย ๆ คือสิ่งที่ทำให้คนคิดว่าลังหาย
+- **`⇩ ส่งออกรายการลังทั้งหมด` + ช่องค้นหา ไม่ผูกกับตัวกรอง** (ยังใช้ `closedBoxes`) — ตั้งใจ: ปุ่มบอกว่า "ทั้งหมด" ถ้าเงียบ ๆ ตัดสาขาออกตามชิปที่กดค้างไว้ = แถวหายจากไฟล์โดยไม่มีใครตรวจ; ส่วนค้นหาคือเครื่องมือ "ลังนี้อยู่ไหน" ต้องเจอทุกอย่างเสมอ
+
+### แถบเตือน `hiddenBanner` — ลังที่เลือกอยู่นอกตัวกรอง
+- **`selectedHidden`** = `activeBox && !isSearching && !visibleBoxes.some(id ตรง)` — เกิดเพราะ `activeBox = boxes.find(...)` หาจาก **`boxes` ที่ยังไม่กรอง** → กรองสาขาแล้วแผงขวายังค้างลังเดิมพร้อมปุ่มอนุมัติที่กดได้ = **เสี่ยงอนุมัติผิดลัง**
+- แถบแดง `⚠ ลัง {id} ({สาขา}) ไม่อยู่ในตัวกรองที่เลือกอยู่ — ตรวจสอบก่อนอนุมัติ` + ปุ่ม `แสดงทุกลัง`
+- **ตัดสินใจแล้ว (ผู้ใช้): เตือนอย่างเดียว ไม่ปิดปุ่ม** — ไม่ขวางการทำงาน
+- **⚠ ห้าม auto-deselect** (แผงที่กำลังทำงานอยู่ว่างเปล่า = "ลังหาย" ของจริง) **และห้าม auto-select ตัวแรก** (selection ขยับเองตอนคนกำลังจะกดอนุมัติ = อันตรายกว่าเดิม)
+- render 2 จุด: arm `problemReviewed` (`padding:20` ธรรมดา) และ arm ปกติ — **arm ปกติเป็น `grid '1fr 380px'` แถบต้องมี `gridColumn:'1 / -1'`** ไม่งั้นไปแทรกในคอลัมน์ `1fr`
+- quirk นี้มีอยู่เดิมกับ `packerFilter`/`outboundFilter` อยู่แล้ว (ไม่เคยเตือน) — แถบนี้แก้ให้ทั้งหมดไปพร้อมกัน
+- **⚠ `selectedHidden` ต้องประกาศหลัง `isSearching`/`visibleBoxes`/`activeBox` เสมอ** — `const` อยู่ใน TDZ ถ้าย้ายขึ้นไปจะ `ReferenceError` ตอนรัน (build ไม่จับ — ดู memory `vite-build-misses-tdz`)
   - ขวา (detail, grid `1fr 380px`):
     - คอลัมน์ซ้าย: **"รายชื่อสินค้าในลัง"** ตาราง SKU / ชื่อ / **Barcode** / หน่วย / จำนวน / **LOT** / **Exp** / Location (maxHeight 320) — **แตกแถวตาม LOT จริง** ผ่าน helper กลาง `lotRows(l, lotMap)` ที่ใช้ร่วมกับไฟล์ Text (`handleExportBarcode`) → ข้อมูล barcode/LOT/qty ในตารางตรงกับที่จะ export เป๊ะ (SKU เดียวสแกนคนละ LOT = หลายแถว); คอลัมน์ **Exp โชว์เฉพาะเมื่อมีลังที่กรอก exp** (`hasExp`) — แสดงเป็น **ค.ศ. ดิบตามที่พนักงานกรอก** (ไม่แปลง พ.ศ. ต่างจากไฟล์ Text ที่แปลงผ่าน `toBuddhistExp`)
       - **แก้ไขตาราง (`editMode` — ปุ่ม "✎ แก้ไข" / "✓ อนุมัติ" / "✕ ยกเลิก"):** เฉพาะลัง `closed`/`exported` — คลิก "✎ แก้ไข" → `startEdit()` copy boxItems เข้า `editItems` → ตารางเปลี่ยนเป็น input แก้ **จำนวน (number) / LOT / Exp** ต่อแถว + ปุ่ม `×` ลบแถว. **"✓ อนุมัติ" (`handleSaveEdit`)** = filter qty>0, `setItemsByBox`, อัปเดต box `totalQty`/`skuCount`, **set `scannedLots: null` ทุก item** (เพื่อให้ view mode อ่าน qty/lot/exp จาก field ที่แก้ไข ไม่ใช่ `scannedLots` เก่า — เคยเป็นบั๊ก qty ไม่อัปเดต). ไม่แตะ flow อนุมัติเอกสาร (Text→เลขเอกสาร→exported)
