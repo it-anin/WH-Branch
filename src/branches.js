@@ -47,6 +47,11 @@ export const ALL_BRANCH_STAFF = BRANCHES.flatMap(b =>
 
 export const getBranch = (code) => BRANCHES.find(b => b.code === code) || null;
 
+// ชื่อสาขาเต็ม (ผู้รับบนสติกเกอร์ Outbound + ตัวกรองสาขา BoxList) — map จาก box.branch (= suffix ของ Picklist_XXX)
+// single source: เดิม hardcode ซ้ำใน BoxClosedLabel.jsx — ย้ายมารวมที่นี่ให้ทั้ง Outbound + BoxList ใช้ตัวเดียว
+export const BRANCH_NAMES = { SRC: 'สาขาชากค้อ', KKL: 'สาขาเก้ากิโล', SSS: 'สาขาสวนเสือศรีราชา' };
+export const branchLabel = (code) => code ? (BRANCH_NAMES[code] || `สาขา ${code}`) : 'สาขาปลายทาง';
+
 // โปรไฟล์ login รายที่ทำงาน (คลัง + ทุกสาขา) + resolve จาก code (localStorage['wh_profile'])
 export const PROFILES = [WAREHOUSE, ...BRANCHES];
 export const resolveProfile = (code) => code === 'WAREHOUSE' ? WAREHOUSE : getBranch(code);

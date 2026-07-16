@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
 import { fixItemName, lookupFactor } from '../units.js';
+import { branchLabel } from '../branches.js';
 
 // พนักงาน Android กรอก Exp เป็น ค.ศ. (ตรงกับที่พิมพ์บนสินค้าจริง) แต่ไฟล์ Text ต้องเป็น พ.ศ. — แปลงตอน export
 // ปี < 2400 ถือว่าเป็น ค.ศ. (+543) — ลังเก่าก่อนเปลี่ยน label ที่กรอกเป็น พ.ศ. ไว้แล้ว (ปี >= 2400) จะไม่ถูกแปลงซ้ำ
@@ -89,9 +90,7 @@ function receiveBadge(b) {
   return { label: 'สาขา: ยังไม่รับ', bg: '#f0ede8', border: 'var(--line)', color: 'var(--mute)' };
 }
 
-// ชื่อสาขาเต็ม (ผู้รับบนสติกเกอร์) — map จาก box.branch (= suffix ของ Picklist_XXX)
-const BRANCH_NAMES = { SRC: 'สาขาชากค้อ', KKL: 'สาขาเก้ากิโล', SSS: 'สาขาสวนเสือศรีราชา' };
-const branchLabel = (code) => code ? (BRANCH_NAMES[code] || `สาขา ${code}`) : 'สาขาปลายทาง';
+// ชื่อสาขา (branchLabel/BRANCH_NAMES) ย้ายไป branches.js แล้ว — ใช้ร่วมกับ BoxList (single source)
 // ถังของลังที่ไม่มี box.branch ในตัวกรองสาขา
 // ⚠ ลังพวกนี้ "สาขารับไม่ได้เลย" — BranchReceive กรอง b.branch === branch ตรงๆ (ตั้งใจ ตั้งแต่ commit 2a23385
 //   กันลังสาขาหนึ่งไปโผล่อีกสาขา) → null ไม่ match สาขาไหนทั้งนั้น และ box.branch แก้ย้อนหลังไม่ได้

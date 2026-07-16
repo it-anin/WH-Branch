@@ -1,4 +1,11 @@
 import { useState } from 'react';
+import { branchLabel } from '../branches.js';
+
+// ถังของลังที่ไม่มี box.branch (สาขารับไม่ได้) — lowercase ชนกับ code จริงไม่ได้ (extractBranch uppercase เสมอ)
+const NO_BRANCH = '__none';
+// ลังใบนี้อยู่ในตัวกรองสาขาที่เลือกไหม — ใช้ร่วมทั้งตารางวันนี้ + ประวัติ (logic เดียวกับ Outbound branchBoxes)
+const matchBranch = (b, branchFilter) =>
+  branchFilter === 'all' ? true : branchFilter === NO_BRANCH ? !b.branch : b.branch === branchFilter;
 
 const statusLabel = {
   open:     { label: 'กำลังแพ็ค',       bg: '#ffd080', border: '#c88a10' },
@@ -98,15 +105,36 @@ function HistoryEntry({ entry, generateCSV, triggerDownload, onDelete }) {
 }
 
 export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, setHistory, clearBoxes, clearFirestore }) {
+  // ตัวกรองสาขา — scope ทั้งหน้า (ตารางวันนี้ + ชิปสรุป + Export + ประวัติ)
+  // ไม่ persist: กันมุมมองสาขาเดียวค้างข้ามวันแล้วพนักงานแจ้ง "ลังหาย" (เหตุผลเดียวกับ Outbound)
+  const [branchFilter, setBranchFilter] = useState('all'); // all | box.branch | NO_BRANCH
+  // นับจาก data จริง — code ที่ไม่รู้จัก (เช่นชื่อไฟล์เพี้ยน) ต้องโผล่ด้วย
+  const branchCounts = boxes.reduce((m, b) => { const k = b.branch || NO_BRANCH; m[k] = (m[k] || 0) + 1; return m; }, {});
+  const branchOpts = Object.keys(branchCounts).filter(k => k !== NO_BRANCH).sort();
+  const untaggedN = branchCounts[NO_BRANCH] || 0;
+  const branchBoxes = boxes.filter(b => matchBranch(b, branchFilter));
+
+  // suffix ชื่อไฟล์ Export ตามสาขาที่กรอง: 'all' → ไม่เติม, สาขา → -SRC, ไม่ระบุ → -nobranch
+  const exportSuffix = branchFilter === 'all' ? '' : branchFilter === NO_BRANCH ? '-nobranch' : `-${branchFilter}`;
+  const exportLabel = branchFilter === 'all' ? '⇩ Export รายการลังทั้งหมด'
+    : branchFilter === NO_BRANCH ? '⇩ Export ลังไม่ระบุสาขา'
+    : `⇩ Export สาขา ${branchFilter}`;
+
   function handleExport() {
-    const csv = generateCSV(boxes);
-    triggerDownload(csv, `export-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
+    const csv = generateCSV(branchBoxes);
+    triggerDownload(csv, `export${exportSuffix}-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
   }
 
   function handleDeleteHistory(index) {
     if (!window.confirm('ลบประวัติวันนี้ออกจากรายการ?')) return;
     setHistory(prev => prev.filter((_, i) => i !== index));
   }
+
+  // ประวัติหลังกรองสาขา — เก็บ index เดิมไว้ (handleDeleteHistory ลบด้วย index ของ history เต็ม)
+  // เลือกสาขาเจาะจง → ตัด entry ที่ไม่มีลังของสาขานั้นออก (เหลือเฉพาะวันที่เกี่ยวข้อง)
+  const visibleHistory = history
+    .map((entry, i) => ({ entry, i, boxes: entry.boxes.filter(b => matchBranch(b, branchFilter)) }))
+    .filter(h => branchFilter === 'all' || h.boxes.length > 0);
 
   return (
     <div className="frame" style={{ padding: 0, minHeight: 520, position: 'relative' }}>
@@ -121,16 +149,46 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
       </div>
 
       <div style={{ padding: 16 }}>
+        {/* แถวตัวกรองสาขา — scope กว้างสุด อยู่บนสุด (อธิบายว่าทำไมตัวเลขชิปสถานะข้างล่างขยับ)
+            ทุกชิปมีจำนวน → บวกเองได้ว่าเท่ากับ "ทุกสาขา" = พิสูจน์ด้วยตาว่าไม่มีลังตกนอกถังไหน */}
+        {boxes.length > 0 && (
+          <div className="row" style={{ marginBottom: 10, gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--mute)' }}>สาขา:</span>
+            {[
+              { k: 'all', label: 'ทุกสาขา', n: boxes.length },
+              ...branchOpts.map(c => ({ k: c, label: branchLabel(c), n: branchCounts[c] })),
+              // ถังลังไม่ระบุสาขา — โผล่ตลอดเมื่อมี (ลังพวกนี้สาขารับไม่ได้ ต้องเห็น)
+              ...(untaggedN > 0 ? [{ k: NO_BRANCH, label: '⚠ ไม่ระบุสาขา', n: untaggedN, accentColor: 'var(--red)' }] : []),
+            ].map(f => {
+              const on = branchFilter === f.k;
+              const color = f.accentColor || 'var(--accent)';
+              return (
+                <button
+                  key={f.k}
+                  onClick={() => setBranchFilter(f.k)}
+                  style={{
+                    padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
+                    border: `1.5px solid ${on ? color : 'var(--line)'}`,
+                    background: on ? color : 'white',
+                    color: on ? 'white' : (f.accentColor ? color : 'var(--ink)'),
+                    fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: on ? 700 : 400,
+                  }}
+                >{f.label} ({f.n})</button>
+              );
+            })}
+          </div>
+        )}
+
         {/* summary + actions */}
         <div className="row" style={{ marginBottom: 12, gap: 8 }}>
-          <span className="chip">ทั้งหมด · {boxes.length}</span>
-          <span className="chip" style={{ background: '#ffd080', borderColor: '#c88a10' }}>กำลังแพ็ค · {boxes.filter(b => b.status === 'open' || b.status === 'packing').length}</span>
-          <span className="chip" style={{ background: '#b8d4f0', borderColor: '#4a80c0' }}>ปิดลังแล้ว · {boxes.filter(b => b.status === 'closed').length}</span>
-          <span className="chip" style={{ background: '#96e096', borderColor: '#3a9a3a' }}>อนุมัติแล้ว · {boxes.filter(b => b.status === 'exported').length}</span>
-          <span className="chip" style={{ background: '#f5b8d4', borderColor: '#c04080' }}>สาขารับสินค้าแล้ว · {boxes.filter(b => b.status === 'received').length}</span>
+          <span className="chip">ทั้งหมด · {branchBoxes.length}</span>
+          <span className="chip" style={{ background: '#ffd080', borderColor: '#c88a10' }}>กำลังแพ็ค · {branchBoxes.filter(b => b.status === 'open' || b.status === 'packing').length}</span>
+          <span className="chip" style={{ background: '#b8d4f0', borderColor: '#4a80c0' }}>ปิดลังแล้ว · {branchBoxes.filter(b => b.status === 'closed').length}</span>
+          <span className="chip" style={{ background: '#96e096', borderColor: '#3a9a3a' }}>อนุมัติแล้ว · {branchBoxes.filter(b => b.status === 'exported').length}</span>
+          <span className="chip" style={{ background: '#f5b8d4', borderColor: '#c04080' }}>สาขารับสินค้าแล้ว · {branchBoxes.filter(b => b.status === 'received').length}</span>
           <div className="spacer" />
           <button className="btn sm ghost" onClick={() => showToast('รีเฟรชแล้ว')}>⟲ รีเฟรช</button>
-          <button className="btn sm" onClick={handleExport}>⇩ Export รายการลังทั้งหมด</button>
+          <button className="btn sm" onClick={handleExport}>{exportLabel}</button>
           <button
             className="btn sm"
             style={{ borderColor: 'var(--red)', color: 'var(--red)' }}
@@ -150,26 +208,26 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
 
         {/* today's box table */}
         <BoxTable
-          boxes={boxes}
+          boxes={branchBoxes}
           onOpen={(id) => { setActiveBoxId(id); setTab('scan'); }}
           onPrint={(id) => { setActiveBoxId(id); setTab('closed'); }}
         />
 
-        {/* history section */}
-        {history.length > 0 && (
+        {/* history section — กรองตามสาขาที่เลือก (นับวันจาก entry ที่เหลือหลังกรอง) */}
+        {visibleHistory.length > 0 && (
           <div style={{ marginTop: 32 }}>
             <div className="row" style={{
               borderBottom: '2px dashed var(--line)', paddingBottom: 8, marginBottom: 14,
               gap: 10,
             }}>
               <span style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--mute)' }}>
-                ประวัติย้อนหลัง ({history.length} วัน · เก็บไว้ 1 เดือน)
+                ประวัติย้อนหลัง ({visibleHistory.length} วัน · เก็บไว้ 1 เดือน)
               </span>
             </div>
-            {history.map((entry, i) => (
+            {visibleHistory.map(({ entry, i, boxes: entryBoxes }) => (
               <HistoryEntry
                 key={i}
-                entry={entry}
+                entry={{ ...entry, boxes: entryBoxes }}
                 generateCSV={generateCSV}
                 triggerDownload={triggerDownload}
                 onDelete={() => handleDeleteHistory(i)}
