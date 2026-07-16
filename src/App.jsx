@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, runTransaction, query, where, documentId } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, runTransaction, query, where, documentId, getDocs, addDoc } from 'firebase/firestore';
 import { db } from './firebase.js';
+// สูตร need + ตัวคูณหน่วยฐาน — ตัวเดียวกับที่ PackScanC ใช้จริง (ใช้ใน __wh.audit เพื่อยืนยันเลขบนจอพนักงาน)
+import { buildPackItems, lookupFactor, UNIT_FACTOR_OVERRIDE, STANDARD_UNIT_FACTOR } from './units.js';
 
 import BoxList from './screens/BoxList.jsx';
 import PackScanC from './screens/PackScanC.jsx';
@@ -264,6 +266,21 @@ export default function App() {
     }
   }
 
+  // บันทึกตอนพนักงานปัดการ์ด "ของหมด" ใน PackScanC — append-only log แยกจากวงจรชีวิตลัง
+  // ทำไมต้องมี: การปัดเป็น local state ล้วน (dismissedSkus) และ handleScanProgress เขียนแค่ตัวที่ got > 0
+  //   → ปัดตอนยังไม่สแกน = ไม่มีร่องรอยที่ไหนเลย หัวหน้าตอบไม่ได้ว่าพนักงานปัดอะไรทิ้งไปบ้าง
+  // ไม่มี listener — ไม่มีใคร subscribe (ทุกเครื่องโหลดเท่าเดิม) อ่านตอนเรียก __wh.audit เท่านั้น
+  // clearBoxes (เริ่มวันใหม่) ไม่ลบ — ร่องรอยต้องอยู่ข้ามวันได้; clearFirestore (reset ทั้งระบบ) ลบ
+  function handleDismiss(info) {
+    // fire-and-forget — เขียนพลาดห้ามทำให้ปัดไม่ได้ พนักงานต้องทำงานต่อได้เสมอ
+    addDoc(collection(db, 'dismissals'), {
+      ...info,
+      kind: (info.gotBase ?? 0) > 0 ? 'short' : 'out', // สแกนไปบ้างแล้ว = ของไม่พอ / ยังไม่สแกน = ของหมด
+      packer: packer || null,
+      at: Date.now(),
+    }).catch(err => console.error('dismissal write failed:', err.code));
+  }
+
   function setReceiveBoxIds(updater) {
     const prev = receiveBoxIdsRef.current;
     const next = typeof updater === 'function' ? updater(prev) : updater;
@@ -386,7 +403,7 @@ export default function App() {
   async function clearFirestore() {
     if (!window.confirm(
       'ล้างข้อมูล Firestore ทั้งหมด?\n\n' +
-      '— boxes, boxItems, progress, history\n' +
+      '— boxes, boxItems, progress, history, dismissals\n' +
       '— catalog, barcodeMap, costMap, lotMap, receive\n\n' +
       '⚠ ไม่สามารถกู้คืนได้'
     )) return;
@@ -396,6 +413,9 @@ export default function App() {
       Object.keys(itemsByBoxRef.current).forEach(id => batch.delete(doc(db, 'boxItems', id)));
       Object.keys(scanProgress).forEach(id => batch.delete(doc(db, 'progress', id)));
       history.filter(h => h.id).forEach(h => batch.delete(doc(db, 'history', h.id)));
+      // dismissals ไม่มี listener → ไม่มี local state ให้อ่าน id ต้อง getDocs เอา (reset ทั้งระบบเท่านั้นที่ลบ)
+      const dismissSnap = await getDocs(collection(db, 'dismissals'));
+      dismissSnap.docs.forEach(d => batch.delete(d.ref));
       batch.delete(doc(db, 'config', 'catalog'));
       batch.delete(doc(db, 'config', 'barcodeMap'));
       batch.delete(doc(db, 'config', 'catalogByPacker'));
@@ -531,8 +551,66 @@ export default function App() {
           console.log('SKU ที่ใกล้เคียง:', found.length ? found : '(ไม่มี)');
         }
       },
+      // ตรวจข้อพิพาท "จำนวนบนจอ Android ไม่ตรง Picklist" — ไล่ทั้งเส้นทางจนถึงเลขที่พนักงานเห็นจริง
+      // ใช้ buildPackItems ตัวเดียวกับที่ PackScanC ใช้ → ยืนยันเลขบนจอได้ ไม่ใช่คำนวณเลียนแบบ
+      // async เพราะอ่าน dismissals — เรียกด้วย: await __wh.audit('800038')
+      audit: async (s) => {
+        const rows = catalog.filter(c => c.sku === s);
+        console.log(`%c===== audit SKU ${s} =====`, 'font-weight:bold');
+        console.log(`1) Picklist (catalog): ${rows.length} แถว` + (rows.length > 1 ? ' ⚠ SKU นี้มีหลายแถว — พนักงานอาจถูกแบ่งคนละแถว' : ''));
+        console.table(rows.length ? rows.map(c => ({ sku: c.sku, name: c.name, unit: c.unit, qty: c.qty, location: c.location, barcode: c.barcode })) : [{ note: 'ไม่พบใน catalog — SKU นี้ไม่ได้อยู่ใน Picklist ที่ import ล่าสุด' }]);
+        if (rows.length) {
+          console.log('2) ตัวคูณหน่วยฐาน (factor) ต่อหน่วยที่ Picklist ใช้:');
+          console.table(rows.map(c => {
+            const key = `${c.sku}__${c.unit}`;
+            const src = factorMap[key] !== undefined ? 'R05.106 (ColH)'
+              : UNIT_FACTOR_OVERRIDE[key] !== undefined ? 'UNIT_FACTOR_OVERRIDE (hardcode)'
+              : STANDARD_UNIT_FACTOR[c.unit] !== undefined ? 'STANDARD_UNIT_FACTOR (หน่วยสากล)'
+              : 'default 1 (ไม่พบที่ไหนเลย)';
+            return { unit: c.unit, factor: lookupFactor(factorMap, c.sku, c.unit), มาจาก: src };
+          }));
+        }
+        console.log('3) แต่ละพนักงานเห็นเลขอะไรบนจอ (สูตรเดียวกับ PackScanC):');
+        const perPacker = [];
+        for (const p of PACKERS) {
+          const packCatalog = catalogByPacker[p.code] || catalog;
+          const assigned = packCatalog.filter(c => c.sku === s);
+          if (assigned.length === 0) { perPacker.push({ พนักงาน: p.name, สถานะ: 'ไม่ได้รับ SKU นี้' }); continue; }
+          // ลังของคนนี้ที่ปิด/ส่งออก/รับแล้ว และมี SKU นี้ = ตัวหักของสูตร
+          const packedIn = boxes
+            .filter(b => b.packer?.code === p.code && ['closed', 'exported', 'received'].includes(b.status))
+            .flatMap(b => (itemsByBox[b.id] || []).filter(it => it.sku === s)
+              .map(it => ({ box: b.id, status: b.status, unit: it.unit, qty: it.qty, gotBase: it.gotBase ?? `(ไม่มี → ${it.qty ?? it.got ?? 0}×factor)` })));
+          const shown = buildPackItems({ catalog: packCatalog, boxes, itemsByBox, packer: p, factorMap }).filter(it => it.sku === s);
+          assigned.forEach(c => {
+            const row = shown.find(it => it.unit === c.unit);
+            const deducted = packedIn.reduce((sum, x) => sum + (typeof x.gotBase === 'number' ? x.gotBase : 0), 0);
+            perPacker.push({
+              พนักงาน: p.name,
+              คำนวณ: `${c.qty} × ${lookupFactor(factorMap, c.sku, c.unit)} − ${deducted} (${packedIn.map(x => x.box).join(',') || 'ยังไม่แพ็ค'})`,
+              ขึ้นบนจอ: row ? `${row.need} ${row.baseUnit}` : '— หายจาก checklist (แพ็คครบแล้ว)',
+            });
+          });
+          if (packedIn.length) { console.log(`   ↳ ${p.name} แพ็คไปแล้วในลังที่ปิด:`); console.table(packedIn); }
+        }
+        console.table(perPacker);
+        const openProg = boxes.filter(b => b.status === 'open' || b.status === 'packing')
+          .flatMap(b => (scanProgress[b.id] || []).filter(it => it.sku === s).map(it => ({ box: b.id, packer: b.packer?.name, got: it.got })));
+        console.log('4) กำลังแพ็คอยู่ (ลังที่ยังไม่ปิด — ยังไม่ถูกหักออกจาก need):');
+        console.table(openProg.length ? openProg : [{ note: 'ไม่มี' }]);
+        console.log('5) ประวัติการปัด "ของหมด":');
+        try {
+          const snap = await getDocs(query(collection(db, 'dismissals'), where('sku', '==', s)));
+          const ds = snap.docs.map(d => d.data())
+            .sort((a, b) => (b.at || 0) - (a.at || 0))
+            .map(d => ({ เมื่อ: new Date(d.at).toLocaleString('th-TH'), พนักงาน: d.packer?.name, ประเภท: d.kind === 'out' ? 'ของหมด (ยังไม่สแกน)' : 'ของไม่พอ', สแกนไปแล้ว: d.gotBase, ต้องการ: d.need, ลัง: d.boxId || '—' }));
+          console.table(ds.length ? ds : [{ note: 'ไม่เคยถูกปัดทิ้ง' }]);
+        } catch (err) {
+          console.error('อ่าน dismissals ไม่ได้:', err.code || err.message);
+        }
+      },
     };
-  }, [catalog, barcodeMap, catalogByPacker, lotMap]);
+  }, [catalog, barcodeMap, catalogByPacker, lotMap, boxes, itemsByBox, factorMap, scanProgress]);
 
   function applyBarcodeMap(items, map) {
     const skuBarcodes = {};
@@ -661,7 +739,7 @@ export default function App() {
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
-  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   // Gate: ยังไม่ login → แสดงหน้า Login (ทั้ง Android + Desktop)
   if (!profile) {
