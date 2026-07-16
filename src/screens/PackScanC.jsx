@@ -2,29 +2,15 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { generatePOS, matchBarcode } from '../data.js';
 import { playScanSuccess, playScanFail, playOutOfStock, playShortSupply } from '../sound.js';
+// ตัวคูณหน่วยฐาน + สูตร need มาจาก units.js ที่เดียว (เดิมไฟล์นี้ประกาศซ้ำเองแล้วต้องแก้ 2 ที่ให้ตรงกัน)
+// buildPackItems = สูตรเดียวกับที่ __wh.audit ใช้ตรวจสอบ → เลขบนจอพนักงานกับผลตรวจสอบตรงกันเสมอ
+import { lookupFactor, buildPackItems } from '../units.js';
 
 const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
 const SWIPE_THRESHOLD = 70; // px ก่อนถือว่าเป็นการปัดจริง (กันสะกิดมือโดยไม่ตั้งใจ)
 const HOLD_MS = 3000; // Android: ค้างหน้าสินค้าที่สแกนครบไว้ที่ตำแหน่งเดิมกี่ ms ก่อนเริ่ม slide-up หาย (ให้พนักงานเช็คก่อนสแกนตัวถัดไป)
 const EXIT_MS = 420; // ระยะเวลา animation slide-up + จางหาย ก่อนการ์ดถูกเลื่อนไปท้าย list จริง
-
-// หน่วยมาตรฐานสากลที่ตัวคูณคงที่ทุก SKU — ใช้ fallback เฉพาะตอน R05.106 ไม่มี factor ของหน่วยนั้น
-// (เช่น picklist เรียก "โหล" แต่ R05.106 มีแค่ "กล่อง"=1 ไม่มีแถวโหล → ระบบไม่รู้ว่า 1 โหล = 12)
-const STANDARD_UNIT_FACTOR = { 'โหล': 12, 'กุรุส': 144 };
-
-// override ตัวคูณเฉพาะ SKU+หน่วย ที่ picklist ใช้แต่ R05.106 ไม่มี และตัวคูณเป็นค่าเฉพาะ SKU (ไม่ใช่หน่วยสากล)
-// ❌ ห้าม parse เลขจากชื่อหน่วยอัตโนมัติ — มีเคสที่เลขเป็นคำอธิบายไม่ใช่ตัวคูณ (เช่น "แพค10"=1, "ซอง5ชิ้น"=1 ใน R05.106)
-// ค่าเป็น "จำนวนหน่วยฐานต่อ 1 หน่วย picklist" (ยืนยันกับผู้ใช้ทีละตัว) — เพิ่มได้เมื่อเจอ SKU ใหม่
-const UNIT_FACTOR_OVERRIDE = {
-  '700081__4กล่อง': 4,    // base=กล่อง → 4 กล่อง
-  '700352__10กล่อง': 100, // base=ชิ้น, 1 กล่อง=10 ชิ้น → 10 กล่อง = 100 ชิ้น
-  '100283__แพค10': 10,    // base=กระปุก → 10 กระปุก
-};
-
-// ลำดับความสำคัญ: factorMap (R05.106) → override เฉพาะตัว → หน่วยสากล → 1
-const lookupFactor = (factorMap, sku, unit) =>
-  factorMap[`${sku}__${unit}`] ?? UNIT_FACTOR_OVERRIDE[`${sku}__${unit}`] ?? STANDARD_UNIT_FACTOR[unit] ?? 1;
 
 function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
   const [selectedId, setSelectedId] = useState(null);
@@ -369,40 +355,10 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     }
     return m;
   }, [barcodeMap]);
-  const [items, setItems] = useState(() => {
-    // factorOf/baseUnitOf inline — useState initializer รันก่อน helper ด้านบนถูกผูกใน scope (อ่าน factorMap prop ตรงๆ ได้)
-    const fOf = (sku, unit) => lookupFactor(factorMap, sku, unit);
-    const baseUnitOf = (sku, fallback) => {
-      for (const key of Object.keys(factorMap)) {
-        if (factorMap[key] !== 1) continue;
-        const idx = key.indexOf('__');
-        if (key.slice(0, idx) === sku) return key.slice(idx + 2);
-      }
-      return fallback;
-    };
-    // หักจำนวนที่พนักงานคนนี้แพ็คไปแล้ว (หน่วยฐาน) จากลังที่ปิด/ส่งออก/รับแล้ว — ลังใหม่เก็บ gotBase, ลังเก่า fallback qty×factor(หน่วย picklist)
-    const packedBase = {};
-    boxes.forEach(b => {
-      if (b.packer?.code !== packer?.code) return;
-      if (!(b.status === 'closed' || b.status === 'exported' || b.status === 'received')) return;
-      (itemsByBox[b.id] || []).forEach(it => {
-        const key = `${it.sku}__${it.unit}`;
-        const base = it.gotBase ?? ((it.qty ?? it.got ?? 0) * fOf(it.sku, it.unit));
-        packedBase[key] = (packedBase[key] || 0) + base;
-      });
-    });
-    return catalog
-      .map(c => {
-        const needBase = c.qty * fOf(c.sku, c.unit) - (packedBase[`${c.sku}__${c.unit}`] || 0);
-        return {
-          sku: c.sku, barcode: c.barcode, name: c.name, unit: c.unit,
-          need: needBase, got: 0, gotBase: 0,
-          baseUnit: baseUnitOf(c.sku, c.unit),
-          location: c.location || '',
-        };
-      })
-      .filter(it => it.need > 0);
-  });
+  // สูตร need อยู่ที่ units.js ที่เดียว — __wh.audit เรียกตัวเดียวกันนี้ ตรวจสอบข้อพิพาทเรื่องจำนวนได้ตรงกับที่พนักงานเห็น
+  const [items, setItems] = useState(() =>
+    buildPackItems({ catalog, boxes, itemsByBox, packer, factorMap })
+  );
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false); // Android: toggle ค้นหา
