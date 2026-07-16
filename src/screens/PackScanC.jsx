@@ -289,7 +289,13 @@ function ItemCard({ c, done, partial, exiting, settled, onMarkOutOfStock }) {
               <div className="mono" style={{ fontSize: 10, color: 'var(--ink)', background: 'var(--paper-dark)', borderRadius: 3, padding: '0 4px', flexShrink: 0 }}>{c.location}</div>
             )}
           </div>
-          <div style={{ fontFamily: 'system-ui', fontSize: isAndroid ? 13 : 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+          {/* Android: ชื่อ wrap จนเห็นครบ — ท้ายชื่อคือขนาด/ความแรง (850g/500mg) ใช้แยกตัวยา ห้ามโดนตัด; desktop บรรทัดเดียวเดิม */}
+          <div style={{
+            fontFamily: 'system-ui', fontSize: isAndroid ? 13 : 15,
+            ...(isAndroid
+              ? { wordBreak: 'break-word' }
+              : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
+          }}>{c.name}</div>
           {/* ⚠ barcode ต้องแสดงเสมอทั้ง desktop และ Android — ห้ามลบ พนักงานใช้ยืนยันก่อนสแกน */}
           {c.barcode && (
             <div className="mono" style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.barcode}</div>
