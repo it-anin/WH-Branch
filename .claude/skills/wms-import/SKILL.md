@@ -94,6 +94,13 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 - **`.btn:disabled` (styles.css)** — เพิ่มพร้อมฟีเจอร์นี้ (เดิม**ไม่มี**สไตล์ disabled เลย ปุ่มที่ disable หน้าตาเหมือนปุ่มปกติ): `opacity .4` + `grayscale(.55)` + ยุบเงา. เป็น global → กระทบปุ่ม disabled อื่นที่มีอยู่เดิมด้วย (ส่งออกไฟล์ Text, แจ้งคลังสินค้า, pagination PackScanC, Login) ซึ่งล้วนได้สไตล์ที่ควรมีตั้งแต่แรก
 
 - **XXX** ใน Picklist — parse จาก filename pattern `Picklist_XXX` (regex `picklist[_-]([A-Za-z0-9]+)`) เช่น `Picklist_SRC` → `SRC`
+
+#### ⚠ ชื่อไฟล์ไม่มีรหัสสาขา = ลังตกค้างถาวร (มี confirm กันแล้ว)
+- `extractBranch()` คืน **`null`** เมื่อชื่อไฟล์ไม่เข้า regex — **`Picklist SRC.xlsx` (เว้นวรรค), `Picklist.xlsx`, `PL_SRC.xlsx`, `รายการเบิก_SRC.xlsx`** และ `Picklist_SRC2.xlsx` → `'SRC2'` (ไม่ null แต่ไม่ตรงสาขาไหน)
+- **ผลที่ตามมา:** `catalogMeta.branch = null` → `createNewBox` set `branch: catalogMeta?.branch || null` → **ลังที่เปิดหลังจากนั้นสาขาสแกนรับไม่ได้เลยทุกสาขา** (`matchBranch` ฝั่ง receive เข้มงวดตั้งแต่ `2a23385`) และ **`box.branch` แก้ย้อนหลังไม่ได้** — ไม่มีโค้ดที่ไหนใน `src/` เขียน branch ทับ ต้องปิดลังทิ้งเปิดใหม่
+- **`handleFile` มี `window.confirm` คั่นเมื่อ `!b`** อธิบายผลที่ตามมา → กดยกเลิก = ไม่ import (ใช้ `window.confirm` ได้เพราะไฟล์นี้ desktop-only, tab `list` = role warehouse — ไม่เจอปัญหา stacking context แบบ Android)
+- **badge เตือนค้างไว้:** import สำเร็จแต่ไม่มีสาขา → ปุ่มเป็น `⚠ อัปโหลดไฟล์ Picklist แล้ว (ไม่มีรหัสสาขา)` + chip `err` แดง แทน `✅`/`chip ok` — sync ผ่าน `_meta` → **ทุกเครื่องเห็น** ไม่ใช่แค่คนที่อัป
+- ลังที่ตกค้างไปแล้วดูได้ที่ถัง **`⚠ ไม่ระบุสาขา`** ในตัวกรองสาขาหน้า Outbound (ดู skill `wms-outbound`)
 - **{filename}** ใน Barcode — ชื่อไฟล์ไม่มีนามสกุล เช่น `R05.106`
 - วันที่ใน badge ทุกปุ่มมาจาก **`new Date()` ตอนกดอัปโหลด** (วันที่อัปโหลดจริง) — เดิมใช้ `file.lastModified` (Date Modified ของไฟล์) แต่ทำให้ badge ขึ้นวันเก่าตามวันแก้ไขไฟล์ ไม่ใช่วันที่อัปล่าสุด จึงเปลี่ยนเป็นวันอัปโหลดจริงทั้ง 4 ปุ่ม
 - badge sync ผ่าน Firestore `_meta` field — **ทุกเครื่องเห็นเหมือนกัน** และยังอยู่หลัง reload (App.jsx อ่าน `catalogMeta` / `barcodeMapMeta` / `costMapMeta` จาก `onSnapshot` → ส่งเป็น `meta` prop ให้แต่ละ component)

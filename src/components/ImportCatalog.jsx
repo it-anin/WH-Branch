@@ -104,6 +104,20 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
         return;
       }
       const b = extractBranch(file.name);
+      // ชื่อไฟล์ไม่มีรหัสสาขา → ลังที่เปิดหลังจากนี้จะได้ branch: null (createNewBox อ่านจาก catalogMeta.branch)
+      // ซึ่ง "สาขาสแกนรับไม่ได้เลย" (BranchReceive กรอง b.branch === branch ตรงๆ ตั้งแต่ 2a23385)
+      // และ box.branch แก้ย้อนหลังไม่ได้ ต้องปิดลังทิ้งเปิดใหม่ → เตือนก่อนสาย ตอนที่ยังกดยกเลิกได้
+      // ใช้ window.confirm ได้ — ไฟล์นี้ desktop-only (tab list = role warehouse) ไม่เจอปัญหา stacking context แบบ Android
+      if (!b) {
+        const ok = window.confirm(
+          `⚠ ชื่อไฟล์ไม่มีรหัสสาขา\n\n` +
+          `"${file.name}" ไม่เข้าแพทเทิร์น Picklist_XXX (เช่น Picklist_SRC)\n\n` +
+          `ลังที่เปิดหลังจากนี้จะไม่ระบุสาขา และสาขาจะสแกนรับสินค้าไม่ได้เลย\n` +
+          `แก้ย้อนหลังไม่ได้ ต้องเปิดลังใหม่\n\n` +
+          `ยืนยันจะอัปโหลดต่อหรือไม่?`
+        );
+        if (!ok) return;
+      }
       setBranch(b);
       const d = new Date(); // วันที่อัปโหลดจริง (ไม่ใช่ file.lastModified ที่เป็นวันแก้ไขไฟล์)
       const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
@@ -132,13 +146,21 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
       <button className={`btn sm${displayFileDate ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
         {'1 · '}
         {displayFileDate
-          ? displayBranch ? `✅ อัปโหลดไฟล์ Picklist_${displayBranch} แล้ว` : '✅ อัปโหลดไฟล์ Picklist แล้ว'
+          ? displayBranch ? `✅ อัปโหลดไฟล์ Picklist_${displayBranch} แล้ว` : '⚠ อัปโหลดไฟล์ Picklist แล้ว (ไม่มีรหัสสาขา)'
           : '⇑ อัปโหลดไฟล์ Picklist'}
       </button>
+      {/* อัปแล้วแต่ไม่มีรหัสสาขา = ลังที่เปิดจากนี้สาขารับไม่ได้ → เตือนค้างไว้ ไม่ใช่แค่ตอนกดอัป
+          badge sync ผ่าน Firestore _meta → ทุกเครื่องเห็น ไม่ใช่แค่คนที่อัป */}
       {displayFileDate && catalog.length > 0 && (
-        <span className="chip ok" style={{ fontFamily: 'system-ui', fontSize: 13 }}>
-          ✅ รายการเบิก: {catalog.length} รายการ · ไฟล์วันที่ {displayFileDate}
-        </span>
+        displayBranch ? (
+          <span className="chip ok" style={{ fontFamily: 'system-ui', fontSize: 13 }}>
+            ✅ รายการเบิก: {catalog.length} รายการ · ไฟล์วันที่ {displayFileDate}
+          </span>
+        ) : (
+          <span className="chip err" style={{ fontFamily: 'system-ui', fontSize: 13 }}>
+            ⚠ รายการเบิก: {catalog.length} รายการ · ไฟล์วันที่ {displayFileDate} · <b>ไม่มีรหัสสาขา — สาขาจะรับลังไม่ได้</b>
+          </span>
+        )
       )}
     </div>
   );
