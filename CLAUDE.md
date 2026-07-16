@@ -420,19 +420,19 @@ open → packing → closed → exported → received
 - Modal: `position: fixed; inset: 0; zIndex: 1000` render ที่ root level ของ App.jsx (ก่อน `<Toast>`) — ไม่ถูก stacking context บัง
 - Props: `catalog, packers, zoneAssignments, onSave, onClose`
 - **`zoneOf(location)` (`units.js` — แหล่งเดียว ใช้ร่วมกับ `computeCatalogByPacker`)**: regex `/^([A-Za-z]+)/` → prefix ตัวอักษร เช่น `A11` → `A`, `COOL01` → `COOL`; **location ว่าง/ไม่ขึ้นต้นตัวอักษร → `NOLOC_ZONE`** (`'__noloc'`)
-- **คอลัมน์ "📌 ไม่ระบุ" (NOLOC_ZONE) มีเสมอ ท้ายสุด** — tick ให้พนักงานที่จะแพ็ค **Picklist เบิกด่วน** (รายการไม่มี location); tick ล่วงหน้าก่อนไฟล์ด่วนมาได้
+- **คอลัมน์ "📌 เบิกด่วน" (NOLOC_ZONE) มีเสมอ ท้ายสุด** — tick ให้พนักงานที่จะแพ็ค **Picklist เบิกด่วน** (รายการไม่มี location); tick ล่วงหน้าก่อนไฟล์ด่วนมาได้
 - **Zone sort:** single-letter ก่อน (A–Z) แล้วตามด้วย multi-letter alphabetically — `COOL` จะอยู่หลัง `S`
   ```js
   .sort((a, b) => a.length !== b.length ? a.length - b.length : a.localeCompare(b))
   ```
 - ตาราง: rows = พนักงาน, columns = zones (ดึงจาก catalog locations), checkbox = assigned/not
 - คอลัมน์ SKU: live count ของ items ที่จะได้รับตาม zone ที่ tick ไว้
-- warning ถ้ามี SKU ที่ไม่ถูก assign ให้ใครเลย + **warning แดงถ้า tick 📌ไม่ระบุ ปนกับโซนปกติ** (เบิกด่วนคนละสาขา → ลังจะได้สาขาผิด — ดู `resolveBoxBranch`)
+- warning ถ้ามี SKU ที่ไม่ถูก assign ให้ใครเลย + **warning แดงถ้า tick 📌เบิกด่วน ปนกับโซนปกติ** (เบิกด่วนคนละสาขา → ลังจะได้สาขาผิด — ดู `resolveBoxBranch`)
 
 ## Picklist เบิกด่วน (ชื่อไฟล์มีคำว่า "เบิกด่วน")
 - **ชื่อไฟล์: `Picklist_{สาขา}_เบิกด่วน`** — รหัสสาขาต้องอยู่ **ก่อน** คำว่าเบิกด่วนเสมอ (`Picklist_เบิกด่วน_KKL` → branch null → สาขารับไม่ได้)
-- **append ไม่ทับ**: รายการถูก "เพิ่มต่อท้าย" catalog เดิม (+ stamp `item.branch` จากชื่อไฟล์, **ไม่แตะ `_meta`**) → จำนวนรายการของพนักงานคนอื่นไม่เปลี่ยน → จอไม่ remount **ของที่สแกนค้างรอด แทรกกลางวันได้**; เฉพาะคนที่ tick 📌ไม่ระบุ จอรีเซ็ต (confirm เตือนให้ปิดลังค้างก่อน)
-- รายการไม่มี location → เห็นเฉพาะคนที่ tick โซน 📌ไม่ระบุ · ลังของคนนั้นได้สาขาจากไฟล์ด่วน (`resolveBoxBranch`) — **คนละสาขากับงานปกติได้**
+- **append ไม่ทับ**: รายการถูก "เพิ่มต่อท้าย" catalog เดิม (+ stamp `item.branch` จากชื่อไฟล์, **ไม่แตะ `_meta`**) → จำนวนรายการของพนักงานคนอื่นไม่เปลี่ยน → จอไม่ remount **ของที่สแกนค้างรอด แทรกกลางวันได้**; เฉพาะคนที่ tick 📌เบิกด่วน จอรีเซ็ต (confirm เตือนให้ปิดลังค้างก่อน)
+- รายการไม่มี location → เห็นเฉพาะคนที่ tick โซน 📌เบิกด่วน · ลังของคนนั้นได้สาขาจากไฟล์ด่วน (`resolveBoxBranch`) — **คนละสาขากับงานปกติได้**
 - รายการด่วนหายเองเมื่ออัป Picklist ปกติรอบถัดไป (replace ตามเดิม) — รายละเอียด skill `wms-import`
 
 ---

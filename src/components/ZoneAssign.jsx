@@ -3,10 +3,10 @@ import { useState } from 'react';
 import { zoneOf, NOLOC_ZONE } from '../units.js';
 
 // label ของโซนพิเศษ "ไม่มี location" (Picklist เบิกด่วน) — ตัวโซนจริงใช้ชื่อดิบ
-const zoneLabel = (z) => z === NOLOC_ZONE ? '📌 ไม่ระบุ' : z;
+const zoneLabel = (z) => z === NOLOC_ZONE ? '📌 เบิกด่วน' : z;
 
 export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, onClose }) {
-  // โซนจริงจาก catalog + บังคับมีคอลัมน์ 📌ไม่ระบุ ท้ายสุดเสมอ — tick ล่วงหน้าได้ก่อน Picklist เบิกด่วนจะมา
+  // โซนจริงจาก catalog + บังคับมีคอลัมน์ 📌เบิกด่วน ท้ายสุดเสมอ — tick ล่วงหน้าได้ก่อน Picklist เบิกด่วนจะมา
   const zones = [
     ...[...new Set(catalog.map(item => zoneOf(item.location)))]
       .filter(z => z !== NOLOC_ZONE)
@@ -36,7 +36,7 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
 
   const totalAssigned = packers.reduce((sum, p) => sum + countItems(p.code), 0);
   const unassigned = catalog.length - totalAssigned;
-  // tick 📌ไม่ระบุ ปนกับโซนปกติ = เสี่ยงลังได้สาขาผิด — เบิกด่วนอาจคนละสาขากับ Picklist ปกติ
+  // tick 📌เบิกด่วน ปนกับโซนปกติ = เสี่ยงลังได้สาขาผิด — เบิกด่วนอาจคนละสาขากับ Picklist ปกติ
   // (createNewBox ใช้สาขาจากรายการที่พนักงานถือ ถ้าปน 2 สาขาจะ fallback สาขาปกติ → ลังเบิกด่วนสาขาผิด)
   const mixedNoloc = packers.filter(p => {
     const a = assignments[p.code] || [];
@@ -99,7 +99,7 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
             )}
             {mixedNoloc.length > 0 && (
               <p style={{ marginTop: 8, fontSize: 12, color: 'var(--red)' }}>
-                ⚠ {mixedNoloc.map(p => p.name).join(', ')} ถูก tick 📌ไม่ระบุ ปนกับโซนปกติ —
+                ⚠ {mixedNoloc.map(p => p.name).join(', ')} ถูก tick 📌เบิกด่วน ปนกับโซนปกติ —
                 ถ้าเบิกด่วนเป็นคนละสาขา ลังของคนนี้จะได้สาขาผิด ควรแยกคนแพ็คเบิกด่วนไว้คนเดียว
               </p>
             )}

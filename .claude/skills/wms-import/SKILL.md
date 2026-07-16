@@ -31,10 +31,10 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 - **caller (App.jsx):** `opts?.append` → `updated = [...catalog, ...applyBarcodeMap(items)]` + **เขียน `_meta: catalogMeta` เดิมกลับ**
   (⚠ `setDoc` ทับทั้ง doc — ตก `_meta` = catalogMeta หายทุกเครื่อง → ลังงานปกติได้ branch null สาขารับไม่ได้)
 - **ทำไม append:** key ของ PackScanC = `${packer.code}-${length ของรายการคนนั้น}` → append ไม่เปลี่ยนจำนวนของคนอื่น
-  → จอไม่ remount ของที่สแกนค้างรอด = **แทรกกลางวันได้**; เฉพาะคนที่ tick 📌ไม่ระบุ (NOLOC_ZONE) จอรีเซ็ต
-- **การมองเห็น:** รายการด่วนไม่มี location → `zoneOf` (units.js) จัดเข้า `NOLOC_ZONE` → เห็นเฉพาะคน tick 📌ไม่ระบุ ใน ZoneAssign
+  → จอไม่ remount ของที่สแกนค้างรอด = **แทรกกลางวันได้**; เฉพาะคนที่ tick 📌เบิกด่วน (NOLOC_ZONE) จอรีเซ็ต
+- **การมองเห็น:** รายการด่วนไม่มี location → `zoneOf` (units.js) จัดเข้า `NOLOC_ZONE` → เห็นเฉพาะคน tick 📌เบิกด่วน ใน ZoneAssign
 - **สาขา:** `item.branch` stamp ต่อรายการ → `createNewBox` ใช้ `resolveBoxBranch` (units.js) — คนแพ็คด่วนได้ลังสาขาไฟล์ด่วน
-  **คนละสาขากับงานปกติได้** · ⚠ ห้าม tick 📌ไม่ระบุ ปนโซนปกติ (ZoneAssign เตือน) — ปนแล้ว fallback สาขาปกติ = ลังด่วนสาขาผิด
+  **คนละสาขากับงานปกติได้** · ⚠ ห้าม tick 📌เบิกด่วน ปนโซนปกติ (ZoneAssign เตือน) — ปนแล้ว fallback สาขาปกติ = ลังด่วนสาขาผิด
 - **อายุ:** รายการด่วนหายเองเมื่ออัป Picklist ปกติรอบถัดไป (โหมด replace เดิม)
 
 ### ไฟล์ 2: Barcode Map (ImportBarcodeMap)

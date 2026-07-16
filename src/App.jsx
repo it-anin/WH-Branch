@@ -348,7 +348,7 @@ export default function App() {
       newId = `${todayPrefix}${String(next).padStart(4, '0')}`;
     });
     // สาขาของลัง = สาขาของ "รายการที่พนักงานคนนี้ถือ" (resolveBoxBranch ใน units.js — เทสต์ตรงได้)
-    // รองรับเบิกด่วนคนละสาขา: คนแพ็คด่วน (tick 📌ไม่ระบุ อย่างเดียว) รายการ stamp สาขาเดียว → ลังได้สาขานั้น
+    // รองรับเบิกด่วนคนละสาขา: คนแพ็คด่วน (tick 📌เบิกด่วน อย่างเดียว) รายการ stamp สาขาเดียว → ลังได้สาขานั้น
     // พนักงานปกติไม่มี item.branch → fallback catalogMeta.branch = เส้นทางเดิม byte-identical
     const boxBranch = resolveBoxBranch(catalogByPacker[packer?.code] || catalog, catalogMeta?.branch);
     const newBox = { id: newId, pos: '—', status: 'open', packer: packer || null, branch: boxBranch, skuCount: 0, totalQty: 0, updated: time, createdAt: Date.now() };
@@ -764,7 +764,7 @@ export default function App() {
     PACKERS.forEach(p => {
       const zones = assignments[p.code] || [];
       // zoneOf = แหล่งเดียว (units.js ใช้ร่วมกับ ZoneAssign) — location ว่าง → NOLOC_ZONE
-      // → รายการเบิกด่วน (ไม่มี location) เห็นได้เฉพาะคนที่ tick 📌ไม่ระบุ; โซนปกติพฤติกรรมเดิมเป๊ะ
+      // → รายการเบิกด่วน (ไม่มี location) เห็นได้เฉพาะคนที่ tick 📌เบิกด่วน; โซนปกติพฤติกรรมเดิมเป๊ะ
       result[p.code] = zones.length > 0
         ? items.filter(item => zones.includes(zoneOf(item.location)))
         : items;
