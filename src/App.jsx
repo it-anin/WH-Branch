@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, runTransaction, query, where, documentId, getDocs, addDoc } from 'firebase/firestore';
 import { db } from './firebase.js';
 // สูตร need + ตัวคูณหน่วยฐาน — ตัวเดียวกับที่ PackScanC ใช้จริง (ใช้ใน __wh.audit เพื่อยืนยันเลขบนจอพนักงาน)
-import { buildPackItems, lookupFactor, UNIT_FACTOR_OVERRIDE, STANDARD_UNIT_FACTOR } from './units.js';
+import { buildPackItems, lookupFactor, UNIT_FACTOR_OVERRIDE, STANDARD_UNIT_FACTOR, zoneOf, resolveBoxBranch } from './units.js';
 
 import BoxList from './screens/BoxList.jsx';
 import PackScanC from './screens/PackScanC.jsx';
@@ -347,7 +347,11 @@ export default function App() {
       tx.set(counterRef, { ...data, [todayKey]: next });
       newId = `${todayPrefix}${String(next).padStart(4, '0')}`;
     });
-    const newBox = { id: newId, pos: '—', status: 'open', packer: packer || null, branch: catalogMeta?.branch || null, skuCount: 0, totalQty: 0, updated: time, createdAt: Date.now() };
+    // สาขาของลัง = สาขาของ "รายการที่พนักงานคนนี้ถือ" (resolveBoxBranch ใน units.js — เทสต์ตรงได้)
+    // รองรับเบิกด่วนคนละสาขา: คนแพ็คด่วน (tick 📌ไม่ระบุ อย่างเดียว) รายการ stamp สาขาเดียว → ลังได้สาขานั้น
+    // พนักงานปกติไม่มี item.branch → fallback catalogMeta.branch = เส้นทางเดิม byte-identical
+    const boxBranch = resolveBoxBranch(catalogByPacker[packer?.code] || catalog, catalogMeta?.branch);
+    const newBox = { id: newId, pos: '—', status: 'open', packer: packer || null, branch: boxBranch, skuCount: 0, totalQty: 0, updated: time, createdAt: Date.now() };
     setBoxes(prev => [newBox, ...prev]);
     setActiveBoxId(newId);
     return newId;
@@ -759,11 +763,10 @@ export default function App() {
     const result = {};
     PACKERS.forEach(p => {
       const zones = assignments[p.code] || [];
+      // zoneOf = แหล่งเดียว (units.js ใช้ร่วมกับ ZoneAssign) — location ว่าง → NOLOC_ZONE
+      // → รายการเบิกด่วน (ไม่มี location) เห็นได้เฉพาะคนที่ tick 📌ไม่ระบุ; โซนปกติพฤติกรรมเดิมเป๊ะ
       result[p.code] = zones.length > 0
-        ? items.filter(item => {
-            const m = (item.location || '').match(/^([A-Za-z]+)/);
-            return zones.includes(m ? m[1].toUpperCase() : null);
-          })
+        ? items.filter(item => zones.includes(zoneOf(item.location)))
         : items;
     });
     return result;
@@ -870,17 +873,24 @@ export default function App() {
             </div>
             <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <ImportCatalog catalog={catalog} meta={catalogMeta} onImport={(items, meta) => {
-                  const updated = Object.keys(barcodeMap).length > 0 ? applyBarcodeMap(items, barcodeMap) : items;
+                <ImportCatalog catalog={catalog} meta={catalogMeta} onImport={(items, meta, opts) => {
+                  const mapped = Object.keys(barcodeMap).length > 0 ? applyBarcodeMap(items, barcodeMap) : items;
+                  // เบิกด่วน (opts.append) = ต่อท้าย ไม่ทับ — จำนวนรายการของพนักงานคนอื่นไม่เปลี่ยน → จอไม่ remount
+                  const updated = opts?.append ? [...catalog, ...mapped] : mapped;
                   setCatalog(updated);
-                  setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(meta ? { _meta: meta } : {}) })
+                  // ⚠ setDoc ทับทั้ง doc — โหมด append ต้องเขียน _meta "เดิม" กลับไปด้วย ไม่งั้น catalogMeta หาย
+                  // ทุกเครื่อง → ลังใหม่ของงานปกติได้ branch null (สาขาสแกนรับไม่ได้) — เบิกด่วนไม่ใช่เจ้าของ _meta
+                  const metaToWrite = opts?.append ? catalogMeta : meta;
+                  setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(metaToWrite ? { _meta: metaToWrite } : {}) })
                     .then(() => console.log('Firestore catalog saved', updated.length, 'items'))
                     .catch(err => { console.error('Firestore catalog write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code); });
                   // ใช้โซนที่กำหนดไว้เดิมกับ Picklist ใหม่ทันที — ไม่ต้องเข้าไปกดบันทึกโซนซ้ำทุกครั้งที่อัปโหลด
                   const result = computeCatalogByPacker(updated, zoneAssignments);
                   setCatalogByPacker(result);
                   setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
-                  showToast(`นำเข้าแล้ว ${items.length} รายการ ✓`);
+                  showToast(opts?.append
+                    ? `📌 เพิ่มเบิกด่วน ${items.length} รายการ (${opts.branch || 'ไม่ระบุสาขา'}) ✓`
+                    : `นำเข้าแล้ว ${items.length} รายการ ✓`);
                 }} />
                 <button className="btn sm" style={{ minWidth: 240 }} onClick={() => setShowZoneAssign(true)}>
                   📍 กำหนดโซน
