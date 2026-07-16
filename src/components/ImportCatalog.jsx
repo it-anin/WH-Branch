@@ -118,6 +118,23 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
         );
         if (!ok) return;
       }
+      // Picklist เบิกด่วน (ชื่อไฟล์มีคำว่า "เบิกด่วน" เช่น Picklist_KKL_เบิกด่วน — รหัสสาขาต้องอยู่ "ก่อน" คำว่าเบิกด่วน)
+      // → โหมด "เพิ่มต่อท้าย" ไม่ทับ Picklist ปกติ: จอพนักงานคนอื่นไม่ remount ของที่สแกนค้างรอด
+      // → stamp branch ลงทุกรายการ (เบิกด่วนคนละสาขากับงานปกติได้ — createNewBox อ่าน item.branch)
+      // → มองเห็นเฉพาะพนักงานที่ tick โซน 📌ไม่ระบุ (รายการไม่มี location → NOLOC_ZONE)
+      if (/เบิกด่วน/.test(file.name)) {
+        const ok = window.confirm(
+          `📌 Picklist เบิกด่วน — ${items.length} รายการ (สาขา ${b || 'ไม่ระบุ'})\n\n` +
+          `จะถูก "เพิ่มต่อท้าย" รายการเบิกเดิม ไม่ทับของเดิม\n` +
+          `เห็นเฉพาะพนักงานที่ถูก tick โซน 📌ไม่ระบุ ในหน้ากำหนดโซน\n\n` +
+          `⚠ พนักงานคนนั้นจอจะรีเซ็ต — ให้ปิดลังที่ค้างอยู่ก่อน\n\n` +
+          `ยืนยันเพิ่มรายการเบิกด่วน?`
+        );
+        if (!ok) return;
+        // ไม่ setBranch/setFileDate — badge ปุ่มยังโชว์ Picklist ปกติของวัน (เบิกด่วนไม่ใช่เจ้าของ _meta)
+        onImport(items.map(it => ({ ...it, branch: b })), null, { append: true, branch: b });
+        return;
+      }
       setBranch(b);
       const d = new Date(); // วันที่อัปโหลดจริง (ไม่ใช่ file.lastModified ที่เป็นวันแก้ไขไฟล์)
       const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
