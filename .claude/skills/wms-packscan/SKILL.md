@@ -13,7 +13,10 @@ description: Use when touching the packing screen src/screens/PackScanC.jsx — 
 ---
 ## PackScanC — Logic สำคัญ
 - `items` state เก็บ: `{ sku, barcode, name, unit, need, got, location }`
-- **Init `items` หักของที่แพ็คไปแล้ว:** useState initializer คำนวณ `need = catalog.qty − จำนวนที่พนักงานคนนี้แพ็คไปแล้ว` (รวมจาก `itemsByBox` ของลัง status `closed`/`exported`/`received` ที่ `packer.code` ตรงกัน) แล้ว `.filter(need > 0)` — กันสินค้าที่ลงลังครบแล้วโผล่ซ้ำหลัง remount (สลับแท็บ) / reload
+- **Init `items` หักของที่แพ็คไปแล้ว → `buildPackItems({ catalog, boxes, itemsByBox, packer, factorMap })` ใน `units.js`** (ย้ายออกจากไฟล์นี้แล้ว): `need = catalog.qty × factor − จำนวนที่พนักงานคนนี้แพ็คไปแล้ว` (รวมจาก `itemsByBox` ของลัง status `closed`/`exported`/`received` ที่ `packer.code` ตรงกัน) แล้ว `.filter(need > 0)` — กันสินค้าที่ลงลังครบแล้วโผล่ซ้ำหลัง remount (สลับแท็บ) / reload
+  - **⚠ `__wh.audit(sku)` (App.jsx) เรียก `buildPackItems` ตัวเดียวกันนี้** เพื่อตรวจข้อพิพาท "จอขึ้น 3 แต่ Picklist สั่ง 4" → **ห้าม copy สูตรกลับมาไว้ในไฟล์นี้** ไม่งั้น audit จะยืนยันเลขผิดทันทีที่ 2 ชุดเพี้ยนกัน (ดู *ตรวจข้อพิพาท* ใน CLAUDE.md)
+  - **`STANDARD_UNIT_FACTOR` / `UNIT_FACTOR_OVERRIDE` / `lookupFactor` อยู่ที่ `units.js` ที่เดียวแล้ว** — ไฟล์นี้ `import` เอา (เดิมประกาศซ้ำเองแล้วต้องแก้ 2 ไฟล์ให้ตรงกันทุกครั้ง)
+  - **edge case ที่ตั้งใจคงไว้:** `packer = null` → `b.packer?.code !== packer?.code` เทียบ `undefined !== undefined` = false ⇒ **นับลังที่ไม่มี packer เป็นของตัวเอง** · ลังเก่าไม่มี `gotBase` → fallback `(qty ?? got ?? 0) × factor`
   - in-session: `doClose()` หัก `need -= got` + ตัดตัวที่ `got >= need` ออก — สอดคล้องกับ initializer (catalog total − packed ทั้งหมด)
 - **`barcode` field ใน item card ต้องแสดงเสมอ** — ใช้ยืนยัน barcode ก่อนสแกน ห้ามลบออกจาก card rendering
 - **`c.exp` ใน item card** — แสดงบรรทัด `EXP: {exp}` (สีส้ม accent) ใต้ barcode เฉพาะเมื่อมีค่า (มาจากไฟล์ LOT+EXP ผ่าน lotMap ตอนเลือก LOT หรือกรอกผ่าน "✎ ใส่ LOT เอง" — ดู *LOT Selection*)
@@ -50,6 +53,9 @@ description: Use when touching the packing screen src/screens/PackScanC.jsx — 
   - **ยังไม่สแกน (gotBase=0 = ของหมดจริง):** แถบเผย/ปุ่ม **แดง** "🗑 ของหมด" / "ของหมด ลบรายการ" → toast `'error'` "ลบออกจากรายการแล้ว" + **เสียง `playOutOfStock()`** (2 โน้ตไล่ลง C5→F4 "ลบ/หาย")
   - **สแกนไปบ้าง (gotBase>0 = ของมีไม่พอ):** แถบเผย/ปุ่ม **ส้ม** "⚠ ของไม่พอ" / "ของไม่พอ สแกนตัวถัดไป" → toast `'warn'` "สแกนตัวถัดไป" + **เสียง `playShortSupply()`** (2 โน้ต G5 เท่ากัน "รับทราบ ไปต่อ")
   - **`handleMarkOutOfStock(sku)`** (เหมือนกันทั้ง 2 กรณี ต่างแค่ toast + เสียง): แช่ `need = gotBase` (กันถูกยกไปลังถัดไป — ดู `doClose` filter `gotBase < need`) + `dismissedSkus.add(sku)` (ซ่อนจาก checklist, item ยังอยู่ใน `items` เพื่อคงยอด `got` ที่แพ็คไปแล้ว → ยังนับใน packedItems ตอนปิดลัง)
+  - **บันทึกลง `dismissals/` (audit trail):** เรียก `onDismiss?.({sku, name, unit, need, gotBase, boxId})` → App.jsx `handleDismiss` → `addDoc` (เติม `kind: 'out'|'short'`, `packer`, `at`). **ไม่มี listener** — อ่านตอนเรียก `__wh.audit(sku)` เท่านั้น
+    - **⚠ ห่อ `try/catch` ไว้ ห้ามเอาออก** — App.jsx กัน promise reject ด้วย `.catch` แล้ว แต่ `addDoc` **throw แบบ synchronous ได้** → เคยทะลุมาบล็อกการปัดจริง (เทสต์จับได้ก่อน deploy). **การบันทึกเพื่อตรวจสอบต้องไม่มีวันขวางงานหน้างาน**
+  - **⚠ การปัด "ซ่อนทั้งแถว" ไม่ใช่ลดเลข** และ `dismissedSkus` เป็น local state ไม่ sync ที่ไหน → **รีโหลด/remount รายการกลับมาครบ พนักงานลบความต้องการทิ้งถาวรไม่ได้** — ถ้ามีคนสงสัยว่า "พนักงานปัดของทิ้ง" ให้ดู `dismissals/` ผ่าน `__wh.audit` ไม่ใช่เดา
 - **กันปิดลังว่าง:** `handleCloseBox` guard แรก — ถ้า `!items.some(got > 0)` (ยังไม่มีสินค้าสแกนลงลัง เช่นเพิ่งเปิด/ยกของค้างมาแต่ยังไม่สแกน) → `playScanFail()` + toast `'error'` "⚠ ปิดลังไม่ได้ — ต้องสแกนสินค้าลงลังก่อน" แล้ว return (ไม่เข้า confirmClose/doClose)
 - **ปิดลังทั้งที่ยังไม่ครบ:** `handleCloseBox` เช็ค `items.every(gotBase >= need)` — ถ้าไม่ครบ → dialog "⚠ สินค้าไม่ครบ / ปิดลังเลยไหม?" (`confirmClose`) → ยืนยัน → `doClose`
 - **Android mode** (`isAndroid` = module-level const จาก `?android=1`):
