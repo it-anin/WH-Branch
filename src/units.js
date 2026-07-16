@@ -49,6 +49,26 @@ export const lookupFactor = (factorMap, sku, unit) =>
   ?? STANDARD_UNIT_FACTOR[unit]
   ?? 1;
 
+// โซนจาก location — แหล่งเดียว ใช้ทั้ง computeCatalogByPacker (App.jsx) และ ZoneAssign
+// (เดิม regex เดียวกันก๊อปอยู่ 2 ไฟล์ — บทเรียนเดียวกับ lookupFactor: สูตรเดียวห้ามมี 2 ก๊อป)
+// NOLOC_ZONE = โซนพิเศษของรายการ "ไม่มี location" (Picklist เบิกด่วน) — tick ให้พนักงานใน ZoneAssign ได้
+// ขึ้นต้น '__' + lowercase → ชนกับโซนจริง (A/B/COOL ที่ uppercase เสมอ) ไม่ได้
+export const NOLOC_ZONE = '__noloc';
+export const zoneOf = (location) => {
+  const m = (location || '').match(/^([A-Za-z]+)/);
+  return m ? m[1].toUpperCase() : NOLOC_ZONE;
+};
+
+// สาขาของ "ลังใหม่" จากรายการที่พนักงานคนนั้นถือ — รองรับ Picklist เบิกด่วนคนละสาขากับงานปกติ
+// item.branch มีเฉพาะรายการเบิกด่วน (stamp ตอน import); รายการปกติไม่มี → นับเป็น metaBranch (Picklist ปกติ)
+// ทุกรายการสาขาเดียว → ใช้สาขานั้น · ปนหลายสาขา/ไม่มีรายการ → fallback metaBranch (= พฤติกรรมเดิมเป๊ะ)
+// ⚠ ใช้ใน createNewBox (flow ล็อก) — box.branch เป็น write-once สาขาสแกนรับได้เฉพาะลังที่สาขาตรง
+export function resolveBoxBranch(packCatalog, metaBranch) {
+  const fallback = metaBranch || null;
+  const branches = [...new Set((packCatalog || []).map(c => c.branch ?? fallback))];
+  return branches.length === 1 ? branches[0] : fallback;
+}
+
 // เติมชื่อสินค้าจาก nameMap (R05.106 ColF) เมื่อ item ไม่มีชื่อ หรือชื่อเป็นเลข SKU
 // (แถวเก่าที่ lookupByScan เดิม fallback เป็น sku ตอนสแกนสินค้านอก Picklist) — heal ตอน render ไม่แตะข้อมูลใน Firestore
 // nameMap ว่าง (เช่นบน Android ที่ไม่ subscribe) → คืน object เดิมทั้ง reference = no-op สมบูรณ์
@@ -83,12 +103,21 @@ export function buildPackItems({ catalog, boxes, itemsByBox, packer, factorMap }
       packedBase[key] = (packedBase[key] || 0) + base;
     });
   });
+  // หักแบบ "สระสะสม" ตามลำดับแถว — ไม่ใช่หักเต็มก้อนจากทุกแถว
+  // (บั๊กเดิม: SKU เดียวกันหลายแถว เช่น 3+1 แพ็คไป 1 → ทุกแถวโดนหัก 1 → เห็น 2+0 = 2 ทั้งที่เหลือจริง 3
+  //  เกิดได้ทั้ง Picklist มีแถวซ้ำ และเบิกด่วน append SKU ที่ซ้ำกับงานปกติของคนเดียวกัน)
+  // SKU แถวเดียว (เคสส่วนใหญ่) → ผลเท่าสูตรเดิมเป๊ะ: use = min(packed, needFull) แล้ว need = needFull − use
+  // ⚠ ข้อจำกัดที่รู้: packedBase ไม่แยกสาขา — คนเดียวแพ็ค SKU เดียวกันให้ 2 สาขาวันเดียวกัน ยอดหักปนกัน
+  const remaining = { ...packedBase };
   return catalog
     .map(c => {
-      const needBase = c.qty * fOf(c.sku, c.unit) - (packedBase[`${c.sku}__${c.unit}`] || 0);
+      const key = `${c.sku}__${c.unit}`;
+      const needFull = c.qty * fOf(c.sku, c.unit);
+      const use = Math.min(remaining[key] || 0, needFull);
+      remaining[key] = (remaining[key] || 0) - use;
       return {
         sku: c.sku, barcode: c.barcode, name: c.name, unit: c.unit,
-        need: needBase, got: 0, gotBase: 0,
+        need: needFull - use, got: 0, gotBase: 0,
         baseUnit: baseUnitOf(c.sku, c.unit),
         location: c.location || '',
       };
