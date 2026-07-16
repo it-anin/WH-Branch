@@ -286,7 +286,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   // Desktop: ปุ่มเลือกพนักงาน = filter เฉพาะลังที่พนักงานคนนั้นสแกน (receivedBy)
   const staffFilter = !isControlled && branchStaff ? branchStaff.code : null;
   const matchStaff = (b) => !staffFilter || b.receivedBy?.code === staffFilter || b.problemBy?.code === staffFilter;
-  // กรองตามสาขา (Android): เห็นเฉพาะลังของสาขาตัวเอง — ลังไม่มี branch (legacy/untagged) เห็นได้ทุกสาขา
+  // กรองตามสาขา: เห็นเฉพาะลังของสาขาตัวเอง (branch=null = คลัง/ไม่ scope → เห็นหมด)
+  // ⚠ ลังที่ไม่มี branch มองไม่เห็นจากโปรไฟล์สาขาใดๆ เลย — ตั้งใจ (commit 2a23385 ตัด fallback `!b.branch ||`
+  //   ออก เพราะเสี่ยงลังสาขาหนึ่งไปโผล่อีกสาขา) ลังพวกนี้เห็นได้ที่เดียวคือหน้า Outbound ของคลัง
+  //   ซึ่งมีถัง "⚠ ไม่ระบุสาขา" ไว้ให้แล้ว — ห้ามใส่ fallback กลับมาโดยไม่แจ้ง
   const matchBranch = (b) => !branch || b.branch === branch;
   // priority: problem (0) > receivePending (1) > exported รอสาขาสแกน (2) > อื่น (3)
   const sortRank = (b) =>
@@ -378,7 +381,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setQuery('');
     // Android ไม่แสดงเลขลัง (จอเล็ก) — Desktop แสดงเลขลังเพื่อแยกง่าย
     const boxLabel = isAndroid ? '' : `ลัง ${box.id} `;
-    // กันสแกนลังของสาขาอื่น (ลังไม่มี branch = legacy → ปล่อยผ่าน)
+    // กันสแกนลังของสาขาอื่น — ⚠ ลังไม่มี branch ก็ถูกบล็อกด้วย (null !== 'SRC') = สแกนรับไม่ได้เลยทุกสาขา
+    // ตั้งใจ ให้ตรงกับ matchBranch (ดู commit 2a23385) — ห้ามใส่ `box.branch &&` กลับมาโดยไม่แจ้ง
     if (branch && box.branch !== branch) {
       playScanFail();
       showToast(`⚠ ${boxLabel}เป็นของสาขา ${box.branch || 'ไม่ระบุ'} ไม่ใช่ ${branch}`, 'error');
