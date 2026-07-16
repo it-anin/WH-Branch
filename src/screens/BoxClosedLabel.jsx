@@ -695,7 +695,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                           <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
                           <div style={{ fontFamily: 'JetBrains Mono', fontSize: 15 }}>{l.name}</div>
                         </td>
-                        <td style={{ fontFamily: 'JetBrains Mono' }}>{l.unit}</td>
+                        <td style={{ fontFamily: 'JetBrains Mono' }}>{l.scannedUnit || l.unit}</td>
                         <td style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, textAlign: 'center' }}>
                           ×{l.qty ?? l.got ?? 0}
                         </td>
@@ -754,7 +754,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                               <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
                               <div style={{ fontFamily: 'JetBrains Mono', fontSize: 15 }}>{l.name}</div>
                             </td>
-                            <td style={{ fontFamily: 'JetBrains Mono' }}>{l.unit}</td>
+                            <td style={{ fontFamily: 'JetBrains Mono' }}>{l.scannedUnit || l.unit}</td>
                             <td>
                               <div className="row" style={{ gap: 8, justifyContent: 'center', alignItems: 'center' }}>
                                 <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--red)', color: 'var(--red)', fontWeight: 700 }} onClick={() => adjustQty(l.sku, -1)}>−</button>
@@ -886,7 +886,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                             />
                           </td>
                           <td style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>
-                            {it.unit}
+                            {/* หน่วยที่ยิงจริง (scannedUnit) ไม่ใช่หน่วย Picklist (it.unit) — 3ลัง ไม่มีบาร์โค้ด พนักงานยิง ลัง
+                                ให้ตรงกับ barcode/จำนวนในแถว + ตาราง view + ไฟล์ Text/Excel + หน้ารับสินค้า (ทั้งหมดใช้ scannedUnit) */}
+                            {it.scannedUnit || it.unit}
                           </td>
                           <td style={{ textAlign: 'center', padding: '4px 6px' }}>
                             <input
