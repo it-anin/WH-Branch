@@ -1,14 +1,18 @@
 import { useState } from 'react';
+// zoneOf = แหล่งเดียวของ logic โซน (ตรงกับ computeCatalogByPacker ใน App.jsx เสมอ — เดิม regex ก๊อปแยก 2 ไฟล์)
+import { zoneOf, NOLOC_ZONE } from '../units.js';
 
-function extractZone(location) {
-  if (!location) return null;
-  const m = location.match(/^([A-Za-z]+)/);
-  return m ? m[1].toUpperCase() : null;
-}
+// label ของโซนพิเศษ "ไม่มี location" (Picklist เบิกด่วน) — ตัวโซนจริงใช้ชื่อดิบ
+const zoneLabel = (z) => z === NOLOC_ZONE ? '📌 ไม่ระบุ' : z;
 
 export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, onClose }) {
-  const zones = [...new Set(catalog.map(item => extractZone(item.location)).filter(Boolean))]
-    .sort((a, b) => a.length !== b.length ? a.length - b.length : a.localeCompare(b));
+  // โซนจริงจาก catalog + บังคับมีคอลัมน์ 📌ไม่ระบุ ท้ายสุดเสมอ — tick ล่วงหน้าได้ก่อน Picklist เบิกด่วนจะมา
+  const zones = [
+    ...[...new Set(catalog.map(item => zoneOf(item.location)))]
+      .filter(z => z !== NOLOC_ZONE)
+      .sort((a, b) => a.length !== b.length ? a.length - b.length : a.localeCompare(b)),
+    NOLOC_ZONE,
+  ];
 
   const [assignments, setAssignments] = useState(() => {
     const init = {};
@@ -27,11 +31,17 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
   function countItems(packerCode) {
     const assigned = assignments[packerCode] || [];
     if (assigned.length === 0) return 0;
-    return catalog.filter(item => assigned.includes(extractZone(item.location))).length;
+    return catalog.filter(item => assigned.includes(zoneOf(item.location))).length;
   }
 
   const totalAssigned = packers.reduce((sum, p) => sum + countItems(p.code), 0);
   const unassigned = catalog.length - totalAssigned;
+  // tick 📌ไม่ระบุ ปนกับโซนปกติ = เสี่ยงลังได้สาขาผิด — เบิกด่วนอาจคนละสาขากับ Picklist ปกติ
+  // (createNewBox ใช้สาขาจากรายการที่พนักงานถือ ถ้าปน 2 สาขาจะ fallback สาขาปกติ → ลังเบิกด่วนสาขาผิด)
+  const mixedNoloc = packers.filter(p => {
+    const a = assignments[p.code] || [];
+    return a.includes(NOLOC_ZONE) && a.length > 1;
+  });
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -41,9 +51,9 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
           <button className="btn sm" onClick={onClose}>× ปิด</button>
         </div>
 
-        {zones.length === 0 ? (
+        {catalog.length === 0 ? (
           <p style={{ color: 'var(--mute)', textAlign: 'center', padding: '24px 0' }}>
-            ยังไม่มีข้อมูล Location — กรุณาอัปโหลดไฟล์ Picklist ก่อน
+            ยังไม่มีรายการเบิก — กรุณาอัปโหลดไฟล์ Picklist ก่อน
           </p>
         ) : (
           <>
@@ -52,7 +62,7 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
                 <tr>
                   <th style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '2px solid var(--line)', fontWeight: 600 }}>พนักงาน</th>
                   {zones.map(z => (
-                    <th key={z} style={{ padding: '8px 10px', borderBottom: '2px solid var(--line)', textAlign: 'center', minWidth: 44, fontWeight: 600 }}>{z}</th>
+                    <th key={z} style={{ padding: '8px 10px', borderBottom: '2px solid var(--line)', textAlign: 'center', minWidth: 44, fontWeight: 600, whiteSpace: 'nowrap' }}>{zoneLabel(z)}</th>
                   ))}
                   <th style={{ padding: '8px 10px', borderBottom: '2px solid var(--line)', textAlign: 'center', color: 'var(--mute)', fontSize: 12, fontWeight: 400 }}>SKU</th>
                 </tr>
@@ -85,6 +95,12 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
             {unassigned > 0 && (
               <p style={{ marginTop: 12, fontSize: 12, color: '#c87000' }}>
                 ⚠ {unassigned} SKU ไม่ได้อยู่ในโซนที่กำหนด (จะไม่ปรากฏในรายการของพนักงานคนใด)
+              </p>
+            )}
+            {mixedNoloc.length > 0 && (
+              <p style={{ marginTop: 8, fontSize: 12, color: 'var(--red)' }}>
+                ⚠ {mixedNoloc.map(p => p.name).join(', ')} ถูก tick 📌ไม่ระบุ ปนกับโซนปกติ —
+                ถ้าเบิกด่วนเป็นคนละสาขา ลังของคนนี้จะได้สาขาผิด ควรแยกคนแพ็คเบิกด่วนไว้คนเดียว
               </p>
             )}
 
