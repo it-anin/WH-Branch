@@ -1453,9 +1453,9 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
       {takeoverBox && createPortal(
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: 'white', borderRadius: 14, padding: '24px 28px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)', textAlign: 'center', minWidth: 280, maxWidth: 360 }}>
-            <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 8 }}>⚠ ลังนี้มีคนกำลังตรวจอยู่</div>
+            <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 8 }}>⚠ ลังนี้</div>
             <div style={{ fontSize: 14, color: '#555', marginBottom: 20, lineHeight: 1.5 }}>
-              พนักงาน <b>{takeoverBox.receivingBy?.name}</b> กำลังตรวจลัง {takeoverBox.id} อยู่<br />
+              พนักงาน <b>{takeoverBox.receivingBy?.name}</b> กำลังตรวจ {takeoverBox.id} อยู่<br />
               ต้องการ<b>ตรวจแทน</b>หรือไม่? (จะเริ่มนับใหม่ตั้งแต่ต้น)
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
