@@ -17,6 +17,7 @@ description: Use when touching the packing screen src/screens/PackScanC.jsx — 
   - **⚠ `__wh.audit(sku)` (App.jsx) เรียก `buildPackItems` ตัวเดียวกันนี้** เพื่อตรวจข้อพิพาท "จอขึ้น 3 แต่ Picklist สั่ง 4" → **ห้าม copy สูตรกลับมาไว้ในไฟล์นี้** ไม่งั้น audit จะยืนยันเลขผิดทันทีที่ 2 ชุดเพี้ยนกัน (ดู *ตรวจข้อพิพาท* ใน CLAUDE.md)
   - **`STANDARD_UNIT_FACTOR` / `UNIT_FACTOR_OVERRIDE` / `lookupFactor` อยู่ที่ `units.js` ที่เดียวแล้ว** — ไฟล์นี้ `import` เอา (เดิมประกาศซ้ำเองแล้วต้องแก้ 2 ไฟล์ให้ตรงกันทุกครั้ง)
   - **edge case ที่ตั้งใจคงไว้:** `packer = null` → `b.packer?.code !== packer?.code` เทียบ `undefined !== undefined` = false ⇒ **นับลังที่ไม่มี packer เป็นของตัวเอง** · ลังเก่าไม่มี `gotBase` → fallback `(qty ?? got ?? 0) × factor`
+  - **หักแบบ "สระสะสม" ตามลำดับแถว** — SKU เดียวกันหลายแถว (Picklist มีแถวซ้ำ / เบิกด่วน append ซ้ำกับงานปกติ) แถวแรก consume ยอดที่แพ็คก่อน เหลือส่งต่อแถวถัดไป (เดิมหักเต็มก้อนทุกแถว → 3+1 แพ็ค 1 เห็นเหลือ 2 ทั้งที่จริง 3) · SKU แถวเดียวผลเท่าสูตรเดิมเป๊ะ (golden master ยืนยัน) · ⚠ ข้อจำกัด: `packedBase` ไม่แยกสาขา — คนเดียวแพ็ค SKU เดียวกันให้ 2 สาขาวันเดียวกันยอดหักปนกัน
   - in-session: `doClose()` หัก `need -= got` + ตัดตัวที่ `got >= need` ออก — สอดคล้องกับ initializer (catalog total − packed ทั้งหมด)
 - **`barcode` field ใน item card ต้องแสดงเสมอ** — ใช้ยืนยัน barcode ก่อนสแกน ห้ามลบออกจาก card rendering
 - **`c.exp` ใน item card** — แสดงบรรทัด `EXP: {exp}` (สีส้ม accent) ใต้ barcode เฉพาะเมื่อมีค่า (มาจากไฟล์ LOT+EXP ผ่าน lotMap ตอนเลือก LOT หรือกรอกผ่าน "✎ ใส่ LOT เอง" — ดู *LOT Selection*)

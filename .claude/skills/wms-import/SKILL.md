@@ -23,6 +23,20 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 | F (5) | จำนวน (qty) |
 | G (6) | Location |
 
+#### Picklist เบิกด่วน — ชื่อไฟล์มีคำว่า "เบิกด่วน" → โหมด append
+- **detect:** `/เบิกด่วน/.test(file.name)` ใน `handleFile` (ImportCatalog) — เช็คหลัง confirm ไม่มีรหัสสาขา
+- **ชื่อไฟล์ต้องเป็น `Picklist_{สาขา}_เบิกด่วน`** — รหัสสาขา**ก่อน**คำว่าเบิกด่วน (`extractBranch` จับกลุ่มแรกหลัง `picklist_`; `Picklist_เบิกด่วน_KKL` → null)
+- **ทำอะไร:** confirm อธิบาย (append + สาขา + เตือนจอคนแพ็คด่วนรีเซ็ต) → `onImport(items.map(it => ({...it, branch: b})), null, { append: true, branch: b })`
+  - **ไม่ setBranch/setFileDate** — badge ปุ่มยังโชว์ Picklist ปกติ (เบิกด่วนไม่ใช่เจ้าของ `_meta`)
+- **caller (App.jsx):** `opts?.append` → `updated = [...catalog, ...applyBarcodeMap(items)]` + **เขียน `_meta: catalogMeta` เดิมกลับ**
+  (⚠ `setDoc` ทับทั้ง doc — ตก `_meta` = catalogMeta หายทุกเครื่อง → ลังงานปกติได้ branch null สาขารับไม่ได้)
+- **ทำไม append:** key ของ PackScanC = `${packer.code}-${length ของรายการคนนั้น}` → append ไม่เปลี่ยนจำนวนของคนอื่น
+  → จอไม่ remount ของที่สแกนค้างรอด = **แทรกกลางวันได้**; เฉพาะคนที่ tick 📌ไม่ระบุ (NOLOC_ZONE) จอรีเซ็ต
+- **การมองเห็น:** รายการด่วนไม่มี location → `zoneOf` (units.js) จัดเข้า `NOLOC_ZONE` → เห็นเฉพาะคน tick 📌ไม่ระบุ ใน ZoneAssign
+- **สาขา:** `item.branch` stamp ต่อรายการ → `createNewBox` ใช้ `resolveBoxBranch` (units.js) — คนแพ็คด่วนได้ลังสาขาไฟล์ด่วน
+  **คนละสาขากับงานปกติได้** · ⚠ ห้าม tick 📌ไม่ระบุ ปนโซนปกติ (ZoneAssign เตือน) — ปนแล้ว fallback สาขาปกติ = ลังด่วนสาขาผิด
+- **อายุ:** รายการด่วนหายเองเมื่ออัป Picklist ปกติรอบถัดไป (โหมด replace เดิม)
+
 ### ไฟล์ 2: Barcode Map (ImportBarcodeMap)
 | Col | ข้อมูล |
 |---|---|
