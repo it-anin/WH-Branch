@@ -23,6 +23,12 @@ export const UNIT_FACTOR_OVERRIDE = {
 export const lookupFactor = (factorMap, sku, unit) =>
   factorMap[`${sku}__${unit}`] ?? UNIT_FACTOR_OVERRIDE[`${sku}__${unit}`] ?? STANDARD_UNIT_FACTOR[unit] ?? 1;
 
+// เติมชื่อสินค้าจาก nameMap (R05.106 ColF) เมื่อ item ไม่มีชื่อ หรือชื่อเป็นเลข SKU
+// (แถวเก่าที่ lookupByScan เดิม fallback เป็น sku ตอนสแกนสินค้านอก Picklist) — heal ตอน render ไม่แตะข้อมูลใน Firestore
+// nameMap ว่าง (เช่นบน Android ที่ไม่ subscribe) → คืน object เดิมทั้ง reference = no-op สมบูรณ์
+export const fixItemName = (l, nameMap) =>
+  (!l.name || l.name === l.sku) && nameMap[l.sku] ? { ...l, name: nameMap[l.sku] } : l;
+
 // สร้าง checklist ของพนักงาน 1 คน — need เป็น "หน่วยฐาน" หักของที่คนนั้นแพ็คไปแล้วในลังที่ปิด/ส่งออก/รับแล้ว
 //   need = qty(picklist) × factor(หน่วย picklist) − Σ gotBase ที่พนักงานคนนี้แพ็คไปแล้ว
 // ⚠ นี่คือสูตรที่หน้าแพ็ค (PackScanC) ใช้จริง และ __wh.audit เรียกตัวเดียวกันนี้เพื่อยืนยันเลขบนจอพนักงาน

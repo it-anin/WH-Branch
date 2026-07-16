@@ -28,10 +28,18 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 |---|---|
 | A (0) | Barcode |
 | E (4) | SKU |
+| F (5) | **ชื่อสินค้า** (`CF_ITEMNAME`) |
 | G (6) | หน่วย |
 | H (7) | **ตัวคูณหน่วยฐาน** (`CF_BASEMULTIPLE`) — จำนวนหน่วยฐานต่อ 1 หน่วยนี้ เช่น โหล=12, กล่อง=1 |
 
-**ColH → `factorMap`:** `rowsToMap` คืน `{ map, factorMap }` — `factorMap[sku__unit] = factor` (first-wins). **factor ผูกกับ `sku__unit` ไม่ใช่ชื่อหน่วยล้วน** — ใน R05.106 หน่วย `กล่อง` มี factor ตั้งแต่ 1 ถึง 2000 แล้วแต่ SKU, `โหล` ส่วนใหญ่=12 แต่บาง SKU=1 → ห้ามใช้ตารางหน่วยตายตัว. ทุก SKU มีหน่วยฐาน (factor=1) เสมอ. `onImport(map, factorMap, meta)` → `handleBarcodeMapImport` sync `config/factorMap` (array `{key, factor}`)
+**`rowsToMap` คืน `{ map, factorMap, nameMap }`** → `onImport(map, factorMap, nameMap, meta)` → `handleBarcodeMapImport` (ไฟล์เดียวป้อน 3 map)
+
+**ColH → `factorMap`:** `factorMap[sku__unit] = factor` (first-wins). **factor ผูกกับ `sku__unit` ไม่ใช่ชื่อหน่วยล้วน** — ใน R05.106 หน่วย `กล่อง` มี factor ตั้งแต่ 1 ถึง 2000 แล้วแต่ SKU, `โหล` ส่วนใหญ่=12 แต่บาง SKU=1 → ห้ามใช้ตารางหน่วยตายตัว. ทุก SKU มีหน่วยฐาน (factor=1) เสมอ. sync `config/factorMap` (array `{key, factor}`)
+
+**ColF → `nameMap`:** `nameMap[sku] = ชื่อ` (first-wins, ข้ามค่าว่าง) — **key เป็น SKU ล้วน ไม่ผูก unit** (ต่างจาก factorMap; SKU เดียวหลายหน่วยชื่อเดียวกัน). วัดไฟล์จริง: 10,356 แถว → **7,868 SKU = ~555KB** → sync `config/nameMap` + `nameMap_1..N` แบบ **sharded** (555KB ลง doc เดียวได้ แต่ shard ตั้งแต่แรกตาม Known Pitfall ที่ `config/lotMap` ชน 1MB มาแล้ว 2 รอบ)
+- **ใช้ทำอะไร:** แหล่งชื่อสำรองตอนสแกนสินค้า **ที่ไม่อยู่ใน Picklist วันนั้น** ที่หน้า Outbound (`lookupByScan` เดิม fallback เป็นเลข SKU แล้ว**บันทึกลงลังถาวร** ติดไปถึง Excel/จอสาขา) — ดู skill `wms-outbound`
+- **⚠ listener ใน App.jsx gate ด้วย `isAndroidMode` → PDA สาขาไม่ subscribe** (nameMap คงเป็น `{}` บน Android) เพราะหน้ารับสินค้าไม่ได้ใช้ ไม่ควรให้ PDA โหลดเพิ่ม 555KB — **ต่างจาก lotMap/barcodeMap/factorMap ที่ทุกเครื่องโหลด** ถ้าจะเอาชื่อไปใช้ฝั่ง Android ต้องปลด gate นี้ก่อน (และรับต้นทุนนั้น)
+- **เขียนเฉพาะเมื่อ `nameMap` มีข้อมูล** — ไฟล์ผิดฟอร์แมตจะได้ไม่ล้างของเดิมทิ้ง
 - **โมเดลหน่วยฐาน (base-unit) — แก้บั๊ก "สแกนกล่องนับเป็น 1 โหล":** PackScanC คิด `need`/`gotBase` เป็นหน่วยฐาน — `needBase = picklistQty × factor(picklistUnit)`, ทุกสแกน `gotBase += factor(หน่วยของบาร์โค้ดที่สแกนจริง)` (resolve หน่วยจาก `barcodeMap`). ครบเมื่อ `gotBase >= need`. รองรับบาร์โค้ดปนกัน: สแกนบาร์โค้ดโหล +12 / บาร์โค้ดกล่อง +1. แสดงผล `gotBase/need {baseUnit}` (หน่วยฐาน). **`got` ยังเป็นจำนวนครั้งที่สแกน** (แยกจาก gotBase) ไว้ export ตามหน่วยที่สแกนจริง
 - **Fallback ตัวคูณเมื่อหน่วย picklist ไม่มีใน R05.106 (PackScanC, module-level):** บางครั้ง picklist ใช้ชื่อหน่วยที่ R05.106 ไม่มีแถวนั้น (เช่น picklist "โหล" แต่ R05.106 มีแค่ "กล่อง"=1) → `factorOf` ผ่าน helper `lookupFactor(factorMap, sku, unit)` ลำดับ: **`factorMap[sku__unit]` (R05.106) ชนะเสมอ → `UNIT_FACTOR_OVERRIDE[sku__unit]` → `STANDARD_UNIT_FACTOR[unit]` → `1`**
   - **`STANDARD_UNIT_FACTOR`** = `{ 'โหล': 12, 'กุรุส': 144 }` — หน่วยสากลที่คงที่ทุก SKU
