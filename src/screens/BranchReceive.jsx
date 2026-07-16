@@ -262,6 +262,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [viewingId, setViewingId]     = useState(null);
   const [verifyResult, setVerifyResult] = useState(null); // 'ok' | 'fail'
   const [confirmIncomplete, setConfirmIncomplete] = useState(false); // dialog ยืนยันรับ — เด้งทุกครั้ง ไม่ว่าจะนับครบหรือไม่ (ดู requestConfirm)
+  const [takeoverBox, setTakeoverBox] = useState(null); // ลังที่ถูกคนอื่นล็อก แต่คนนี้ขอตรวจแทน (รอยืนยันใน dialog)
   const [supervisorCode, setSupervisorCode] = useState('');
   const [reportOpen, setReportOpen]   = useState(false);
   const [reportImage, setReportImage] = useState(null);
@@ -364,6 +365,15 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setPhase('verify');
   }
 
+  // ยืนยัน "ตรวจแทน" ลังที่คนอื่นล็อกไว้ — startReceive ทับ receivingBy เป็นคนนี้ + reset นับใหม่ + เข้า verify
+  // (ผลเท่ากับสแกนลังปกติ ต่างแค่ข้ามด่านบล็อก; เจ้าของเดิมเห็นล็อกเปลี่ยนมือผ่าน setBoxes sync)
+  function confirmTakeover() {
+    const box = takeoverBox;
+    setTakeoverBox(null);
+    if (!box) return;
+    startReceive(box);
+  }
+
   function handleScan(e) {
     if (e.key !== 'Enter') return;
     const q = e.target.value.trim().toLowerCase();
@@ -413,10 +423,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       showToast(`⚠ ${boxLabel}สแกนรับแล้ว · รออนุมัติเอกสาร`, 'error');
       return;
     }
-    // ล็อกลัง: ถ้าพนักงานคนอื่นกำลังตรวจอยู่ → บล็อก (ปลดล็อกเมื่อคนนั้นยืนยันรับ/แจ้งปัญหา/ไปลังถัดไป)
+    // ล็อกลัง: ถ้าพนักงานคนอื่นกำลังตรวจอยู่ → เด้ง dialog ให้เลือก "ตรวจแทน" (เดิมบล็อกตายด้วย toast)
+    // เจ้าของล็อกอาจเดินหาย/ติดงาน — คนอื่นแซงได้แต่ต้องกดยืนยันเจตนา (กันสองคนสแกนลังเดียวโดยบังเอิญ)
     if (box.receivingBy && box.receivingBy.code !== branchStaff?.code) {
       playScanFail();
-      showToast(`⚠ พนักงาน ${box.receivingBy.name} กำลังตรวจลังนี้อยู่`, 'error');
+      setTakeoverBox(box);
       return;
     }
 
@@ -1439,6 +1450,22 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
         </div>
       </div>
 
+      {takeoverBox && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'white', borderRadius: 14, padding: '24px 28px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)', textAlign: 'center', minWidth: 280, maxWidth: 360 }}>
+            <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 8 }}>⚠ ลังนี้มีคนกำลังตรวจอยู่</div>
+            <div style={{ fontSize: 14, color: '#555', marginBottom: 20, lineHeight: 1.5 }}>
+              พนักงาน <b>{takeoverBox.receivingBy?.name}</b> กำลังตรวจลัง {takeoverBox.id} อยู่<br />
+              ต้องการ<b>ตรวจแทน</b>หรือไม่? (จะเริ่มนับใหม่ตั้งแต่ต้น)
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="btn ghost" onClick={() => setTakeoverBox(null)}>ยกเลิก</button>
+              <button className="btn primary" onClick={confirmTakeover}>ตรวจแทน</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
       {confirmIncomplete && createPortal(
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: 'white', borderRadius: 14, padding: '24px 28px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)', textAlign: 'center', minWidth: 280, maxWidth: 360 }}>
