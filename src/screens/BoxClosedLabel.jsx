@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
-import { fixItemName } from '../units.js';
+import { fixItemName, lookupFactor } from '../units.js';
 
 // พนักงาน Android กรอก Exp เป็น ค.ศ. (ตรงกับที่พิมพ์บนสินค้าจริง) แต่ไฟล์ Text ต้องเป็น พ.ศ. — แปลงตอน export
 // ปี < 2400 ถือว่าเป็น ค.ศ. (+543) — ลังเก่าก่อนเปลี่ยน label ที่กรอกเป็น พ.ศ. ไว้แล้ว (ปี >= 2400) จะไม่ถูกแปลงซ้ำ
@@ -157,7 +157,7 @@ function StickerLabel({ box }) {
   );
 }
 
-export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {}, barcodeMap = {}, nameMap = {}, catalog = [] }) {
+export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {}, barcodeMap = {}, nameMap = {}, factorMap = {}, catalog = [] }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
@@ -439,13 +439,33 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     }
   }
 
+  // แถวที่ "สแกนปนหน่วย" — scannedLots มี unit มากกว่า 1 แบบ (เช่น picklist โหล: สแกน 1 โหล + 12 ชิ้น)
+  // qty ของแถวแบบนี้ = จำนวนครั้งที่สแกนรวมทุกหน่วย (13) ไม่ใช่จำนวนของหน่วยเดียว → qty × factor ใช้ไม่ได้
+  const distinctScanUnits = (it) => new Set((it.scannedLots || []).map(e => e.unit).filter(Boolean)).size;
+
   function handleSaveEdit() {
     if (!selectedId) return;
     // clear scannedLots — view mode ใช้ lotRows() ซึ่งจะอ่าน qty จาก scannedLots[].qty ก่อน (ไม่ใช่ l.qty)
     // การล้าง scannedLots ทำให้ view mode ใช้ fallback path (l.qty / l.lot / l.exp) ที่ผู้ใช้เพิ่งแก้ไขไว้
+    //
+    // ⚠ ต้องคำนวณ gotBase ใหม่ด้วย — ฝั่งสาขาอ่าน getNeeded = gotBase ?? qty ?? got (เอา gotBase ก่อนเสมอ)
+    // ไม่อัปเดต = แก้จำนวนที่นี่แล้วสาขายังเห็นเลขเดิม (บั๊กเดิม ทำให้ลังที่ factor ผิดซ่อมไม่ได้เลย)
+    // คำนวณ "ทุกแถว" ไม่ใช่เฉพาะแถวที่ผู้ใช้แก้ — ลังที่ปิดไว้ตอน factor ยังผิดต้องซ่อมได้โดยไม่ต้องแตะ qty
+    // (แถวหน่วยเดียวที่ถูกอยู่แล้ว คำนวณใหม่ได้ค่าเดิมเป๊ะ → ไม่มีผลข้างเคียง)
+    const mixed = editItems.filter(it => (it.qty ?? it.got ?? 0) > 0 && distinctScanUnits(it) > 1);
     const newItems = editItems
       .filter(it => (it.qty ?? it.got ?? 0) > 0)
-      .map(it => ({ ...it, scannedLots: null }));
+      .map(it => ({
+        ...it,
+        // ปนหน่วย → คงค่าเดิม (คำนวณใหม่จะได้ค่าผิด) แล้วเตือนให้คนตรวจเอง
+        gotBase: distinctScanUnits(it) > 1
+          ? it.gotBase
+          : (it.qty ?? it.got ?? 0) * lookupFactor(factorMap, it.sku, it.unit),
+        scannedLots: null,
+      }));
+    if (mixed.length > 0) {
+      showToast(`⚠ ${mixed.length} รายการสแกนปนหน่วย — ไม่ได้คำนวณหน่วยฐานใหม่ ตรวจสอบเอง`, 'warn');
+    }
     const newTotalQty = newItems.reduce((s, it) => s + (it.qty ?? it.got ?? 0), 0);
     const newSkuCount = newItems.length;
     setItemsByBox(prev => ({ ...prev, [selectedId]: newItems }));
