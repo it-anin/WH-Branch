@@ -340,7 +340,7 @@ function ItemCard({ c, done, partial, exiting, settled, onMarkOutOfStock }) {
   );
 }
 
-export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, catalogLoaded = true, packer, onScanProgress, catalogMeta, lotMap = {}, barcodeMap = {}, factorMap = {} }) {
+export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, catalogLoaded = true, packer, onScanProgress, onDismiss, catalogMeta, lotMap = {}, barcodeMap = {}, factorMap = {} }) {
   // โมเดลหน่วยฐาน: need/gotBase คิดเป็น "หน่วยฐาน" (factor=1) ส่วน got = จำนวนครั้งที่สแกน (ไว้ export ตามหน่วยที่สแกนจริง)
   // factorOf(sku, unit) = จำนวนหน่วยฐานต่อ 1 หน่วยนั้น เช่น โหล=12 → สแกนบาร์โค้ดโหล 1 ครั้ง = +12 หน่วยฐาน
   const factorOf = (sku, unit) => lookupFactor(factorMap, sku, unit);
@@ -605,6 +605,19 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     setItems(newItems);
     setDismissedSkus(prev => new Set(prev).add(sku));
     if (activeBoxId && onScanProgress) onScanProgress(activeBoxId, newItems);
+    // บันทึกไว้ตรวจย้อนหลัง (dismissals/) — การปัดเป็น local state ล้วน ไม่งั้นไม่เหลือร่องรอยเลยว่าใครปัดอะไรทิ้ง
+    // ⚠ try/catch จำเป็น ไม่ใช่ส่วนเกิน: ฝั่ง App.jsx กัน promise reject ด้วย .catch แล้ว แต่ addDoc throw
+    // แบบ synchronous ได้ (ข้อมูลไม่ถูกรูป/SDK พัง) → จะทะลุมาบล็อกการปัด = พนักงานทำงานต่อไม่ได้
+    // การบันทึกเพื่อตรวจสอบต้องไม่มีวันขวางงานหน้างาน
+    try {
+      onDismiss?.({
+        sku, name: target?.name ?? '', unit: target?.unit ?? '',
+        need: target?.need ?? 0, gotBase: target?.gotBase ?? 0,
+        boxId: activeBoxId || null,
+      });
+    } catch (err) {
+      console.error('dismissal log failed (ปัดต่อได้ตามปกติ):', err);
+    }
     if (hasScanned) { playShortSupply(); showToast('สแกนตัวถัดไป', 'warn'); }
     else { playOutOfStock(); showToast('ลบออกจากรายการแล้ว', 'error'); }
   }
