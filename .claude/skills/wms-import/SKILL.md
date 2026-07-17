@@ -26,6 +26,7 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 | H (7) | ABC class (`item.abc`, โชว์ใน popup 📋 ดูรายการ Picklist) |
 
 - **`no`/`rawBarcode`/`abc` มีเฉพาะรายการที่ import หลังฟีเจอร์ popup** — รายการเก่า fallback: no=เลขลำดับ, barcode=ค่า merge, abc=`—` (PicklistView.jsx จัดการเอง)
+- **guard ขนาด ~950KB (`CATALOG_DOC_LIMIT` + `approxDocBytes`, App.jsx onImport)** — เช็ค payload `config/catalog` และ `config/catalogByPacker` **ก่อนแตะ state** ทั้งโหมด append/replace; เกิน → toast `⚠ ไฟล์ใหญ่เกินระบบรองรับ — รวม N รายการ ≈ XKB (ลิมิต ~950KB)...` แล้วยกเลิกทั้ง import — กันเคสจริง 17 ก.ค. (ไฟล์เบิกด่วนทดสอบ ~3,000 แถว → doc เกิน 1MB → `invalid-argument`); ไฟล์งานจริง 16–500 แถว ≈ 5–163KB ไม่โดน
 
 #### Picklist เบิกด่วน — ชื่อไฟล์มีคำว่า "เบิกด่วน" → โหมด append
 - **detect:** `/เบิกด่วน/.test(file.name)` ใน `handleFile` (ImportCatalog) — เช็คหลัง confirm ไม่มีรหัสสาขา

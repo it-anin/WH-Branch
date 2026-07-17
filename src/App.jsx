@@ -35,6 +35,11 @@ const ROLE_TABS = {
   branch: ['receive'],
 };
 
+// ประมาณขนาด Firestore doc จาก JSON (ใกล้เคียงพอ) — guard ก่อนเขียน config/catalog + catalogByPacker
+// เคยเจอจริง: ไฟล์เบิกด่วนทดสอบหลักพันแถว → append แล้ว doc เกิน 1MB → "invalid-argument" ล้มทั้ง 2 doc
+const approxDocBytes = (obj) => new TextEncoder().encode(JSON.stringify(obj)).length;
+const CATALOG_DOC_LIMIT = 950_000; // Firestore 1MB/doc (1,048,576) — เผื่อ headroom overhead field name/encoding
+
 const ACCENT = '#e8692b';
 const ACCENT_SOFT = '#f5c9a8';
 
@@ -705,7 +710,8 @@ export default function App() {
       for (const code of Object.keys(prev)) {
         result[code] = applyBarcodeMap(prev[code], map);
       }
-      setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
+      setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result })
+        .catch(err => { console.error('Firestore catalogByPacker write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code, 'error'); });
       return result;
     });
     showToast(`Barcode map: ${matched} รายการ matched ✓`);
@@ -879,17 +885,26 @@ export default function App() {
                   const mapped = Object.keys(barcodeMap).length > 0 ? applyBarcodeMap(items, barcodeMap) : items;
                   // เบิกด่วน (opts.append) = ต่อท้าย ไม่ทับ — จำนวนรายการของพนักงานคนอื่นไม่เปลี่ยน → จอไม่ remount
                   const updated = opts?.append ? [...catalog, ...mapped] : mapped;
-                  setCatalog(updated);
                   // ⚠ setDoc ทับทั้ง doc — โหมด append ต้องเขียน _meta "เดิม" กลับไปด้วย ไม่งั้น catalogMeta หาย
                   // ทุกเครื่อง → ลังใหม่ของงานปกติได้ branch null (สาขาสแกนรับไม่ได้) — เบิกด่วนไม่ใช่เจ้าของ _meta
                   const metaToWrite = opts?.append ? catalogMeta : meta;
+                  // ใช้โซนที่กำหนดไว้เดิมกับ Picklist ใหม่ทันที — ไม่ต้องเข้าไปกดบันทึกโซนซ้ำทุกครั้งที่อัปโหลด
+                  const result = computeCatalogByPacker(updated, zoneAssignments);
+                  // guard 1MB/doc ก่อนแตะ state ใด ๆ — ครอบทั้ง append + replace (ไฟล์ปกติยักษ์ก็พังแบบเดียวกัน)
+                  // catalogByPacker เกินง่ายกว่า catalog: duplicate รายการต่อพนักงาน (คนไม่มีโซนได้ทั้ง catalog)
+                  const catalogBytes = approxDocBytes({ items: updated, ...(metaToWrite ? { _meta: metaToWrite } : {}) });
+                  const byPackerBytes = approxDocBytes({ assignments: result });
+                  if (catalogBytes > CATALOG_DOC_LIMIT || byPackerBytes > CATALOG_DOC_LIMIT) {
+                    showToast(`⚠ ไฟล์ใหญ่เกินระบบรองรับ — รวม ${updated.length} รายการ ≈ ${Math.round(Math.max(catalogBytes, byPackerBytes) / 1024)}KB (ลิมิต ~950KB) กรุณาลดรายการหรือแยกไฟล์`, 'error');
+                    return;
+                  }
+                  setCatalog(updated);
                   setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(metaToWrite ? { _meta: metaToWrite } : {}) })
                     .then(() => console.log('Firestore catalog saved', updated.length, 'items'))
                     .catch(err => { console.error('Firestore catalog write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code); });
-                  // ใช้โซนที่กำหนดไว้เดิมกับ Picklist ใหม่ทันที — ไม่ต้องเข้าไปกดบันทึกโซนซ้ำทุกครั้งที่อัปโหลด
-                  const result = computeCatalogByPacker(updated, zoneAssignments);
                   setCatalogByPacker(result);
-                  setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
+                  setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result })
+                    .catch(err => { console.error('Firestore catalogByPacker write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code, 'error'); });
                   showToast(opts?.append
                     ? `📌 เพิ่มเบิกด่วน ${items.length} รายการ (${opts.branch || 'ไม่ระบุสาขา'}) ✓`
                     : `นำเข้าแล้ว ${items.length} รายการ ✓`);
