@@ -263,6 +263,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [verifyResult, setVerifyResult] = useState(null); // 'ok' | 'fail'
   const [confirmIncomplete, setConfirmIncomplete] = useState(false); // dialog ยืนยันรับ — เด้งทุกครั้ง ไม่ว่าจะนับครบหรือไม่ (ดู requestConfirm)
   const [takeoverBox, setTakeoverBox] = useState(null); // ลังที่ถูกคนอื่นล็อก แต่คนนี้ขอตรวจแทน (รอยืนยันใน dialog)
+  const [confirmNext, setConfirmNext] = useState(false); // dialog ยืนยันไปลังถัดไป — เฉพาะ phase verify (handleScanNext ทิ้ง scanCounts ทั้งหมด)
   const [supervisorCode, setSupervisorCode] = useState('');
   const [reportOpen, setReportOpen]   = useState(false);
   const [reportImage, setReportImage] = useState(null);
@@ -719,7 +720,9 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
             </div>
             {(phase === 'verify' || phase === 'result') && (
               <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                <button className="btn sm primary" style={{ flex: 1 }} onClick={handleScanNext}>+ ลังถัดไป</button>
+                {/* phase verify = กำลังนับ → ถามก่อน (กดพลาด = scanCounts หายหมด กู้ไม่ได้)
+                    phase result = ยืนยันรับส่งหัวหน้าไปแล้ว ไม่มีอะไรเสีย → ไปเลย ไม่ต้องถาม */}
+                <button className="btn sm primary" style={{ flex: 1 }} onClick={() => (phase === 'verify' ? setConfirmNext(true) : handleScanNext())}>+ ลังถัดไป</button>
               </div>
             )}
           </>
@@ -1478,6 +1481,23 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <button className="btn ghost" onClick={() => setConfirmIncomplete(false)}>ยกเลิก · ตรวจต่อ</button>
               <button className="btn primary" onClick={handleConfirm}>ยืนยันรับ</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+      {confirmNext && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'white', borderRadius: 14, padding: '24px 28px', boxShadow: '0 8px 32px rgba(0,0,0,0.25)', textAlign: 'center', minWidth: 280, maxWidth: 360 }}>
+            {/* ข้อความต้องคงที่เสมอ — ห้าม derive จาก scanCounts/allChecked/doneCount (กฎ oracle เดียวกับ requestConfirm) */}
+            <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 8 }}>สแกนลังถัดไปหรือไม่?</div>
+            <div style={{ fontSize: 14, color: '#555', marginBottom: 20, lineHeight: 1.5 }}>
+              จำนวนที่สแกนไว้ในลังนี้จะหายทั้งหมด<br />
+              ต้องนับใหม่ตั้งแต่ต้น
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="btn ghost" onClick={() => setConfirmNext(false)}>ยกเลิก</button>
+              <button className="btn primary" onClick={() => { setConfirmNext(false); handleScanNext(); }}>ตกลง</button>
             </div>
           </div>
         </div>,

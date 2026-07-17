@@ -87,7 +87,11 @@ description: Use when touching the branch receive screen src/screens/BranchRecei
   - **⚠ edge:** ถ้าเจ้าของเดิมอยู่จริงกำลังตรวจ (ไม่ได้เดินหาย) แล้วถูกแซง — เครื่องเจ้าของยังค้าง phase verify (local) แต่ `receivingBy` เปลี่ยนมือแล้ว; ถ้ากดยืนยันจาก state ค้างอาจ set `receivePending` (race หายาก เพราะกรณีใช้จริงคือ "เดินหาย")
   - **ไม่มี timeout** — ปลดล็อกเฉพาะเมื่อ: ยืนยันรับ (`handleConfirm` ผล ok) / แจ้งปัญหา (`handleReportProblem`) / ไปลังถัดไป (`handleScanNext`)
   - กรณีปิดแอปกลางคัน → ล็อกค้าง (เจ้าของสแกนใหม่ได้, clearBoxes ล้างได้)
-- **`handleScanNext`** (ปุ่ม "+ รับลังถัดไป" / Android "+ ลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'`
+- **`handleScanNext`** (ปุ่ม "+ รับลังถัดไป" / Android "+ ลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'` + ปลดล็อก `receivingBy`
+  - **⚠ ทิ้ง `scanCounts` ทั้งหมด กู้ไม่ได้** (local state ต่อเครื่อง ไม่เขียน Firestore) → กดพลาดตอนนับ = ต้องรื้อลังนับใหม่
+  - **ปุ่ม Android มี dialog ยืนยัน (`confirmNext`) เฉพาะ phase `verify`** — `onClick={() => (phase === 'verify' ? setConfirmNext(true) : handleScanNext())}`; phase `result` (ยืนยันรับส่งหัวหน้าไปแล้ว ไม่มีอะไรเสีย) กดแล้วไปเลย **ตั้งใจไม่ถาม** — ถ้าถามทุกครั้งพนักงานจะกดผ่านอัตโนมัติจนไม่อ่านตอนที่สำคัญจริง
+  - **ข้อความ dialog ต้องคงที่เสมอ ห้าม derive จาก `scanCounts`/`allChecked`/`doneCount`** (กฎ oracle เดียวกับ `requestConfirm` — ดู *แก้จำนวนในแถว + ปิดสีตอนนับ*)
+  - **ปุ่ม Desktop "+ รับลังถัดไป" + ปุ่ม "+ สแกนลังถัดไป" (ตอนลังไม่มีข้อมูลสินค้า) เรียก `handleScanNext` ตรง ไม่มี dialog** (ตั้งใจ — ไม่มี scanCounts จะเสีย; Desktop เป็น approval-only ไม่เข้า verify)
 - **ไม่มีปุ่ม "ข้ามลัง" แล้ว** (ลบ `handleSkip` ออก — ซ้ำซ้อนกับ "ลังถัดไป" + toast เดิม "แจ้งปัญหาแล้ว" ทำให้สับสน); การแจ้งปัญหาจริงใช้ `handleReportProblem` เท่านั้น
 - **`pendingApprovalBoxId`** (App.jsx state) — local-only, ใช้ track result phase บน Android เท่านั้น (ไม่ sync ข้ามเครื่อง — การข้ามเครื่องใช้ `box.receivePending` แทน)
 - **BoxCard `isPendingApproval`**: `box.receivePending` — chip สถานะ "📥 รออนุมัติเอกสาร" (สีส้ม) + การ์ดจม (`.is-selected`); **ปุ่มอนุมัติอยู่แผงขวา ไม่ใช่บนการ์ด** (คลิกการ์ด → detail → "✓ อนุมัติเอกสาร" → `handleApprove(viewingId)`)
