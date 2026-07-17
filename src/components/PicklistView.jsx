@@ -1,15 +1,16 @@
-import { catalogPackStatus } from '../units.js';
+import { catalogPackStatus, isUrgentItem } from '../units.js';
 
 // Popup 📋 ดูรายการ Picklist (desktop, tab รายการเบิกสินค้า) — ตารางตามคอลัมน์ไฟล์จริง
 // A=NO / B=SKU / C=BARCODE / D=NAME / E=UNIT / F=Quantity / G=Location / H=ABC
 // แถวที่ถูกแพ็คลง "ลังที่ปิดแล้ว" ครบจำนวน (รวมทุกพนักงาน — catalogPackStatus) → พื้นเขียว + ✓ ท้ายแถว
-// เห็นทั้ง Picklist ปกติและเบิกด่วน (append) ใน list เดียว — แถวเบิกด่วนมี chip 📌{สาขา}
+// เห็นทั้ง Picklist ปกติและเบิกด่วน ใน list เดียว — แถวเบิกด่วนมี chip 📌{สาขา}
 // โครง overlay ตาม pattern ZoneAssign (render ที่ root App.jsx — ไม่โดน stacking context บัง)
 export default function PicklistView({ catalog, boxes, itemsByBox, factorMap, onClose }) {
   // คำนวณใหม่ทุก render — boxes/itemsByBox มาจาก onSnapshot → ติ๊กขึ้นเรียลไทม์ขณะ popup เปิดค้าง
   const status = catalogPackStatus({ catalog, boxes, itemsByBox, factorMap });
   const doneCount = status.filter(s => s.done).length;
-  const urgentCount = catalog.filter(it => it.branch).length;
+  // isUrgentItem = แหล่งเดียว — เดิมนับ it.branch ตรง ๆ ทำให้ตกรายการด่วนที่ชื่อไฟล์ไม่มีรหัสสาขา (branch: null)
+  const urgentCount = catalog.filter(isUrgentItem).length;
 
   const th = { padding: '8px 10px', borderBottom: '2px solid var(--line)', textAlign: 'left', fontWeight: 600, fontSize: 13, background: 'var(--paper-dark)', whiteSpace: 'nowrap' };
   const td = { padding: '6px 10px', borderBottom: '1px solid var(--line)', fontSize: 13, verticalAlign: 'top' };

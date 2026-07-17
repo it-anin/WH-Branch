@@ -26,17 +26,24 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 | H (7) | ABC class (`item.abc`, โชว์ใน popup 📋 ดูรายการ Picklist) |
 
 - **`no`/`rawBarcode`/`abc` มีเฉพาะรายการที่ import หลังฟีเจอร์ popup** — รายการเก่า fallback: no=เลขลำดับ, barcode=ค่า merge, abc=`—` (PicklistView.jsx จัดการเอง)
-- **guard ขนาด ~950KB (`CATALOG_DOC_LIMIT` + `approxDocBytes`, App.jsx onImport)** — เช็ค payload `config/catalog` และ `config/catalogByPacker` **ก่อนแตะ state** ทั้งโหมด append/replace; เกิน → toast `⚠ ไฟล์ใหญ่เกินระบบรองรับ — รวม N รายการ ≈ XKB (ลิมิต ~950KB)...` แล้วยกเลิกทั้ง import — กันเคสจริง 17 ก.ค. (ไฟล์เบิกด่วนทดสอบ ~3,000 แถว → doc เกิน 1MB → `invalid-argument`); ไฟล์งานจริง 16–500 แถว ≈ 5–163KB ไม่โดน
+- **guard ขนาด ~950KB (`CATALOG_DOC_LIMIT` + `approxDocBytes`, App.jsx onImport)** — เช็ค payload `config/catalog` และ `config/catalogByPacker` **ก่อนแตะ state** ทั้งโหมดเบิกด่วน/ปกติ; เกิน → toast `⚠ ไฟล์ใหญ่เกินระบบรองรับ — รวม N รายการ ≈ XKB (ลิมิต ~950KB)...` แล้วยกเลิกทั้ง import — กันเคสจริง 17 ก.ค. (ไฟล์เบิกด่วนทดสอบ ~3,000 แถว → doc เกิน 1MB → `invalid-argument`); ไฟล์งานจริง 16–500 แถว ≈ 5–163KB ไม่โดน
+  - **หมายเหตุ:** ต้นเหตุเดิมของเคสนั้นคือเบิกด่วน**สะสมทุกครั้งที่อัป (append)** — ตอนนี้เบิกด่วนแทนที่ชุดเดิมแล้ว doc จึงไม่โตจากการอัปซ้ำอีก guard นี้เหลือไว้กันไฟล์ใหญ่จริง
 
-#### Picklist เบิกด่วน — ชื่อไฟล์มีคำว่า "เบิกด่วน" → โหมด append
-- **detect:** `/เบิกด่วน/.test(file.name)` ใน `handleFile` (ImportCatalog) — เช็คหลัง confirm ไม่มีรหัสสาขา
-- **ชื่อไฟล์ต้องเป็น `Picklist_{สาขา}_เบิกด่วน`** — รหัสสาขา**ก่อน**คำว่าเบิกด่วน (`extractBranch` จับกลุ่มแรกหลัง `picklist_`; `Picklist_เบิกด่วน_KKL` → null)
-- **ทำอะไร:** confirm อธิบาย (append + สาขา + เตือนจอคนแพ็คด่วนรีเซ็ต) → `onImport(items.map(it => ({...it, branch: b})), null, { append: true, branch: b })`
-  - **ไม่ setBranch/setFileDate** — badge ปุ่มยังโชว์ Picklist ปกติ (เบิกด่วนไม่ใช่เจ้าของ `_meta`)
-- **caller (App.jsx):** `opts?.append` → `updated = [...catalog, ...applyBarcodeMap(items)]` + **เขียน `_meta: catalogMeta` เดิมกลับ**
+#### Picklist เบิกด่วน — **ปุ่มอัปโหลดแยกของตัวเอง** → โหมด "แทนที่รายการด่วนทั้งหมด"
+- **ปุ่มแยก (ไม่ detect จากชื่อไฟล์แล้ว):** `📌 อัปโหลดไฟล์ Picklist เบิกด่วน` + input ของตัวเอง (`urgentRef`) → `handleUrgentFile`
+  — **อยู่นอกลำดับบังคับ 1→2→3→4: ไม่มีเลขนำหน้า ไม่มี `locked`** (งานแทรกกลางวัน กดได้ตลอด) · chip `📌 เบิกด่วน: N รายการ` (`catalog.filter(isUrgentItem).length`) — อัปซ้ำแล้วเลข**ไม่โต** = พิสูจน์ด้วยตาว่าแทนที่จริง
+- **ปุ่ม `1 · Picklist` ปกติ บล็อกไฟล์ที่ชื่อมี `เบิกด่วน`** (`alert` + return, guard บนสุดของ `handleFile`) — ปุ่มนั้น replace ทั้ง catalog ถ้าไฟล์ด่วนหลุดเข้าไป = **ล้าง Picklist ทั้งวันทิ้ง เหลือแต่รายการด่วน**
+- **`readItems(e, cb)`** = helper อ่าน+parse ไฟล์ ใช้ร่วม 2 ปุ่ม (`parseWorkbook` + guard 0 รายการ + reset input)
+- **ชื่อไฟล์ต้องเป็น `Picklist_{สาขา}_เบิกด่วน`** — รหัสสาขา**ก่อน**คำว่าเบิกด่วน (`extractBranch` จับกลุ่มแรกหลัง `picklist_`; `Picklist_เบิกด่วน_KKL` → null → confirm เตือนว่าลังด่วนจะได้สาขาผิด เพราะ `resolveBoxBranch` fallback ไปสาขา Picklist ปกติ)
+- **ทำอะไร:** confirm (จำนวน + สาขา + **"แทนที่รายการด่วนเดิม N รายการ ทุกสาขา"** + เตือนจอคนแพ็คด่วนรีเซ็ต) → `onImport(items.map(it => ({...it, branch: b, urgent: true})), null, { urgent: true, branch: b })`
+  - **ไม่ setBranch/setFileDate** — badge ปุ่ม 1 ยังโชว์ Picklist ปกติ (เบิกด่วนไม่ใช่เจ้าของ `_meta`)
+- **caller (App.jsx):** `opts?.urgent` → `updated = [...catalog.filter(it => !isUrgentItem(it)), ...applyBarcodeMap(items)]` + **เขียน `_meta: catalogMeta` เดิมกลับ**
   (⚠ `setDoc` ทับทั้ง doc — ตก `_meta` = catalogMeta หายทุกเครื่อง → ลังงานปกติได้ branch null สาขารับไม่ได้)
-- **ทำไม append:** key ของ PackScanC = `${packer.code}-${length ของรายการคนนั้น}` → append ไม่เปลี่ยนจำนวนของคนอื่น
+  - **⚠ ห้ามกรองด้วย `zoneOfItem(it) === NOLOC_ZONE`** — คืน NOLOC_ZONE ให้**รายการปกติที่ location ว่าง**ด้วย → จะลบรายการปกติทิ้ง; ใช้ **`isUrgentItem` (units.js) เท่านั้น** = แหล่งเดียว (`zoneOfItem` เรียกตัวนี้ต่อ)
+- **ทำไมไม่ทับ catalog ทั้งก้อน:** key ของ PackScanC = `${packer.code}-${length ของรายการคนนั้น}` → แตะเฉพาะรายการด่วนทำให้จำนวนของคนอื่นเท่าเดิม
   → จอไม่ remount ของที่สแกนค้างรอด = **แทรกกลางวันได้**; เฉพาะคนที่ tick 📌เบิกด่วน (NOLOC_ZONE) จอรีเซ็ต
+- **⚠ "แทนที่รายการ" ≠ "รีเซ็ตยอดที่แพ็คแล้ว"** — `buildPackItems` ยังหักของที่แพ็คลงลังปิดแล้ว (match `sku__unit` จาก `itemsByBox` ไม่ผูกกับ catalog) → อัปไฟล์ด่วนเดิมซ้ำหลังแพ็คไป 4/10 เห็น **need = 6** ไม่ใช่ 10 (ถูกแล้ว — เหมือน Picklist ปกติอัปซ้ำ)
+- **ด่วน 2 สาขาพร้อมกันไม่รองรับ** — คน tick 📌เบิกด่วน ถือทั้งคู่ → `resolveBoxBranch` เจอ branch ปน → fallback ไปสาขา Picklist ปกติ = **ลังด่วนสาขาผิดเงียบๆ**; การล้างทุกสาขาทำให้เข้าสถานะนี้ยากขึ้น (เดิม append ทำให้ปนสะสมได้ง่าย)
 - **การมองเห็น:** รายการด่วน stamp `urgent: true` และ `branch` ต่อรายการ → `zoneOfItem` (units.js) จัดเข้า `NOLOC_ZONE` เสมอโดย **ไม่อ่าน Col G/location** → เห็นเฉพาะคน tick 📌เบิกด่วน ใน ZoneAssign; `item.branch` รองรับรายการด่วนเก่าที่ import ก่อนมี field `urgent`
 - **สาขา:** `item.branch` stamp ต่อรายการ → `createNewBox` ใช้ `resolveBoxBranch` (units.js) — คนแพ็คด่วนได้ลังสาขาไฟล์ด่วน
   **คนละสาขากับงานปกติได้** · ⚠ ห้าม tick 📌เบิกด่วน ปนโซนปกติ (ZoneAssign เตือน) — ปนแล้ว fallback สาขาปกติ = ลังด่วนสาขาผิด
@@ -114,6 +121,7 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 | ปุ่ม | ก่อนอัปโหลด | หลังอัปโหลด |
 |---|---|---|
 | ImportCatalog | `1 · ⇑ อัปโหลดไฟล์ Picklist` (ไม่มีสี) | `1 · ✅ อัปโหลดไฟล์ Picklist_XXX แล้ว` (สีส้ม) + badge `✅ รายการเบิก: N รายการ · ไฟล์วันที่ D/M/YYYY` |
+| ImportCatalog (เบิกด่วน) | `📌 อัปโหลดไฟล์ Picklist เบิกด่วน` (ไม่มีสี) — **ไม่มีเลข ไม่ล็อก อยู่นอกลำดับ** | ปุ่มสีส้มเมื่อมีรายการด่วน + chip `📌 เบิกด่วน: N รายการ` (ไม่มีวันที่ — ไม่ใช่เจ้าของ `_meta`) |
 | ImportBarcodeMap | `2 · ⇑ อัปโหลดไฟล์ R05.106` (ไม่มีสี) — **รับ `.xlsx` เท่านั้น** (.csv ทำเลข 0 นำหน้าหาย) | `2 · ✅ อัปโหลดไฟล์ {filename} แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
 | ImportCostMap | `3 · ⇑ อัปโหลดไฟล์ R05.105` (ไม่มีสี) | `3 · ✅ อัปโหลดไฟล์ R05.105 แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |
 | ImportLotMap | `4 · ⇑ อัปโหลดไฟล์ LOT+EXP` (ไม่มีสี) | `4 · ✅ อัปโหลดไฟล์ LOT+EXP แล้ว` (สีส้ม) + badge `ไฟล์วันที่ D/M/YYYY` |

@@ -63,8 +63,10 @@ export const zoneOf = (location) => {
 // - urgent=true: รายการที่ import หลังเพิ่มกฎนี้
 // - item.branch: backward-compatible กับรายการด่วนเดิม ซึ่ง stamp branch ต่อรายการไว้แล้ว
 // รายการ Picklist ปกติไม่มีสอง field นี้ จึงยังแยกโซนจาก location เหมือนเดิม
-export const zoneOfItem = (item) =>
-  item?.urgent === true || Boolean(item?.branch) ? NOLOC_ZONE : zoneOf(item?.location);
+// ⚠ ห้ามใช้ zoneOfItem(it) === NOLOC_ZONE แทน isUrgentItem — zoneOfItem คืน NOLOC_ZONE ให้รายการ "ปกติ"
+// ที่ location ว่างด้วย (ไม่ใช่แค่รายการด่วน) → ใช้กรองรายการด่วนเมื่อไหร่ รายการปกติจะโดนลบทิ้งไปด้วย
+export const isUrgentItem = (item) => item?.urgent === true || Boolean(item?.branch);
+export const zoneOfItem = (item) => isUrgentItem(item) ? NOLOC_ZONE : zoneOf(item?.location);
 
 // สาขาของ "ลังใหม่" จากรายการที่พนักงานคนนั้นถือ — รองรับ Picklist เบิกด่วนคนละสาขากับงานปกติ
 // item.branch มีเฉพาะรายการเบิกด่วน (stamp ตอน import); รายการปกติไม่มี → นับเป็น metaBranch (Picklist ปกติ)
