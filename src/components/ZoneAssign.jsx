@@ -1,6 +1,6 @@
 import { useState } from 'react';
-// zoneOf = แหล่งเดียวของ logic โซน (ตรงกับ computeCatalogByPacker ใน App.jsx เสมอ — เดิม regex ก๊อปแยก 2 ไฟล์)
-import { zoneOf, NOLOC_ZONE } from '../units.js';
+// zoneOfItem = แหล่งเดียวของ logic โซน (ตรงกับ computeCatalogByPacker ใน App.jsx เสมอ)
+import { zoneOfItem, NOLOC_ZONE } from '../units.js';
 
 // label ของโซนพิเศษ "ไม่มี location" (Picklist เบิกด่วน) — ตัวโซนจริงใช้ชื่อดิบ
 const zoneLabel = (z) => z === NOLOC_ZONE ? '📌 เบิกด่วน' : z;
@@ -8,7 +8,7 @@ const zoneLabel = (z) => z === NOLOC_ZONE ? '📌 เบิกด่วน' : z;
 export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, onClose }) {
   // โซนจริงจาก catalog + บังคับมีคอลัมน์ 📌เบิกด่วน ท้ายสุดเสมอ — tick ล่วงหน้าได้ก่อน Picklist เบิกด่วนจะมา
   const zones = [
-    ...[...new Set(catalog.map(item => zoneOf(item.location)))]
+    ...[...new Set(catalog.map(zoneOfItem))]
       .filter(z => z !== NOLOC_ZONE)
       .sort((a, b) => a.length !== b.length ? a.length - b.length : a.localeCompare(b)),
     NOLOC_ZONE,
@@ -31,7 +31,7 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
   function countItems(packerCode) {
     const assigned = assignments[packerCode] || [];
     if (assigned.length === 0) return 0;
-    return catalog.filter(item => assigned.includes(zoneOf(item.location))).length;
+    return catalog.filter(item => assigned.includes(zoneOfItem(item))).length;
   }
 
   const totalAssigned = packers.reduce((sum, p) => sum + countItems(p.code), 0);

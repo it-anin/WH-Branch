@@ -136,7 +136,8 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
         );
         if (!ok) return;
         // ไม่ setBranch/setFileDate — badge ปุ่มยังโชว์ Picklist ปกติของวัน (เบิกด่วนไม่ใช่เจ้าของ _meta)
-        onImport(items.map(it => ({ ...it, branch: b })), null, { append: true, branch: b });
+        // urgent=true ทำให้การกำหนดโซนไม่อ่าน Col G แม้ไฟล์ด่วนจะมี location
+        onImport(items.map(it => ({ ...it, branch: b, urgent: true })), null, { append: true, branch: b });
         return;
       }
       setBranch(b);

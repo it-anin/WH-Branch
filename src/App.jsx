@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, runTransaction, query, where, documentId, getDocs, addDoc } from 'firebase/firestore';
 import { db } from './firebase.js';
 // สูตร need + ตัวคูณหน่วยฐาน — ตัวเดียวกับที่ PackScanC ใช้จริง (ใช้ใน __wh.audit เพื่อยืนยันเลขบนจอพนักงาน)
-import { buildPackItems, lookupFactor, UNIT_FACTOR_OVERRIDE, STANDARD_UNIT_FACTOR, zoneOf, resolveBoxBranch } from './units.js';
+import { buildPackItems, lookupFactor, UNIT_FACTOR_OVERRIDE, STANDARD_UNIT_FACTOR, zoneOfItem, resolveBoxBranch } from './units.js';
 
 import BoxList from './screens/BoxList.jsx';
 import PackScanC from './screens/PackScanC.jsx';
@@ -771,10 +771,10 @@ export default function App() {
     const result = {};
     PACKERS.forEach(p => {
       const zones = assignments[p.code] || [];
-      // zoneOf = แหล่งเดียว (units.js ใช้ร่วมกับ ZoneAssign) — location ว่าง → NOLOC_ZONE
-      // → รายการเบิกด่วน (ไม่มี location) เห็นได้เฉพาะคนที่ tick 📌เบิกด่วน; โซนปกติพฤติกรรมเดิมเป๊ะ
+      // zoneOfItem = แหล่งเดียว (units.js ใช้ร่วมกับ ZoneAssign)
+      // → รายการเบิกด่วนเข้า NOLOC_ZONE เสมอโดยไม่อ่าน Col G; โซนปกติยังอ่าน location เหมือนเดิม
       result[p.code] = zones.length > 0
-        ? items.filter(item => zones.includes(zoneOf(item.location)))
+        ? items.filter(item => zones.includes(zoneOfItem(item)))
         : items;
     });
     return result;

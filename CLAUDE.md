@@ -420,8 +420,8 @@ open → packing → closed → exported → received
 - ปุ่ม "กำหนดโซน" อยู่แถวเดียวกับ ImportCatalog (ชิดขวา) ใน Tab: รายการเบิกสินค้า
 - Modal: `position: fixed; inset: 0; zIndex: 1000` render ที่ root level ของ App.jsx (ก่อน `<Toast>`) — ไม่ถูก stacking context บัง
 - Props: `catalog, packers, zoneAssignments, onSave, onClose`
-- **`zoneOf(location)` (`units.js` — แหล่งเดียว ใช้ร่วมกับ `computeCatalogByPacker`)**: regex `/^([A-Za-z]+)/` → prefix ตัวอักษร เช่น `A11` → `A`, `COOL01` → `COOL`; **location ว่าง/ไม่ขึ้นต้นตัวอักษร → `NOLOC_ZONE`** (`'__noloc'`)
-- **คอลัมน์ "📌 เบิกด่วน" (NOLOC_ZONE) มีเสมอ ท้ายสุด** — tick ให้พนักงานที่จะแพ็ค **Picklist เบิกด่วน** (รายการไม่มี location); tick ล่วงหน้าก่อนไฟล์ด่วนมาได้
+- **`zoneOf(location)` / `zoneOfItem(item)` (`units.js` — แหล่งเดียว ใช้ร่วมกับ `computeCatalogByPacker`)**: รายการปกติใช้ regex `/^([A-Za-z]+)/` → prefix ตัวอักษร เช่น `A11` → `A`, `COOL01` → `COOL`; location ว่าง/ไม่ขึ้นต้นตัวอักษร → `NOLOC_ZONE` (`'__noloc'`). รายการเบิกด่วน (`urgent: true` หรือ `item.branch` สำหรับข้อมูลเก่า) → `NOLOC_ZONE` เสมอโดยไม่อ่าน Col G/location
+- **คอลัมน์ "📌 เบิกด่วน" (NOLOC_ZONE) มีเสมอ ท้ายสุด** — tick ให้พนักงานที่จะแพ็ค **Picklist เบิกด่วน**; tick ล่วงหน้าก่อนไฟล์ด่วนมาได้
 - **Zone sort:** single-letter ก่อน (A–Z) แล้วตามด้วย multi-letter alphabetically — `COOL` จะอยู่หลัง `S`
   ```js
   .sort((a, b) => a.length !== b.length ? a.length - b.length : a.localeCompare(b))

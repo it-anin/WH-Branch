@@ -37,7 +37,7 @@ description: Use when touching import components src/components/Import*.jsx (Imp
   (⚠ `setDoc` ทับทั้ง doc — ตก `_meta` = catalogMeta หายทุกเครื่อง → ลังงานปกติได้ branch null สาขารับไม่ได้)
 - **ทำไม append:** key ของ PackScanC = `${packer.code}-${length ของรายการคนนั้น}` → append ไม่เปลี่ยนจำนวนของคนอื่น
   → จอไม่ remount ของที่สแกนค้างรอด = **แทรกกลางวันได้**; เฉพาะคนที่ tick 📌เบิกด่วน (NOLOC_ZONE) จอรีเซ็ต
-- **การมองเห็น:** รายการด่วนไม่มี location → `zoneOf` (units.js) จัดเข้า `NOLOC_ZONE` → เห็นเฉพาะคน tick 📌เบิกด่วน ใน ZoneAssign
+- **การมองเห็น:** รายการด่วน stamp `urgent: true` และ `branch` ต่อรายการ → `zoneOfItem` (units.js) จัดเข้า `NOLOC_ZONE` เสมอโดย **ไม่อ่าน Col G/location** → เห็นเฉพาะคน tick 📌เบิกด่วน ใน ZoneAssign; `item.branch` รองรับรายการด่วนเก่าที่ import ก่อนมี field `urgent`
 - **สาขา:** `item.branch` stamp ต่อรายการ → `createNewBox` ใช้ `resolveBoxBranch` (units.js) — คนแพ็คด่วนได้ลังสาขาไฟล์ด่วน
   **คนละสาขากับงานปกติได้** · ⚠ ห้าม tick 📌เบิกด่วน ปนโซนปกติ (ZoneAssign เตือน) — ปนแล้ว fallback สาขาปกติ = ลังด่วนสาขาผิด
 - **อายุ:** รายการด่วนหายเองเมื่ออัป Picklist ปกติรอบถัดไป (โหมด replace เดิม)

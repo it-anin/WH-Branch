@@ -59,6 +59,13 @@ export const zoneOf = (location) => {
   return m ? m[1].toUpperCase() : NOLOC_ZONE;
 };
 
+// Picklist เบิกด่วนต้องเข้าโซนพิเศษเสมอ แม้ Col G (location) ในไฟล์จะมีค่า
+// - urgent=true: รายการที่ import หลังเพิ่มกฎนี้
+// - item.branch: backward-compatible กับรายการด่วนเดิม ซึ่ง stamp branch ต่อรายการไว้แล้ว
+// รายการ Picklist ปกติไม่มีสอง field นี้ จึงยังแยกโซนจาก location เหมือนเดิม
+export const zoneOfItem = (item) =>
+  item?.urgent === true || Boolean(item?.branch) ? NOLOC_ZONE : zoneOf(item?.location);
+
 // สาขาของ "ลังใหม่" จากรายการที่พนักงานคนนั้นถือ — รองรับ Picklist เบิกด่วนคนละสาขากับงานปกติ
 // item.branch มีเฉพาะรายการเบิกด่วน (stamp ตอน import); รายการปกติไม่มี → นับเป็น metaBranch (Picklist ปกติ)
 // ทุกรายการสาขาเดียว → ใช้สาขานั้น · ปนหลายสาขา/ไม่มีรายการ → fallback metaBranch (= พฤติกรรมเดิมเป๊ะ)
