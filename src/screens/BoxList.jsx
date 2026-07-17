@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { branchLabel } from '../branches.js';
 
 // ถังของลังที่ไม่มี box.branch (สาขารับไม่ได้) — lowercase ชนกับ code จริงไม่ได้ (extractBranch uppercase เสมอ)
@@ -20,7 +21,8 @@ function formatTime(ms) {
   return ms ? new Date(ms).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '—';
 }
 
-function BoxTable({ boxes, onOpen, onPrint }) {
+// onDelete: ส่งมาเฉพาะตารางลังวันนี้ (ลังจริงใน Firestore) — ประวัติย้อนหลังไม่ส่ง เพราะเป็น snapshot ลังที่ถูกลบไปแล้ว ลบซ้ำไม่ได้
+function BoxTable({ boxes, onOpen, onPrint, onDelete }) {
   if (boxes.length === 0) return (
     <div style={{ padding: '20px 0', fontFamily: 'system-ui', color: 'var(--mute)', textAlign: 'center' }}>
       ไม่มีข้อมูลลัง
@@ -32,6 +34,7 @@ function BoxTable({ boxes, onOpen, onPrint }) {
         <tr>
           <th>Box ID</th><th>สถานะ</th><th>พนักงาน</th><th>SKU</th><th>ชิ้น</th>
           <th>เลขที่เอกสาร</th><th>เปิดลัง</th><th>ปิดลัง</th><th>อัปเดต</th>
+          {onDelete && <th style={{ width: 44 }}></th>}
         </tr>
       </thead>
       <tbody>
@@ -46,6 +49,17 @@ function BoxTable({ boxes, onOpen, onPrint }) {
             <td className="mono" style={{ fontSize: 12, color: 'var(--mute)' }}>{formatTime(b.createdAt)}</td>
             <td className="mono" style={{ fontSize: 12, color: 'var(--mute)' }}>{formatTime(b.closedAt)}</td>
             <td style={{ color: 'var(--mute)' }}>{b.updated}</td>
+            {onDelete && (
+              <td>
+                <button
+                  className="btn sm ghost"
+                  style={{ color: b.status === 'received' ? 'var(--mute)' : 'var(--red, #c0392b)', padding: '2px 7px' }}
+                  disabled={b.status === 'received'}   // ลังที่สาขารับแล้วห้ามลบ (เสีย audit trail) — deleteBox() กันไว้อีกชั้น
+                  title={b.status === 'received' ? 'ลบไม่ได้ — สาขารับสินค้าแล้ว' : 'ลบลังนี้ (ของจะกลับไปรายการเบิก)'}
+                  onClick={() => onDelete(b.id)}
+                >🗑</button>
+              </td>
+            )}
           </tr>
         ))}
       </tbody>
@@ -104,7 +118,10 @@ function HistoryEntry({ entry, generateCSV, triggerDownload, onDelete }) {
   );
 }
 
-export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, setHistory, clearBoxes, clearFirestore }) {
+export default function BoxList({ boxes, activeBoxId, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, setHistory, clearBoxes, clearFirestore, deleteBox }) {
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const deletingBox = confirmDeleteId ? boxes.find(b => b.id === confirmDeleteId) || null : null;
+
   // ตัวกรองสาขา — scope ทั้งหน้า (ตารางวันนี้ + ชิปสรุป + Export + ประวัติ)
   // ไม่ persist: กันมุมมองสาขาเดียวค้างข้ามวันแล้วพนักงานแจ้ง "ลังหาย" (เหตุผลเดียวกับ Outbound)
   const [branchFilter, setBranchFilter] = useState('all'); // all | box.branch | NO_BRANCH
@@ -123,6 +140,17 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
   function handleExport() {
     const csv = generateCSV(branchBoxes);
     triggerDownload(csv, `export${exportSuffix}-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
+  }
+
+  // ลบลังทีละใบ — deleteBox (App.jsx) ลบ boxes/ + boxItems/ + progress/ ให้ครบในตัว
+  // "คืนของไปรายการเบิก" เกิดอัตโนมัติ ไม่ต้องเขียนเพิ่ม: packedBaseOf (units.js) หักยอดจากลัง closed/exported/received
+  // ที่ยังมีอยู่เท่านั้น → ลังหาย = ยอดที่เคยหักหายตาม → need กลับขึ้นเองทั้ง checklist พนักงาน + ติ๊กเขียว popup 📋 Picklist
+  function confirmDelete() {
+    if (!confirmDeleteId) return;
+    deleteBox(confirmDeleteId);
+    if (activeBoxId === confirmDeleteId) setActiveBoxId(null); // กันจอแพ็คเครื่องนี้ค้างชี้ลังที่ลบไปแล้ว
+    showToast(`ลบลัง ${confirmDeleteId} แล้ว — ของกลับไปรายการเบิกแล้ว`, 'success');
+    setConfirmDeleteId(null);
   }
 
   function handleDeleteHistory(index) {
@@ -206,11 +234,12 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
           </button>
         </div>
 
-        {/* today's box table */}
+        {/* today's box table — onDelete เฉพาะตารางนี้ (ลังจริง); ประวัติเป็น snapshot ลบไม่ได้ */}
         <BoxTable
           boxes={branchBoxes}
           onOpen={(id) => { setActiveBoxId(id); setTab('scan'); }}
           onPrint={(id) => { setActiveBoxId(id); setTab('closed'); }}
+          onDelete={(id) => setConfirmDeleteId(id)}
         />
 
         {/* history section — กรองตามสาขาที่เลือก (นับวันจาก entry ที่เหลือหลังกรอง) */}
@@ -237,6 +266,52 @@ export default function BoxList({ boxes, setTab, setActiveBoxId, showToast, crea
         )}
       </div>
 
+      {/* ยืนยันลบลัง — เตือนตามสถานะจริงของลัง (คำเตือนต่างกันคนละความเสี่ยง) */}
+      {confirmDeleteId && deletingBox && createPortal(
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: 'white', borderRadius: 14, padding: '24px 28px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+            textAlign: 'center', minWidth: 300, maxWidth: 380,
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>⚠ ยืนยันลบลัง {deletingBox.id}?</div>
+            <div style={{ fontSize: 14, color: '#555', marginBottom: 4 }}>
+              {deletingBox.skuCount ?? 0} SKU · {deletingBox.totalQty ?? 0} ชิ้น{deletingBox.packer ? ` · แพ็คโดย ${deletingBox.packer.name}` : ''}
+            </div>
+
+            {/* ลังยังเปิดอยู่ = อาจมีคนกำลังแพ็คบนเครื่อง Android ตอนนี้ — ของที่สแกนค้างในเครื่องเขาจะหายทั้งหมด */}
+            {(deletingBox.status === 'open' || deletingBox.status === 'packing') && (
+              <div style={{ fontSize: 13, color: '#c0392b', background: '#fde8e8', borderRadius: 8, padding: '8px 10px', margin: '10px 0', textAlign: 'left' }}>
+                ⚠ ลังนี้ยัง <b>กำลังแพ็ค</b> — ถ้าพนักงานกำลังใช้ลังนี้อยู่ ของที่สแกนค้างในเครื่องเขาจะหาย ให้แน่ใจว่าไม่มีใครใช้ลังนี้แล้ว
+              </div>
+            )}
+            {deletingBox.status === 'exported' && (
+              <div style={{ fontSize: 13, color: '#c0392b', background: '#fde8e8', borderRadius: 8, padding: '8px 10px', margin: '10px 0', textAlign: 'left' }}>
+                ⚠ ลังนี้ <b>อนุมัติเอกสารแล้ว</b> ({deletingBox.pos}) — สาขาอาจกำลังรอรับลังนี้อยู่
+              </div>
+            )}
+            {deletingBox.textExported && (
+              <div style={{ fontSize: 13, color: '#c0392b', background: '#fde8e8', borderRadius: 8, padding: '8px 10px', margin: '10px 0', textAlign: 'left' }}>
+                ⚠ ลังนี้ส่งออกไฟล์ Text เข้า POS ไปแล้ว — ลบแล้วข้อมูลจะไม่ตรงกับ POS อีกต่อไป
+              </div>
+            )}
+
+            <div style={{ fontSize: 13, color: '#1a7a3a', background: '#e8f5e9', borderRadius: 8, padding: '8px 10px', margin: '10px 0', textAlign: 'left' }}>
+              ↩ สินค้าในลังนี้จะ <b>กลับไปอยู่ในรายการเบิก</b> ให้แพ็คใหม่ได้ทันที
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--mute)', margin: '8px 0 20px' }}>ข้อมูลลังและรายการสินค้าจะถูกลบอย่างถาวร ไม่สามารถกู้คืนได้</div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="btn sm ghost" onClick={() => setConfirmDeleteId(null)}>ยกเลิก</button>
+              <button className="btn danger sm" onClick={confirmDelete}>ลบลัง</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

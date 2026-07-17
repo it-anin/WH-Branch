@@ -449,7 +449,12 @@ open → packing → closed → exported → received
 **แก้หน้า Outbound (`BoxClosedLabel.jsx`) — ไฟล์ Text/Excel/สติกเกอร์/อนุมัติเอกสาร → ดู skill `wms-outbound`**
 
 ## BoxList — Logic สำคัญ
-- คอลัมน์ตาราง: Box ID / สถานะ / พนักงาน / SKU / ชิ้น / **เลขที่เอกสาร** / **เปิดลัง** / **ปิดลัง** / อัปเดต (ไม่มีปุ่ม action)
+- คอลัมน์ตาราง: Box ID / สถานะ / พนักงาน / SKU / ชิ้น / **เลขที่เอกสาร** / **เปิดลัง** / **ปิดลัง** / อัปเดต / **🗑 ลบ**
+- **🗑 ลบลังทีละใบ (ตารางวันนี้เท่านั้น)** — เรียก `deleteBox` (App.jsx) ตัวเดียวกับที่ Outbound ใช้ → ลบ `boxes/` + `boxItems/` + `progress/` ครบในตัว
+  - **"คืนของไปรายการเบิก" เกิดอัตโนมัติ ไม่มีโค้ดคืนของแยก** — `packedBaseOf` (units.js) หักยอดจากลัง `closed/exported/received` **ที่ยังมีอยู่**เท่านั้น → ลังหาย = ยอดที่เคยหักหายตาม → `need` กลับขึ้นเองทั้ง checklist พนักงาน (`buildPackItems`) และติ๊กเขียว popup 📋 Picklist (`catalogPackStatus`). ลัง `open` ไม่เคยถูกหักอยู่แล้ว → ลบแล้ว need ไม่ขยับ
+  - `received` → ปุ่ม disabled (`deleteBox` กันซ้ำอีกชั้น) — เสีย audit trail การรับสินค้า
+  - confirm modal เตือนตามสถานะจริง: `open/packing` → **ถ้าพนักงานกำลังแพ็คอยู่ ของที่สแกนค้างในเครื่องเขาจะหาย** (activeBoxId ฝั่ง Android ชี้ลังที่ถูกลบ → doClose หาลังไม่เจอ = งานหาย) · `exported` → สาขาอาจรอรับอยู่ · `textExported` → ส่ง POS ไปแล้ว
+  - **`BoxTable` ใช้ร่วมกับประวัติย้อนหลัง — ปุ่มลบผูกกับ prop `onDelete` ที่ส่งเฉพาะตารางวันนี้** (ประวัติเป็น snapshot ของลังที่ถูกลบไปแล้ว ลบซ้ำไม่ได้) ห้ามใส่ `onDelete` ให้ `<BoxTable>` ใน `HistoryEntry`
   - **เปิดลัง/ปิดลัง** = `formatTime(b.createdAt)` / `formatTime(b.closedAt)` (BoxList.jsx) — แปลง epoch ms → `HH:MM` ด้วย `toLocaleTimeString('th-TH')`, ไม่มีค่า (ลังเก่าก่อนมี `closedAt` หรือลังที่ยังไม่ปิด) → `—`. ใช้ร่วมกันทั้งตารางหลัก + `HistoryEntry` (component `BoxTable` เดียวกัน)
 - Badge header นับ: กำลังแพ็ค = `open + packing`, ปิดลังแล้ว = `closed`, อนุมัติแล้ว = `exported`
 - ปุ่ม Export: **"⇩ Export รายการลังทั้งหมด"** (เดิม: Export ทั้งวัน)
