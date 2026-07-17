@@ -33,12 +33,16 @@ function rowsToItems(rows) {
     .map(vals => {
       const barcodes = parseBarcodes(vals[2]);
       return {
+        no:       toStr(vals[0]),            // ColA — ลำดับที่จากไฟล์ (โชว์ใน popup 📋 ดูรายการ Picklist)
         sku:      toStr(vals[1]),
         barcode:  barcodes.join(','),
+        // ColC ดิบ — item.barcode จะโดน applyBarcodeMap merge เป็น comma-list ภายหลัง popup ต้องใช้ค่าจากไฟล์
+        rawBarcode: barcodes.join(','),
         name:     String(vals[3] ?? '').trim(),
         unit:     String(vals[4] ?? '').trim(),
         qty:      Math.max(1, parseInt(vals[5], 10) || 1),
         location: String(vals[6] ?? '').trim(),
+        abc:      String(vals[7] ?? '').trim(), // ColH — ABC class
       };
     })
     .filter(item => item.sku && item.name);

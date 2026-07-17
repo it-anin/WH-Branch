@@ -75,14 +75,48 @@ export function resolveBoxBranch(packCatalog, metaBranch) {
 export const fixItemName = (l, nameMap) =>
   (!l.name || l.name === l.sku) && nameMap[l.sku] ? { ...l, name: nameMap[l.sku] } : l;
 
+// ── สูตรร่วม "แพ็คไปแล้วเท่าไหร่" — ใช้ทั้ง checklist ต่อพนักงาน (buildPackItems) และภาพรวมทั้ง Picklist
+//    (catalogPackStatus / popup 📋 ดูรายการ Picklist) — สูตรเดียวห้าม copy แยกชุด (กฎเดียวกับ lookupFactor) ──
+
+// รวมยอดหน่วยฐานต่อ sku__unit จากลังที่ปิดแล้ว (closed/exported/received) — matchBox คุมขอบเขต (ต่อคน/ทุกคน)
+// ลังเก่าที่ไม่มี gotBase → fallback (qty ?? got ?? 0) × factor(หน่วยของ item ในลัง)
+function packedBaseOf({ boxes, itemsByBox, fOf, matchBox }) {
+  const packedBase = {};
+  boxes.forEach(b => {
+    if (!matchBox(b)) return;
+    if (!(b.status === 'closed' || b.status === 'exported' || b.status === 'received')) return;
+    (itemsByBox[b.id] || []).forEach(it => {
+      const key = `${it.sku}__${it.unit}`;
+      const base = it.gotBase ?? ((it.qty ?? it.got ?? 0) * fOf(it.sku, it.unit));
+      packedBase[key] = (packedBase[key] || 0) + base;
+    });
+  });
+  return packedBase;
+}
+
+// เดินหักแบบ "สะสม" ตามลำดับแถว catalog — ไม่ใช่หักเต็มก้อนจากทุกแถว → คืน [{ needFull, use }] ต่อแถว
+// (บั๊กเดิม: SKU เดียวกันหลายแถว เช่น 3+1 แพ็คไป 1 → ทุกแถวโดนหัก 1 → เห็น 2+0 = 2 ทั้งที่เหลือจริง 3
+//  เกิดได้ทั้ง Picklist มีแถวซ้ำ และเบิกด่วน append SKU ที่ซ้ำกับงานปกติของคนเดียวกัน)
+// SKU แถวเดียว (เคสส่วนใหญ่) → ผลเท่าสูตรเดิมเป๊ะ: use = min(packed, needFull) แล้ว need = needFull − use
+// ⚠ ข้อจำกัดที่รู้: packedBase ไม่แยกสาขา — คนเดียวแพ็ค SKU เดียวกันให้ 2 สาขาวันเดียวกัน ยอดหักปนกัน
+function walkNeeds(catalog, packedBase, fOf) {
+  const remaining = { ...packedBase };
+  return catalog.map(c => {
+    const key = `${c.sku}__${c.unit}`;
+    const needFull = c.qty * fOf(c.sku, c.unit);
+    const use = Math.min(remaining[key] || 0, needFull);
+    remaining[key] = (remaining[key] || 0) - use;
+    return { needFull, use };
+  });
+}
+
 // สร้าง checklist ของพนักงาน 1 คน — need เป็น "หน่วยฐาน" หักของที่คนนั้นแพ็คไปแล้วในลังที่ปิด/ส่งออก/รับแล้ว
 //   need = qty(picklist) × factor(หน่วย picklist) − Σ gotBase ที่พนักงานคนนี้แพ็คไปแล้ว
 // ⚠ นี่คือสูตรที่หน้าแพ็ค (PackScanC) ใช้จริง และ __wh.audit เรียกตัวเดียวกันนี้เพื่อยืนยันเลขบนจอพนักงาน
 //   — ถ้าแยกเป็น 2 ชุดเมื่อไหร่ audit จะโกหกทันทีที่สูตรเพี้ยนจากกัน ห้าม copy ไปไว้ที่อื่น
 // หมายเหตุ edge case ที่ตั้งใจคงไว้ (พฤติกรรมเดิมตั้งแต่ก่อนย้ายมาที่นี่):
-//   - `b.packer?.code !== packer?.code` → ถ้า packer = null จะเทียบ undefined !== undefined = false
-//     ⇒ นับลังที่ไม่มี packer เป็นของตัวเอง
-//   - ลังเก่าที่ไม่มี gotBase → fallback (qty ?? got ?? 0) × factor(หน่วยของ item ในลัง)
+//   - matchBox `b.packer?.code === packer?.code` → ถ้า packer = null จะเทียบ undefined === undefined = true
+//     ⇒ นับลังที่ไม่มี packer เป็นของตัวเอง (เท่าเงื่อนไข `!==` + return เดิมเป๊ะ)
 export function buildPackItems({ catalog, boxes, itemsByBox, packer, factorMap }) {
   const fOf = (sku, unit) => lookupFactor(factorMap, sku, unit);
   const baseUnitOf = (sku, fallback) => {
@@ -93,36 +127,27 @@ export function buildPackItems({ catalog, boxes, itemsByBox, packer, factorMap }
     }
     return fallback;
   };
-  const packedBase = {};
-  boxes.forEach(b => {
-    if (b.packer?.code !== packer?.code) return;
-    if (!(b.status === 'closed' || b.status === 'exported' || b.status === 'received')) return;
-    (itemsByBox[b.id] || []).forEach(it => {
-      const key = `${it.sku}__${it.unit}`;
-      const base = it.gotBase ?? ((it.qty ?? it.got ?? 0) * fOf(it.sku, it.unit));
-      packedBase[key] = (packedBase[key] || 0) + base;
-    });
-  });
-  // หักแบบ "สระสะสม" ตามลำดับแถว — ไม่ใช่หักเต็มก้อนจากทุกแถว
-  // (บั๊กเดิม: SKU เดียวกันหลายแถว เช่น 3+1 แพ็คไป 1 → ทุกแถวโดนหัก 1 → เห็น 2+0 = 2 ทั้งที่เหลือจริง 3
-  //  เกิดได้ทั้ง Picklist มีแถวซ้ำ และเบิกด่วน append SKU ที่ซ้ำกับงานปกติของคนเดียวกัน)
-  // SKU แถวเดียว (เคสส่วนใหญ่) → ผลเท่าสูตรเดิมเป๊ะ: use = min(packed, needFull) แล้ว need = needFull − use
-  // ⚠ ข้อจำกัดที่รู้: packedBase ไม่แยกสาขา — คนเดียวแพ็ค SKU เดียวกันให้ 2 สาขาวันเดียวกัน ยอดหักปนกัน
-  const remaining = { ...packedBase };
+  const packedBase = packedBaseOf({ boxes, itemsByBox, fOf, matchBox: b => b.packer?.code === packer?.code });
+  const walked = walkNeeds(catalog, packedBase, fOf);
   return catalog
-    .map(c => {
-      const key = `${c.sku}__${c.unit}`;
-      const needFull = c.qty * fOf(c.sku, c.unit);
-      const use = Math.min(remaining[key] || 0, needFull);
-      remaining[key] = (remaining[key] || 0) - use;
-      return {
-        sku: c.sku, barcode: c.barcode, name: c.name, unit: c.unit,
-        need: needFull - use, got: 0, gotBase: 0,
-        baseUnit: baseUnitOf(c.sku, c.unit),
-        location: c.location || '',
-      };
-    })
+    .map((c, i) => ({
+      sku: c.sku, barcode: c.barcode, name: c.name, unit: c.unit,
+      need: walked[i].needFull - walked[i].use, got: 0, gotBase: 0,
+      baseUnit: baseUnitOf(c.sku, c.unit),
+      location: c.location || '',
+    }))
     .filter(it => it.need > 0); // แพ็คครบแล้ว → หายจาก checklist
+}
+
+// ภาพรวมทั้ง Picklist มองรวม "ทุกพนักงาน" — ใช้ใน popup 📋 ดูรายการ Picklist (tab รายการเบิกสินค้า)
+// คืน array ยาวเท่า catalog ตามลำดับแถวเดิม: { needFull, packed, done }
+// done = แถวนี้ถูกแพ็คลง "ลังที่ปิดแล้ว" ครบจำนวน — ลัง open/สแกนค้างไม่นับ, แพ็คบางส่วนไม่นับ (สูตรเดียวกับ checklist)
+export function catalogPackStatus({ catalog, boxes, itemsByBox, factorMap }) {
+  const fOf = (sku, unit) => lookupFactor(factorMap, sku, unit);
+  const packedBase = packedBaseOf({ boxes, itemsByBox, fOf, matchBox: () => true });
+  return walkNeeds(catalog, packedBase, fOf).map(w => ({
+    needFull: w.needFull, packed: w.use, done: w.needFull > 0 && w.use >= w.needFull,
+  }));
 }
 
 // index บาร์โค้ด → { sku, unit } จาก barcodeMap ({ sku__unit: [barcodes] })

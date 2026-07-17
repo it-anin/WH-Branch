@@ -16,12 +16,16 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 ### ไฟล์ 1: รายการเบิกสินค้า (ImportCatalog)
 | Col | ข้อมูล |
 |---|---|
+| A (0) | NO — ลำดับที่ (`item.no`, โชว์ใน popup 📋 ดูรายการ Picklist) |
 | B (1) | SKU |
-| C (2) | Barcode (ColC — fallback ถ้า SKU ไม่มีใน barcode map) |
+| C (2) | Barcode (ColC — fallback ถ้า SKU ไม่มีใน barcode map; เก็บดิบซ้ำเป็น `item.rawBarcode` ด้วย เพราะ `item.barcode` โดน applyBarcodeMap merge เป็น comma-list) |
 | D (3) | ชื่อสินค้า |
 | E (4) | หน่วย |
 | F (5) | จำนวน (qty) |
 | G (6) | Location |
+| H (7) | ABC class (`item.abc`, โชว์ใน popup 📋 ดูรายการ Picklist) |
+
+- **`no`/`rawBarcode`/`abc` มีเฉพาะรายการที่ import หลังฟีเจอร์ popup** — รายการเก่า fallback: no=เลขลำดับ, barcode=ค่า merge, abc=`—` (PicklistView.jsx จัดการเอง)
 
 #### Picklist เบิกด่วน — ชื่อไฟล์มีคำว่า "เบิกด่วน" → โหมด append
 - **detect:** `/เบิกด่วน/.test(file.name)` ใน `handleFile` (ImportCatalog) — เช็คหลัง confirm ไม่มีรหัสสาขา

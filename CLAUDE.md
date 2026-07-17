@@ -180,6 +180,7 @@ src/
 │   ├── ImportCostMap.jsx        # Upload ราคาทุน R05.105 (.csv/.xlsx) — ColB=SKU, ColE=unit, ColF=4(filter), ColH=cost
 │   ├── ImportLotMap.jsx         # Upload LOT (.csv/.xlsx) — ColA=LOT, ColB=SKU, ColF=qty
 │   ├── ZoneAssign.jsx           # Modal กำหนดโซน (desktop only) — checkbox table packer × zone
+│   ├── PicklistView.jsx         # Popup 📋 ดูรายการ Picklist (desktop only) — ตารางตามคอลัมน์ไฟล์ + ติ๊กเขียวเมื่อแพ็คปิดลังครบ
 │   ├── Toast.jsx                # Fixed-bottom toast overlay
 │   └── SketchyBarcode.jsx       # SVG barcode renderer
 │
@@ -428,6 +429,12 @@ open → packing → closed → exported → received
 - ตาราง: rows = พนักงาน, columns = zones (ดึงจาก catalog locations), checkbox = assigned/not
 - คอลัมน์ SKU: live count ของ items ที่จะได้รับตาม zone ที่ tick ไว้
 - warning ถ้ามี SKU ที่ไม่ถูก assign ให้ใครเลย + **warning แดงถ้า tick 📌เบิกด่วน ปนกับโซนปกติ** (เบิกด่วนคนละสาขา → ลังจะได้สาขาผิด — ดู `resolveBoxBranch`)
+
+## PicklistView — Popup 📋 ดูรายการ Picklist (desktop, tab รายการเบิกสินค้า)
+- ปุ่ม "📋 ดูรายการ Picklist" อยู่คู่ปุ่ม "📍 กำหนดโซน" → เปิด modal ตาราง (pattern เดียวกับ ZoneAssign — render ที่ root App.jsx)
+- คอลัมน์ตามไฟล์จริง: **NO / SKU / BARCODE / ชื่อสินค้า / หน่วย / จำนวน / Location / ABC / ✓** — แสดงทั้ง Picklist ปกติ + เบิกด่วน (แถวเบิกด่วนมี chip 📌{สาขา})
+- **catalog item fields ใหม่ (import แล้วเท่านั้น):** `no` (ColA), `rawBarcode` (ColC ดิบ — `item.barcode` โดน applyBarcodeMap merge จึงใช้โชว์ไม่ได้), `abc` (ColH) — รายการที่ import ก่อน deploy ไม่มี field เหล่านี้ → fallback: no = เลขลำดับ, barcode = ค่า merge, abc = `—`
+- **แถวเขียว + ✓ = แพ็คลง "ลังปิดแล้ว" ครบจำนวน** — ใช้ `catalogPackStatus` (units.js) ซึ่ง**แชร์สูตรเดียวกับ `buildPackItems`** ผ่าน helper ภายใน (`packedBaseOf` + `walkNeeds`) ต่างแค่มองรวมทุกพนักงาน (`matchBox: () => true`) — **ห้าม copy สูตรแยก**; ลัง open/สแกนค้างไม่นับ, แพ็คบางส่วนไม่เขียว, อัปเดตเรียลไทม์ (derive จาก boxes/itemsByBox ที่ sync ผ่าน onSnapshot)
 
 ## Picklist เบิกด่วน (ชื่อไฟล์มีคำว่า "เบิกด่วน")
 - **ชื่อไฟล์: `Picklist_{สาขา}_เบิกด่วน`** — รหัสสาขาต้องอยู่ **ก่อน** คำว่าเบิกด่วนเสมอ (`Picklist_เบิกด่วน_KKL` → branch null → สาขารับไม่ได้)

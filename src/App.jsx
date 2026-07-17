@@ -19,6 +19,7 @@ import ImportBarcodeMap from './components/ImportBarcodeMap.jsx';
 import ImportCostMap from './components/ImportCostMap.jsx';
 import ImportLotMap from './components/ImportLotMap.jsx';
 import ZoneAssign from './components/ZoneAssign.jsx';
+import PicklistView from './components/PicklistView.jsx';
 
 const TABS = [
   { k: 'flow',   label: 'Dashboard' },
@@ -520,6 +521,7 @@ export default function App() {
   const [lotMapMeta, setLotMapMeta] = useState(null);
   const [zoneAssignments, setZoneAssignments] = useState({});
   const [showZoneAssign, setShowZoneAssign] = useState(false);
+  const [showPicklistView, setShowPicklistView] = useState(false); // popup 📋 ดูรายการ Picklist (desktop, tab list)
 
   // ── ลำดับอัปโหลด 4 ไฟล์ (Tab: รายการเบิกสินค้า) — Picklist → R05.106 → R05.105 → LOT+EXP
   // ⚠ ต้องอยู่ "หลัง" useState ของ catalog/barcodeMap/costMap เสมอ — const อยู่ใน temporal dead zone
@@ -892,9 +894,14 @@ export default function App() {
                     ? `📌 เพิ่มเบิกด่วน ${items.length} รายการ (${opts.branch || 'ไม่ระบุสาขา'}) ✓`
                     : `นำเข้าแล้ว ${items.length} รายการ ✓`);
                 }} />
-                <button className="btn sm" style={{ minWidth: 240 }} onClick={() => setShowZoneAssign(true)}>
-                  📍 กำหนดโซน
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn sm" onClick={() => setShowPicklistView(true)}>
+                    📋 ดูรายการ Picklist
+                  </button>
+                  <button className="btn sm" style={{ minWidth: 240 }} onClick={() => setShowZoneAssign(true)}>
+                    📍 กำหนดโซน
+                  </button>
+                </div>
               </div>
               <ImportBarcodeMap
                 matchCount={Object.keys(barcodeMap).length}
@@ -1043,6 +1050,15 @@ export default function App() {
           zoneAssignments={zoneAssignments}
           onSave={handleZoneAssign}
           onClose={() => setShowZoneAssign(false)}
+        />
+      )}
+      {showPicklistView && (
+        <PicklistView
+          catalog={catalog}
+          boxes={boxes}
+          itemsByBox={itemsByBox}
+          factorMap={factorMap}
+          onClose={() => setShowPicklistView(false)}
         />
       )}
       <Toast toasts={toasts} />
