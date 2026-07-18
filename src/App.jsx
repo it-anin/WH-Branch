@@ -854,7 +854,8 @@ export default function App() {
         </div>
       </div>
 
-      <div className={`canvas${!showAll && tab === 'closed' ? ' canvas-wide' : ''}`}>
+      {/* key={tab} → remount ทุกครั้งที่สลับ tab ให้ .tab-pop เล่น Elastic Pop ซ้ำ (คอสเมติกล้วน ไม่แตะ flow) */}
+      <div key={tab} className={`canvas tab-pop${!showAll && tab === 'closed' ? ' canvas-wide' : ''}`}>
         {(showAll || tab === 'flow') && (
           <>
             <div className="screen-label">
