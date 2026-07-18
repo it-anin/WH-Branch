@@ -433,6 +433,8 @@ open → packing → closed → exported → received
 ## PicklistView — Popup 📋 ดูรายการ Picklist (desktop, tab รายการเบิกสินค้า)
 - ปุ่ม "📋 ดูรายการ Picklist" อยู่คู่ปุ่ม "📍 กำหนดโซน" → เปิด modal ตาราง (pattern เดียวกับ ZoneAssign — render ที่ root App.jsx)
 - คอลัมน์ตามไฟล์จริง: **NO / SKU / BARCODE / ชื่อสินค้า / หน่วย / จำนวน / Location / ABC / ✓** — แสดงทั้ง Picklist ปกติ + เบิกด่วน (แถวเบิกด่วนมี chip 📌{สาขา})
+- **ตัวกรอง + ค้นหา (ใต้ header):** pill `ทั้งหมด / ปกติ / 📌 เบิกด่วน` (state `mode`, โชว์เฉพาะเมื่อ `urgentCount > 0`) + ช่องค้นหา SKU/ชื่อ (state `q`, case-insensitive) · chip "✓ แพคครบ x/y" นับตาม**ที่เห็นบนจอ** (หลังกรอง/ค้นหา)
+  - **⚠ ต้องจับคู่ row+status "ก่อนกรอง"** — `catalogPackStatus` คืน array index ตรงกับ `catalog` เป๊ะ; ถ้ากรอง catalog ก่อนแล้วอ่าน `status[idx]` index จะเลื่อน → **ติ๊กเขียว ✓ ไปโผล่ผิดแถว**. โค้ด `map((it,idx) => ({it, done: status[idx]?.done, no})) แล้วค่อย .filter` — ตาราง render จาก `rows` ที่จับคู่แล้ว ไม่อ่าน `status[idx]` ตรง ๆ อีก
 - **catalog item fields ใหม่ (import แล้วเท่านั้น):** `no` (ColA), `rawBarcode` (ColC ดิบ — `item.barcode` โดน applyBarcodeMap merge จึงใช้โชว์ไม่ได้), `abc` (ColH) — รายการที่ import ก่อน deploy ไม่มี field เหล่านี้ → fallback: no = เลขลำดับ, barcode = ค่า merge, abc = `—`
 - **แถวเขียว + ✓ = แพ็คลง "ลังปิดแล้ว" ครบจำนวน** — ใช้ `catalogPackStatus` (units.js) ซึ่ง**แชร์สูตรเดียวกับ `buildPackItems`** ผ่าน helper ภายใน (`packedBaseOf` + `walkNeeds`) ต่างแค่มองรวมทุกพนักงาน (`matchBox: () => true`) — **ห้าม copy สูตรแยก**; ลัง open/สแกนค้างไม่นับ, แพ็คบางส่วนไม่เขียว, อัปเดตเรียลไทม์ (derive จาก boxes/itemsByBox ที่ sync ผ่าน onSnapshot)
 
