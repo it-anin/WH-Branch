@@ -68,6 +68,21 @@ export const zoneOf = (location) => {
 export const isUrgentItem = (item) => item?.urgent === true || Boolean(item?.branch);
 export const zoneOfItem = (item) => isUrgentItem(item) ? NOLOC_ZONE : zoneOf(item?.location);
 
+// ลายเซ็นเนื้อหาของ catalog ที่พนักงานถือ — ใช้เป็น key remount PackScanC (แทน .length อย่างเดียว)
+// ⚠ ทำไม: key เดิม `${code}-${length}` ชนกันเมื่ออัป Picklist เบิกด่วนชุดใหม่ (สาขาอื่น) ที่จำนวนรายการเท่าเดิม
+//   → React เห็น key ไม่เปลี่ยน → PackScanC ไม่ remount → items (state) ค้างรายการเก่า → สแกนของใหม่เด้ง "ครบแล้ว"
+// hash จาก sku+unit+qty+branch (djb2) → เปลี่ยนเมื่อ "เนื้อหา" เปลี่ยนจริง; พนักงานที่ list ไม่เปลี่ยน sig เท่าเดิม
+//   → ไม่ remount → ของที่สแกนค้างในลังไม่หาย (การันตีเดียวกับ key เดิม แต่แม่นกว่า เพราะดูเนื้อหาไม่ใช่แค่จำนวน)
+// computeCatalogByPacker filter ตามโซนแบบ deterministic (คงลำดับ) → sig เสถียรข้ามการ import เนื้อหาเดิมซ้ำ
+export function catalogSig(items) {
+  let h = 5381;
+  for (const it of items || []) {
+    const s = `${it.sku}|${it.unit}|${it.qty}|${it.branch || ''}`;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  }
+  return `${(items || []).length}:${h >>> 0}`;
+}
+
 // สาขาของ "ลังใหม่" จากรายการที่พนักงานคนนั้นถือ — รองรับ Picklist เบิกด่วนคนละสาขากับงานปกติ
 // item.branch มีเฉพาะรายการเบิกด่วน (stamp ตอน import); รายการปกติไม่มี → นับเป็น metaBranch (Picklist ปกติ)
 // ทุกรายการสาขาเดียว → ใช้สาขานั้น · ปนหลายสาขา/ไม่มีรายการ → fallback metaBranch (= พฤติกรรมเดิมเป๊ะ)

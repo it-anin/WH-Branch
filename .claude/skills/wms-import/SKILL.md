@@ -40,7 +40,7 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 - **caller (App.jsx):** `opts?.urgent` → `updated = [...catalog.filter(it => !isUrgentItem(it)), ...applyBarcodeMap(items)]` + **เขียน `_meta: catalogMeta` เดิมกลับ**
   (⚠ `setDoc` ทับทั้ง doc — ตก `_meta` = catalogMeta หายทุกเครื่อง → ลังงานปกติได้ branch null สาขารับไม่ได้)
   - **⚠ ห้ามกรองด้วย `zoneOfItem(it) === NOLOC_ZONE`** — คืน NOLOC_ZONE ให้**รายการปกติที่ location ว่าง**ด้วย → จะลบรายการปกติทิ้ง; ใช้ **`isUrgentItem` (units.js) เท่านั้น** = แหล่งเดียว (`zoneOfItem` เรียกตัวนี้ต่อ)
-- **ทำไมไม่ทับ catalog ทั้งก้อน:** key ของ PackScanC = `${packer.code}-${length ของรายการคนนั้น}` → แตะเฉพาะรายการด่วนทำให้จำนวนของคนอื่นเท่าเดิม
+- **ทำไมไม่ทับ catalog ทั้งก้อน:** key ของ PackScanC = `${packer.code}-${catalogSig(รายการคนนั้น)}` → แตะเฉพาะรายการด่วนทำให้เนื้อหาของคนอื่นเท่าเดิม (⚠ key นี้เคยเป็น `.length` → คนโซนด่วนอัปสาขาอื่นจำนวนเท่าเดิมแล้วไม่ remount = สแกนไม่ได้ ดู CLAUDE.md *Remount key ของ PackScanC*)
   → จอไม่ remount ของที่สแกนค้างรอด = **แทรกกลางวันได้**; เฉพาะคนที่ tick 📌เบิกด่วน (NOLOC_ZONE) จอรีเซ็ต
 - **⚠ "แทนที่รายการ" ≠ "รีเซ็ตยอดที่แพ็คแล้ว"** — `buildPackItems` ยังหักของที่แพ็คลงลังปิดแล้ว (match `sku__unit` จาก `itemsByBox` ไม่ผูกกับ catalog) → อัปไฟล์ด่วนเดิมซ้ำหลังแพ็คไป 4/10 เห็น **need = 6** ไม่ใช่ 10 (ถูกแล้ว — เหมือน Picklist ปกติอัปซ้ำ)
 - **ด่วน 2 สาขาพร้อมกันไม่รองรับ** — คน tick 📌เบิกด่วน ถือทั้งคู่ → `resolveBoxBranch` เจอ branch ปน → fallback ไปสาขา Picklist ปกติ = **ลังด่วนสาขาผิดเงียบๆ**; การล้างทุกสาขาทำให้เข้าสถานะนี้ยากขึ้น (เดิม append ทำให้ปนสะสมได้ง่าย)

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import PackScanC from './PackScanC.jsx';
 import BranchReceive from './BranchReceive.jsx';
+import { catalogSig } from '../units.js';
 
 // location (คลัง/สาขา) มาจากโปรไฟล์ที่ login (prop) — Login แทนหน้า "เลือกที่ทำงาน" เดิมแล้ว
 // สไตล์ปุ่มการ์ดใหญ่ (หน้าเลือกพนักงาน)
@@ -139,7 +140,7 @@ export default function AndroidApp({
         {isWarehouse ? (
           <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
             <PackScanC
-              key={`${packer.code}-${packCatalog.length}`}
+              key={`${packer.code}-${catalogSig(packCatalog)}`}
               {...screenProps}
               catalog={packCatalog}
               packer={packer}

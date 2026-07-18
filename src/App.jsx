@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, runTransaction, query, where, documentId, getDocs, addDoc } from 'firebase/firestore';
 import { db } from './firebase.js';
 // สูตร need + ตัวคูณหน่วยฐาน — ตัวเดียวกับที่ PackScanC ใช้จริง (ใช้ใน __wh.audit เพื่อยืนยันเลขบนจอพนักงาน)
-import { buildPackItems, lookupFactor, UNIT_FACTOR_OVERRIDE, STANDARD_UNIT_FACTOR, zoneOfItem, isUrgentItem, resolveBoxBranch } from './units.js';
+import { buildPackItems, lookupFactor, UNIT_FACTOR_OVERRIDE, STANDARD_UNIT_FACTOR, zoneOfItem, isUrgentItem, resolveBoxBranch, catalogSig } from './units.js';
 
 import BoxList from './screens/BoxList.jsx';
 import PackScanC from './screens/PackScanC.jsx';
@@ -998,7 +998,7 @@ export default function App() {
             </div>
 
             {packer ? (
-              <PackScanC key={`${packer.code}-${(catalogByPacker[packer.code] || catalog).length}`} {...screenProps} catalog={catalogByPacker[packer.code] || catalog} onScanProgress={handleScanProgress} catalogMeta={catalogMeta} />
+              <PackScanC key={`${packer.code}-${catalogSig(catalogByPacker[packer.code] || catalog)}`} {...screenProps} catalog={catalogByPacker[packer.code] || catalog} onScanProgress={handleScanProgress} catalogMeta={catalogMeta} />
             ) : (
               <div style={{
                 border: '2px dashed var(--line)', borderRadius: 14,
