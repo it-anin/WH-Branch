@@ -60,16 +60,16 @@ body {
 /* หน้า Outbound มีตารางหลายคอลัมน์ (ชื่อสินค้า/barcode/LOT/Exp) — ขยาย frame กว้างขึ้นให้ชื่อสินค้าโชว์เต็มแนวนอน */
 .canvas.canvas-wide { max-width: 1920px; }
 
-/* Elastic Pop — อนิเมชั่นตอนสลับ tab (เล่นซ้ำเพราะ .canvas มี key={tab} → remount ทุกครั้ง)
-   จังหวะเด้งมาจาก spring bezier บน translateY (แนวตั้ง ไม่ทำ horizontal scrollbar); scale เริ่มต่ำกว่า 1 เล็กน้อย
-   overshoot จาก bezier ~0.3% เท่านั้น (เต็มจอไม่เกิดสกอลล์แนวนอน) · fill: backwards → จบแล้ว transform = none
-   ไม่ค้าง (กัน containing-block ทำ popup position:fixed ใน PackScanC เพี้ยน) */
-@keyframes tabPop {
-  0%   { opacity: 0; transform: translateY(10px) scale(.985); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+/* Slide ตามทิศ — อนิเมชั่นตอนสลับ tab (เล่นซ้ำเพราะ .canvas มี key={tab} → remount ทุกครั้ง)
+   --dir = ทิศ (+1 แท็บใหม่อยู่ขวา → เลื่อนเข้าจากขวา / -1 = ซ้าย) ตั้งจาก App.jsx (tabDirRef)
+   ระยะ 40px แนวนอน → .canvas parent ตั้ง overflow-x: clip กัน scrollbar วูบ + ให้ดูเลื่อนเข้าจากขอบ
+   fill: backwards → จบแล้ว transform = none ไม่ค้าง (กัน containing-block ทำ popup position:fixed ใน PackScanC เพี้ยน) */
+@keyframes tabSlide {
+  from { opacity: 0; transform: translateX(calc(var(--dir, 1) * 40px)); }
+  to   { opacity: 1; transform: translateX(0); }
 }
-.tab-pop { animation: tabPop .44s cubic-bezier(.34, 1.56, .34, 1) backwards; transform-origin: top center; }
-@media (prefers-reduced-motion: reduce) { .tab-pop { animation: none; } }
+.tab-slide { animation: tabSlide .34s cubic-bezier(.22, .8, .3, 1) backwards; }
+@media (prefers-reduced-motion: reduce) { .tab-slide { animation: none; } }
 
 .screen-label {
   font-family: system-ui, sans-serif; font-size: 22px; font-weight: 700;

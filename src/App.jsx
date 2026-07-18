@@ -57,6 +57,9 @@ const isAndroidMode = new URLSearchParams(window.location.search).get('android')
 
 export default function App() {
   const [tab, setTab] = useState(() => localStorage.getItem('wh_tab') || 'flow');
+  // ทิศ slide ตอนสลับ tab (คอสเมติก) — เก็บ tab ก่อนหน้า + ทิศล่าสุดไว้ใน ref เพื่อคำนวณตอน render (ดูก่อน return หลัก)
+  const prevTabRef = useRef(tab);
+  const tabDirRef = useRef(1);
   // โปรไฟล์ login รายที่ทำงาน (A1) — resolve จาก localStorage; null = ยังไม่ login → แสดงหน้า Login
   const [profile, setProfile] = useState(() => resolveProfile(localStorage.getItem('wh_profile')));
   const logout = useCallback(() => { localStorage.removeItem('wh_profile'); setProfile(null); }, []);
@@ -820,6 +823,14 @@ export default function App() {
     );
   }
 
+  // ทิศ slide: แท็บใหม่อยู่ขวาของเดิม (index มากกว่า) → เลื่อนเข้าจากขวา (+1), ซ้าย → -1
+  // เก็บใน ref (คงที่ตลอดอายุ tab นั้น) → re-render อื่นที่ไม่ได้สลับ tab ไม่ทำ --dir กระตุกกลางอนิเมชั่น
+  if (prevTabRef.current !== tab) {
+    const order = TABS.map(t => t.k);
+    tabDirRef.current = order.indexOf(tab) > order.indexOf(prevTabRef.current) ? 1 : -1;
+    prevTabRef.current = tab;
+  }
+
   return (
     <>
       <div className="topbar">
@@ -854,8 +865,11 @@ export default function App() {
         </div>
       </div>
 
-      {/* key={tab} → remount ทุกครั้งที่สลับ tab ให้ .tab-pop เล่น Elastic Pop ซ้ำ (คอสเมติกล้วน ไม่แตะ flow) */}
-      <div key={tab} className={`canvas tab-pop${!showAll && tab === 'closed' ? ' canvas-wide' : ''}`}>
+      {/* overflow-x: clip → กัน slide แนวนอนดันขอบขวาเกิด scrollbar วูบ + ทำให้เนื้อหา "เลื่อนเข้าจากขอบ" จริง
+          (clip ไม่สร้าง scroll container/containing block → ไม่กระทบ sticky/fixed; modal อยู่นอก canvas อยู่แล้ว) */}
+      <div style={{ overflowX: 'clip' }}>
+      {/* key={tab} → remount ทุกครั้งที่สลับ tab ให้ .tab-slide เล่นซ้ำ; --dir = ทิศเลื่อน (คอสเมติกล้วน ไม่แตะ flow) */}
+      <div key={tab} className={`canvas tab-slide${!showAll && tab === 'closed' ? ' canvas-wide' : ''}`} style={{ '--dir': tabDirRef.current }}>
         {(showAll || tab === 'flow') && (
           <>
             <div className="screen-label">
@@ -1059,6 +1073,7 @@ export default function App() {
             <li>สาขาสแกนสินค้าเข้าแบบ Blind Receiving</li>
           </ul>
         </div>
+      </div>
       </div>
 
       {showZoneAssign && (
