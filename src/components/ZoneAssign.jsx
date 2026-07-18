@@ -7,8 +7,16 @@ const zoneLabel = (z) => z === NOLOC_ZONE ? '📌 เบิกด่วน' : z;
 
 export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, onClose }) {
   // โซนจริงจาก catalog + บังคับมีคอลัมน์ 📌เบิกด่วน ท้ายสุดเสมอ — tick ล่วงหน้าได้ก่อน Picklist เบิกด่วนจะมา
+  // + โซนค้างที่บันทึกไว้แต่ไม่อยู่ใน Picklist วันนี้ (เช่น M/OFF/S/COOL จากรอบก่อน) ต้องโชว์เป็นคอลัมน์ด้วย —
+  //   เดิมสร้างคอลัมน์จาก catalog อย่างเดียว ติ๊กค้างเลย "ล่องหน" แกะออกไม่ได้: คำเตือนปนโซนเด้งทั้งที่เห็นติ๊กเดียว
+  //   และเคยทำพนักงานได้รายการเบิก 0 (assignments เหลือแต่โซนที่ไม่มีของ) — ห้าม auto-prune ตอนบันทึก
+  //   เพราะโซนจริงที่แค่วันนี้ไม่มีของ (COOL/S) อาจกลับมาพรุ่งนี้ ให้คนเห็นแล้วตัดสินใจแกะเอง
+  const currentZones = new Set(catalog.map(zoneOfItem)); // โซนที่มีของจริงวันนี้ — นอกเซ็ตนี้ = โซนค้าง (หัวคอลัมน์สีเทา)
   const zones = [
-    ...[...new Set(catalog.map(zoneOfItem))]
+    ...[...new Set([
+      ...currentZones,
+      ...packers.flatMap(p => zoneAssignments[p.code] || []),
+    ])]
       .filter(z => z !== NOLOC_ZONE)
       .sort((a, b) => a.length !== b.length ? a.length - b.length : a.localeCompare(b)),
     NOLOC_ZONE,
@@ -64,9 +72,16 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
               <thead>
                 <tr>
                   <th style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '2px solid var(--line)', fontWeight: 600 }}>พนักงาน</th>
-                  {zones.map(z => (
-                    <th key={z} style={{ padding: '8px 10px', borderBottom: '2px solid var(--line)', textAlign: 'center', minWidth: 44, fontWeight: 600, whiteSpace: 'nowrap' }}>{zoneLabel(z)}</th>
-                  ))}
+                  {zones.map(z => {
+                    const stale = z !== NOLOC_ZONE && !currentZones.has(z); // โซนค้าง — ไม่มีของใน Picklist วันนี้
+                    return (
+                      <th
+                        key={z}
+                        title={stale ? 'ไม่มีสินค้าโซนนี้ใน Picklist วันนี้ — ติ๊กค้างจากรอบก่อน แกะออกได้' : undefined}
+                        style={{ padding: '8px 10px', borderBottom: '2px solid var(--line)', textAlign: 'center', minWidth: 44, fontWeight: 600, whiteSpace: 'nowrap', ...(stale ? { color: 'var(--mute)' } : {}) }}
+                      >{zoneLabel(z)}</th>
+                    );
+                  })}
                   <th style={{ padding: '8px 10px', borderBottom: '2px solid var(--line)', textAlign: 'center', color: 'var(--mute)', fontSize: 12, fontWeight: 400 }}>SKU</th>
                 </tr>
               </thead>

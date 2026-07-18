@@ -434,7 +434,9 @@ open → packing → closed → exported → received
   ```js
   .sort((a, b) => a.length !== b.length ? a.length - b.length : a.localeCompare(b))
   ```
-- ตาราง: rows = พนักงาน, columns = zones (ดึงจาก catalog locations), checkbox = assigned/not
+- ตาราง: rows = พนักงาน, columns = zones — **union ของ (โซนใน catalog วันนี้) + (โซนที่บันทึกไว้ใน `zoneAssignments`)**; โซนค้างที่ไม่มีของใน Picklist วันนี้ → **หัวคอลัมน์สีเทา** (`var(--mute)`) + tooltip "ติ๊กค้างจากรอบก่อน แกะออกได้"
+  - **⚠ เดิมสร้างคอลัมน์จาก catalog อย่างเดียว → ติ๊กโซนเก่า (M/OFF/S/COOL จากรอบก่อน) "ล่องหน" แกะออกไม่ได้** — bug จริง 18 ก.ค.: ตั๋ง tick เบิกด่วนช่องเดียวแต่คำเตือนปนโซนเด้ง (array มี `["M","OFF"]` แฝง) และ**มุกได้รายการเบิก 0** (assignments เหลือแต่ `["S"]` ที่ไม่มีของ → filter ได้ศูนย์ ไม่เข้า fallback)
+  - **ห้าม auto-prune โซนค้างตอนบันทึก** — โซนจริงที่แค่วันนี้ไม่มีของ (COOL/S) อาจกลับมาพรุ่งนี้ ถูกลบเงียบ = SKU หายเงียบ; ให้คนเห็นคอลัมน์เทาแล้วตัดสินใจแกะเอง
 - คอลัมน์ SKU: live count ของ items ที่จะได้รับตาม zone ที่ tick ไว้
 - warning ถ้ามี SKU ที่ไม่ถูก assign ให้ใครเลย + **warning แดงถ้า tick 📌เบิกด่วน ปนกับโซนปกติ** (เบิกด่วนคนละสาขา → ลังจะได้สาขาผิด — ดู `resolveBoxBranch`) + **warning แดงถ้า tick 📌เบิกด่วน ให้เกิน 1 คน** (`multiUrgent`) — `computeCatalogByPacker` ให้ทุกคนที่ tick ได้รายการด่วน**เต็มชุดซ้ำกัน ไม่ได้แบ่ง** และ `buildPackItems` หักเฉพาะลังของตัวเอง → แพ็คซ้ำ/สาขารับเกินแบบเงียบ ๆ; กติกาที่ใช้จริง = **เบิกด่วน 1 คนต่อรอบ** (ผู้ใช้ตัดสินใจ 18 ก.ค. — ไม่ทำฟีเจอร์แบ่งงาน) · ทุก warning เป็น advisory ไม่บล็อกปุ่มบันทึก
 
