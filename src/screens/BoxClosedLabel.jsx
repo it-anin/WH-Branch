@@ -76,7 +76,8 @@ function lookupByScan(barcodeMap, catalog, val, nameMap = {}) {
 // สถานะลังฝั่งรับสินค้า (สาขา) — แสดงเป็น badge ใน card
 function receiveBadge(b) {
   if (b.status === 'received')
-    return { label: 'สาขา: รับสินค้าแล้ว', bg: '#d8e8c4', border: 'var(--green)', color: '#4a7a2a' };
+    // สีชมพูชุดเดียวกับ chip "สาขารับสินค้าแล้ว" ใน BoxList (ดูตาราง Status Badge Colors ใน CLAUDE.md) — ให้ตรงกันทุกหน้า
+    return { label: 'สาขา: รับสินค้าแล้ว', bg: '#f5b8d4', border: '#c04080', color: '#c04080' };
   if (b.problemReported && !b.problemResolved)
     return b.problemType === 'incomplete'
       ? { label: 'สาขา: รอรีเช็ค', bg: '#fff3cd', border: '#e67e22', color: '#b86000' }
