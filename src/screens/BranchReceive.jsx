@@ -346,6 +346,29 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     return () => document.removeEventListener('mousedown', handler);
   }, [staffMenuOpen]);
 
+  // เด้งกลับหน้าสแกน + แจ้งเหตุ — reset ชุดเดียวกับ handleScanNext แต่ "ไม่แตะ receivingBy" (ล็อกไม่ใช่ของเราแล้ว)
+  // ใช้ร่วม: effect ถูกตรวจแทน / guard ใน handleConfirm / handleReportProblem
+  function resetToScan(message) {
+    playScanFail();
+    showToast(message, 'error');
+    setConfirmIncomplete(false); setConfirmNext(false); setReportOpen(false); setReportImage(null); // ปิด dialog ที่อาจค้าง
+    setScanCounts({}); setQuery(''); setNotFound(false);
+    setItemScan(''); setLastScannedSku(null); setScanError('');
+    setVerifyResult(null); setSupervisorCode(''); setRecheckMode(false);
+    setViewingId(null); setScannedBoxId(null); setPhase('scan');
+  }
+
+  // ถูก "ตรวจแทน" ขณะนับ (receivingBy เปลี่ยนเป็นคนอื่นผ่าน Firestore sync) → เด้งออกจากหน้านับทันที
+  // ไม่งั้นจอเครื่องนี้ค้าง verify ได้นานไม่จำกัด แล้วกดยืนยัน/แจ้งปัญหาทับสถานะที่คนใหม่กำลังทำ
+  // เช็คเฉพาะ "มีค่าและไม่ใช่เรา" — null ไม่เด้ง (เราเองยืนยัน/แจ้งปัญหา set null พร้อมเปลี่ยน phase ไปแล้ว)
+  useEffect(() => {
+    if (phase !== 'verify') return;
+    const holder = foundBox?.receivingBy;
+    if (holder?.code && holder.code !== branchStaff?.code) {
+      resetToScan(`⚠ ลัง ${foundBox.id} ถูก ${holder.name || 'พนักงานอื่น'} ตรวจแทนแล้ว`);
+    }
+  }, [phase, foundBox?.receivingBy?.code]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function startReceive(box) {
     playBoxScan();
     setReceiveBoxIds(prev => [...prev.filter(id => id !== box.id), box.id]);
@@ -367,12 +390,20 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   }
 
   // ยืนยัน "ตรวจแทน" ลังที่คนอื่นล็อกไว้ — startReceive ทับ receivingBy เป็นคนนี้ + reset นับใหม่ + เข้า verify
-  // (ผลเท่ากับสแกนลังปกติ ต่างแค่ข้ามด่านบล็อก; เจ้าของเดิมเห็นล็อกเปลี่ยนมือผ่าน setBoxes sync)
+  // (ผลเท่ากับสแกนลังปกติ ต่างแค่ข้ามด่านบล็อก; เจ้าของเดิมเห็นล็อกเปลี่ยนมือผ่าน setBoxes sync แล้วถูก effect เด้งออก)
   function confirmTakeover() {
-    const box = takeoverBox;
+    const snap = takeoverBox;
     setTakeoverBox(null);
-    if (!box) return;
-    startReceive(box);
+    if (!snap) return;
+    // dialog เปิดค้างได้นาน — snap คือสถานะตอนสแกน อาจเก่าแล้ว: เช็คสถานะล่าสุดจาก boxes ก่อนเข้า
+    // (เงื่อนไขชุดเดียวกับ guard ใน handleScan) ไม่งั้นเข้าไปนับลังที่อีกฝั่งยืนยัน/แจ้งปัญหาจบไปแล้ว
+    const live = boxes.find(b => b.id === snap.id);
+    if (!live || live.status === 'received' || live.receivePending || (live.problemReported && !live.problemResolved)) {
+      playScanFail();
+      showToast(`⚠ ลัง ${snap.id} ถูกจัดการไปแล้ว · สแกนใหม่อีกครั้ง`, 'error');
+      return;
+    }
+    startReceive(live);
   }
 
   function handleScan(e) {
@@ -445,6 +476,16 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   // Android: ยืนยันแจ้งปัญหา → persist ลง box (sync ให้หัวหน้าตรวจที่ Desktop)
   function handleReportProblem() {
     if (!foundBox) return;
+    // ลังถูกตรวจแทน/ยืนยันไปแล้วระหว่างเรานับ (foundBox sync สดจาก boxes) → บล็อกก่อนเขียนทับสถานะ
+    // ปกติ effect ถูกตรวจแทนเด้งออกให้ก่อนแล้ว — guard นี้กันหน้าต่างแคบที่กดพอดีก่อน effect รัน
+    if (foundBox.receivingBy?.code && foundBox.receivingBy.code !== branchStaff?.code) {
+      resetToScan(`⚠ ลัง ${foundBox.id} ถูก ${foundBox.receivingBy.name || 'พนักงานอื่น'} ตรวจแทนแล้ว`);
+      return;
+    }
+    if (foundBox.receivePending || foundBox.status === 'received') {
+      resetToScan(`⚠ ลัง ${foundBox.id} ถูกยืนยันรับไปแล้ว`);
+      return;
+    }
     setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
       ...b,
       problemReported: true,
@@ -485,6 +526,17 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   function handleConfirm() {
     setConfirmIncomplete(false);
     if (!foundBox) return;
+    // ลังถูกตรวจแทน/ยืนยันไปแล้วระหว่างเรานับ (foundBox sync สดจาก boxes ทุก render) → บล็อกก่อนเขียนทับสถานะ
+    // เคสพังที่กันไว้: คนแรกนับครบส่ง receivePending แล้วเครื่องที่ถูกแซง (นับค้างครึ่งเดียว) กดยืนยัน → ทับเป็น problemReported
+    // ปกติ effect ถูกตรวจแทนเด้งออกให้ก่อนแล้ว — guard นี้กันหน้าต่างแคบที่กดพอดีก่อน effect รัน + dialog ยืนยันค้างเปิดข้ามจังหวะ
+    if (foundBox.receivingBy?.code && foundBox.receivingBy.code !== branchStaff?.code) {
+      resetToScan(`⚠ ลัง ${foundBox.id} ถูก ${foundBox.receivingBy.name || 'พนักงานอื่น'} ตรวจแทนแล้ว`);
+      return;
+    }
+    if (foundBox.receivePending || foundBox.status === 'received') {
+      resetToScan(`⚠ ลัง ${foundBox.id} ถูกยืนยันรับไปแล้ว`);
+      return;
+    }
     // recheck: เช็คเฉพาะ verifyItems (SKU ที่ขาดรอบแรก) แต่เภสัชนับใหม่จาก 0 เทียบ qty เต็ม, normal: เช็คทุก SKU
     const hasOver = verifyItems.some(l => (scanCounts[l.sku] || 0) > getNeeded(l));
     const result = !allChecked ? 'fail' : hasOver ? 'over' : 'ok';
@@ -1475,12 +1527,12 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
             {/* ข้อความต้องเป็นกลาง — ห้ามบอกว่าครบ/ไม่ครบ/เหลือกี่รายการ (ดูเหตุผลใน requestConfirm) */}
             <div style={{ fontSize: 19, fontWeight: 800, marginBottom: 8 }}>ยืนยันรับสินค้า</div>
             <div style={{ fontSize: 14, color: '#555', marginBottom: 20, lineHeight: 1.5 }}>
-              ตรวจนับสินค้าในลังครบถ้วนแล้วใช่หรือไม่?<br />
-              ยืนยันแล้วจะแก้ไขจำนวนไม่ได้
+              ต้องการยืนยันสินค้าใช่หรือไม่?<br />
+              ยืนยันแล้วจะแก้ไขไม่ได้
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-              <button className="btn ghost" onClick={() => setConfirmIncomplete(false)}>ยกเลิก · ตรวจต่อ</button>
-              <button className="btn primary" onClick={handleConfirm}>ยืนยันรับ</button>
+              <button className="btn ghost" onClick={() => setConfirmIncomplete(false)}>ยกเลิก</button>
+              <button className="btn primary" onClick={handleConfirm}>ยืนยัน</button>
             </div>
           </div>
         </div>,
