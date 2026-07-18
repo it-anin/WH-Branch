@@ -42,6 +42,9 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
     const a = assignments[p.code] || [];
     return a.includes(NOLOC_ZONE) && a.length > 1;
   });
+  // เตือนถ้า tick 📌เบิกด่วน เกิน 1 คน — computeCatalogByPacker ให้แต่ละคนได้รายการด่วน "เต็มชุด" (ซ้ำ ไม่แบ่ง)
+  // → 2 คนต่างเห็นเต็ม + buildPackItems หักเฉพาะลังตัวเอง → แพ็คซ้ำ สาขารับเกิน; กติกาจริง = เบิกด่วน 1 คนต่อรอบ
+  const multiUrgent = packers.filter(p => (assignments[p.code] || []).includes(NOLOC_ZONE));
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -101,6 +104,12 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
               <p style={{ marginTop: 8, fontSize: 12, color: 'var(--red)' }}>
                 ⚠ {mixedNoloc.map(p => p.name).join(', ')} ถูก tick 📌เบิกด่วน ปนกับโซนปกติ —
                 ถ้าเบิกด่วนเป็นคนละสาขา ลังของคนนี้จะได้สาขาผิด ควรแยกคนแพ็คเบิกด่วนไว้คนเดียว
+              </p>
+            )}
+            {multiUrgent.length > 1 && (
+              <p style={{ marginTop: 8, fontSize: 12, color: 'var(--red)' }}>
+                ⚠ {multiUrgent.map(p => p.name).join(', ')} ถูก tick 📌เบิกด่วน พร้อมกัน —
+                ระบบจะให้ทั้งคู่ได้รายการด่วน<b>เต็มชุด (ซ้ำ)</b> เสี่ยงแพ็คซ้ำ/สาขารับเกิน · เบิกด่วนควรกำหนดให้พนักงาน 1 คนต่อรอบ
               </p>
             )}
 
