@@ -301,6 +301,23 @@ export function filterTodayBoxes(boxes, itemsByBox, query) {
   );
 }
 
+// Resolve a branch receiving box scan without reporting a false "not found"
+// while the initial Firestore snapshots are still loading. Keeping this pure
+// also makes the Android startup race independently testable.
+export function resolveReceiveBoxScan(boxes, rawQuery, { ready = true, loadError = null } = {}) {
+  const query = String(rawQuery || '').trim().toLowerCase();
+  if (!query) return { status: 'empty', query };
+  if (loadError) return { status: 'load-error', query, error: loadError };
+  if (!ready) return { status: 'loading', query };
+
+  const compactQuery = query.replace(/\s/g, '');
+  const box = (boxes || []).find(candidate =>
+    String(candidate?.id || '').toLowerCase().includes(query)
+    || String(candidate?.pos || '').replace(/\s/g, '').toLowerCase().includes(compactQuery),
+  );
+  return box ? { status: 'found', query, box } : { status: 'not-found', query };
+}
+
 export function historyCutoff(now, retentionDays = HISTORY_RETENTION_DAYS) {
   return new Date(new Date(now).getTime() - retentionDays * 24 * 60 * 60 * 1000);
 }

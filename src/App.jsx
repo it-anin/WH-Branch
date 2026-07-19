@@ -77,6 +77,9 @@ export default function App() {
   const [profile, setProfile] = useState(() => resolveProfile(localStorage.getItem('wh_profile')));
   const logout = useCallback(() => { localStorage.removeItem('wh_profile'); setProfile(null); }, []);
   const [boxes, _setBoxes] = useState([]);
+  const [boxesLoaded, setBoxesLoaded] = useState(false);
+  const [boxItemsLoaded, setBoxItemsLoaded] = useState(false);
+  const [receiveDataLoadErrors, setReceiveDataLoadErrors] = useState({ boxes: null, boxItems: null });
   const [activeBoxId, setActiveBoxId] = useState(null);
   const [packer, setPacker] = useState(null);
   const [catalog, setCatalog] = useState([]);
@@ -160,18 +163,30 @@ export default function App() {
     const onErr = (label) => (err) => {
       console.error(`Firestore [${label}]:`, err.code, err.message);
     };
-    const unsubBoxes = onSnapshot(collection(db, 'boxes'), snap => {
+    const unsubBoxes = onSnapshot(collection(db, 'boxes'), { includeMetadataChanges: true }, snap => {
       const data = snap.docs.map(d => d.data())
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       boxesRef.current = data;
       _setBoxes(data);
-    }, onErr('boxes'));
-    const unsubItems = onSnapshot(collection(db, 'boxItems'), snap => {
+      // Cold-start อาจได้ snapshot จาก memory cache ที่ว่างก่อน server ตอบกลับ
+      // ต้องรอ fromCache=false ไม่งั้นการยิงครั้งแรกยังถูกตัดสินว่า "ไม่พบลัง" ได้
+      if (!snap.metadata.fromCache) setBoxesLoaded(true);
+      setReceiveDataLoadErrors(prev => ({ ...prev, boxes: null }));
+    }, err => {
+      onErr('boxes')(err);
+      setReceiveDataLoadErrors(prev => ({ ...prev, boxes: err.code || err.message || 'unknown' }));
+    });
+    const unsubItems = onSnapshot(collection(db, 'boxItems'), { includeMetadataChanges: true }, snap => {
       const data = {};
       snap.docs.forEach(d => { data[d.id] = d.data().items || []; });
       itemsByBoxRef.current = data;
       _setItemsByBox(data);
-    }, onErr('boxItems'));
+      if (!snap.metadata.fromCache) setBoxItemsLoaded(true);
+      setReceiveDataLoadErrors(prev => ({ ...prev, boxItems: null }));
+    }, err => {
+      onErr('boxItems')(err);
+      setReceiveDataLoadErrors(prev => ({ ...prev, boxItems: err.code || err.message || 'unknown' }));
+    });
     const unsubReceive = onSnapshot(doc(db, 'config', 'receive'), snap => {
       const ids = snap.exists() ? (snap.data().ids || []) : [];
       receiveBoxIdsRef.current = ids;
@@ -800,7 +815,8 @@ export default function App() {
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
-  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const receiveDataLoadError = receiveDataLoadErrors.boxes || receiveDataLoadErrors.boxItems;
+  const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   // Gate: ยังไม่ login → แสดงหน้า Login (ทั้ง Android + Desktop)
   if (!profile) {

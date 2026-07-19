@@ -8,6 +8,7 @@ import {
   aggregateReceiveItems,
   buildReceiveDifferences,
   buildReceiveLotExpMap,
+  resolveReceiveBoxScan,
 } from '../warehouseHelpers.js';
 
 // Desktop staff filter dropdown ใช้รายชื่อรวมทุกสาขา; Android ใช้ staff ของสาขาที่เลือก (controlled mode)
@@ -278,7 +279,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onClick }) {
   );
 }
 
-export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null, barcodeMap = {}, factorMap = {}, lotMap = {} }) {
+export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null, barcodeMap = {}, factorMap = {}, lotMap = {}, receiveDataReady = true, receiveDataLoadError = null }) {
   const [internalBranchStaff, setInternalBranchStaff] = useState(null);
   const isControlled = branchStaffProp !== undefined;
   const branchStaff = isControlled ? branchStaffProp : internalBranchStaff;
@@ -304,9 +305,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [staffMenuOpen, setStaffMenuOpen] = useState(false);
   const [itemSearch, setItemSearch] = useState('');
   const [problemNote, setProblemNote] = useState('');
+  const [pendingBoxScan, setPendingBoxScan] = useState('');
   const inputRef    = useRef(null);
   const itemScanRef = useRef(null);
   const staffMenuRef = useRef(null);
+  const pendingBoxScanRef = useRef('');
 
   // ลังที่เครื่องนี้กำลังตรวจ = local state (ตั้งตอน startReceive) — ไม่ดึงจาก receiveBoxIds ที่ sync ข้ามเครื่องผ่าน Firestore
   // (เดิมใช้ receiveBoxIds[last] → 2 เครื่องสแกนคนละลัง จอเด้งเห็นลังเดียวกัน = ตัวที่ sync ล่าสุดชนะ เสี่ยงยืนยันผิดลัง)
@@ -438,17 +441,34 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     startReceive(live);
   }
 
-  function handleScan(e) {
-    if (e.key !== 'Enter') return;
-    const q = e.target.value.trim().toLowerCase();
-    if (!q) return;
+  function processBoxScan(rawQuery) {
+    const lookup = resolveReceiveBoxScan(boxes, rawQuery, {
+      ready: receiveDataReady,
+      loadError: receiveDataLoadError,
+    });
+    if (lookup.status === 'empty') return;
+    if (lookup.status === 'loading') {
+      // เก็บการยิงครั้งแรกไว้เท่านั้น ป้องกันยิงซ้ำระหว่างโหลดแล้วเข้า flow หลายลังพร้อมกัน
+      if (!pendingBoxScanRef.current) {
+        pendingBoxScanRef.current = String(rawQuery).trim();
+        setPendingBoxScan(pendingBoxScanRef.current);
+      }
+      setNotFound(false);
+      return;
+    }
+    if (lookup.status === 'load-error') {
+      playScanFail();
+      setNotFound(false);
+      showToast('⚠ โหลดข้อมูลลังไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วเปิดโปรแกรมใหม่', 'error');
+      return;
+    }
+    if (lookup.status === 'not-found') {
+      playScanFail();
+      setNotFound(true);
+      return;
+    }
 
-    const box = boxes.find(b =>
-      b.id.toLowerCase().includes(q) ||
-      b.pos.replace(/\s/g, '').toLowerCase().includes(q.replace(/\s/g, ''))
-    );
-
-    if (!box) { playScanFail(); setNotFound(true); return; }
+    const box = lookup.box;
 
     // กันสแกนลังซ้ำที่จัดการไปแล้ว — บล็อก ไม่เข้า verify
     setNotFound(false);
@@ -497,6 +517,28 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
 
     startReceive(box);
   }
+
+  function handleScan(e) {
+    if (e.key !== 'Enter') return;
+    processBoxScan(e.target.value);
+  }
+
+  // ถ้าพนักงานยิงระหว่าง snapshot แรกกำลังโหลด ให้ประมวลผลบาร์โค้ดเดิมอัตโนมัติ
+  // เมื่อทั้ง boxes และ boxItems พร้อม โดย ref กัน effect ทำซ้ำใน React StrictMode
+  useEffect(() => {
+    const pending = pendingBoxScanRef.current;
+    if (!pending) return;
+    if (receiveDataLoadError) {
+      pendingBoxScanRef.current = '';
+      setPendingBoxScan('');
+      processBoxScan(pending);
+      return;
+    }
+    if (!receiveDataReady) return;
+    pendingBoxScanRef.current = '';
+    setPendingBoxScan('');
+    processBoxScan(pending);
+  }, [receiveDataReady, receiveDataLoadError]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleImageChange(e) {
     const file = e.target.files?.[0];
@@ -1277,11 +1319,27 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
             isAndroid ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)' }}>ยิงบาร์โค้ดที่ติดลัง หรือพิมพ์ BX-…</div>
+                {!receiveDataReady && !receiveDataLoadError && (
+                  <div style={{
+                    padding: '10px 14px', border: '1.5px solid var(--accent)', borderRadius: 10,
+                    background: 'var(--accent-soft)', fontFamily: 'system-ui', fontSize: 13, color: 'var(--ink)',
+                  }}>
+                    ⏳ กำลังโหลดข้อมูลลัง…{pendingBoxScan ? ' รับบาร์โค้ดแล้ว ระบบจะตรวจให้อัตโนมัติ' : ' สามารถยิงบาร์โค้ดรอได้'}
+                  </div>
+                )}
+                {receiveDataLoadError && (
+                  <div style={{
+                    padding: '10px 14px', border: '2px solid var(--red)', borderRadius: 10,
+                    background: '#fde8e8', fontFamily: 'system-ui', fontSize: 13, color: 'var(--red)',
+                  }}>
+                    ⚠ โหลดข้อมูลลังไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วเปิดโปรแกรมใหม่
+                  </div>
+                )}
                 <input
                   ref={inputRef}
                   inputMode="none"
                   className="input big"
-                  placeholder="BX-… หรือ POS number"
+                  placeholder={receiveDataReady ? 'BX-… หรือ POS number' : 'กำลังโหลดข้อมูลลัง…'}
                   style={{ width: '100%', textAlign: 'center' }}
                   value={query}
                   onChange={(e) => { setQuery(e.target.value); setNotFound(false); }}
