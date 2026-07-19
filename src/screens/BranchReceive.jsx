@@ -4,6 +4,11 @@ import { matchBarcode } from '../data.js';
 import { ALL_BRANCH_STAFF } from '../branches.js';
 import { playScanSuccess, playBoxScan, playScanFail } from '../sound.js';
 import { lookupFactor, buildBarcodeIndex } from '../units.js';
+import {
+  aggregateReceiveItems,
+  buildReceiveDifferences,
+  buildReceiveLotExpMap,
+} from '../warehouseHelpers.js';
 
 // Desktop staff filter dropdown ใช้รายชื่อรวมทุกสาขา; Android ใช้ staff ของสาขาที่เลือก (controlled mode)
 const BRANCH_STAFF = ALL_BRANCH_STAFF;
@@ -25,6 +30,32 @@ const unitOf = (l) => l?.baseUnit || l?.scannedUnit || l?.unit || '';
 // ต่ำกว่านี้ยิงเอาเร็วกว่าและคุมความถูกต้องได้ดีกว่า
 // ⚠ ตัวช่องกรอกที่โผล่มาก็บอกใบ้กลาย ๆ ว่า "SKU นี้มีมากกว่า 10" (แต่ไม่บอกเลขจริง) — ยอมรับไว้แล้ว
 const QTY_EDIT_MIN = 10;
+
+// LOT/EXP ที่คลังแพ็คส่งมา — แสดงแบบ read-only และไม่แสดง qty ของแต่ละ LOT
+// เพื่อให้พนักงานเทียบฉลากสินค้าได้โดยไม่ทำลาย blind receiving
+function LotExpList({ rows = [], compact = false }) {
+  if (rows.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: compact ? 2 : 4 }}>
+      {rows.map((row, index) => (
+        <div
+          key={`${row.lot || ''}__${row.exp || ''}__${index}`}
+          className="mono"
+          style={{
+            fontSize: compact ? 9 : 10,
+            lineHeight: 1.25,
+            color: 'var(--accent)',
+            fontWeight: 700,
+            whiteSpace: 'normal',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          LOT: {row.lot || '—'} · EXP: {row.exp || '—'}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ย่อรูปหลักฐาน → base64 JPEG (กว้างสุด ~800px) เพื่อเก็บลง Firestore (1 doc ≤ 1MB)
 function compressImage(file, maxW = 800, quality = 0.7) {
@@ -119,6 +150,7 @@ function ScannedItemRow({ l, count, over, done, onRemove, blind = false, editabl
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
           <div style={{ fontFamily: 'system-ui', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</div>
+          <LotExpList rows={l.lotExpRows} />
         </div>
         <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', flexShrink: 0 }}>{unitOf(l)}</div>
         {editable ? (
@@ -246,7 +278,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onClick }) {
   );
 }
 
-export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null, barcodeMap = {}, factorMap = {} }) {
+export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null, barcodeMap = {}, factorMap = {}, lotMap = {} }) {
   const [internalBranchStaff, setInternalBranchStaff] = useState(null);
   const isControlled = branchStaffProp !== undefined;
   const branchStaff = isControlled ? branchStaffProp : internalBranchStaff;
@@ -568,14 +600,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     } else if (recheckMode && branchStaff?.role === 'pharmacist') {
       // เภสัช recheck แล้วยังขาด/เกิน → ยืนยันสินค้าขาด → auto-แจ้งคลัง + auto-generate note
       const mergedCounts = { ...foundBox.problemScanCounts, ...scanCounts };
-      const shortList = boxItems
-        .map(l => {
-          const need = getNeeded(l);
-          const got = mergedCounts[l.sku] || 0;
-          const diff = need - got;
-          return diff !== 0 ? { sku: l.sku, name: l.name, diff } : null;
-        })
-        .filter(Boolean);
+      const shortList = buildReceiveDifferences(boxItems, mergedCounts);
       // หัวข้อ note + toast ต้องสะท้อนว่าขาด/เกิน/ทั้งคู่ (เดิม hardcode "ขาด" → กรณีเกินแจ้งผิด)
       const hasShort  = shortList.some(x => x.diff > 0); // diff = need - got → บวก = ขาด
       const hasExcess = shortList.some(x => x.diff < 0); // ลบ = เกิน
@@ -745,7 +770,14 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     showToast('ลบออกจากรายการแล้ว', 'error');
   }
 
-const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
+  const rawBoxItems      = foundBox ? (itemsByBox[foundBox.id] || []) : [];
+  const boxItems         = useMemo(() => {
+    const lotExpBySku = buildReceiveLotExpMap(rawBoxItems, lotMap);
+    return aggregateReceiveItems(rawBoxItems).map(item => ({
+      ...item,
+      lotExpRows: lotExpBySku[item.sku] || [],
+    }));
+  }, [rawBoxItems, lotMap]);
   // resolve บาร์โค้ด→หน่วย + factor (แปลงหน่วยตอนรับเข้า เช่น 1 กล่อง = 24 ม้วน)
   const barcodeIndex     = useMemo(() => buildBarcodeIndex(barcodeMap), [barcodeMap]);
   const factorOf         = (sku, unit) => lookupFactor(factorMap, sku, unit);
@@ -1197,6 +1229,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                           <td>
                             <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
                             <div style={{ fontFamily: 'system-ui', fontSize: 15 }}>{l.name}</div>
+                            <LotExpList rows={l.lotExpRows} compact={isAndroid} />
                           </td>
                           <td style={{ fontFamily: 'system-ui', fontSize: isAndroid ? 12 : undefined }}>{unitOf(l)}</td>
                           {!recheckMode && (
@@ -1362,6 +1395,7 @@ const boxItems         = foundBox ? (itemsByBox[foundBox.id] || []) : [];
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 600, color: done ? 'var(--ok)' : 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.name}</div>
                                 <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>{l.sku}</div>
+                                <LotExpList rows={l.lotExpRows} compact />
                               </div>
                               <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 700, textAlign: 'right', flexShrink: 0, color: done ? 'var(--ok)' : '#e67e22' }}>
                                 {myCount}/{needed} {unitOf(l)}

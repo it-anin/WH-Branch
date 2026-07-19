@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { branchLabel } from '../branches.js';
+import { filterTodayBoxes } from '../warehouseHelpers.js';
 
 // ถังของลังที่ไม่มี box.branch (สาขารับไม่ได้) — lowercase ชนกับ code จริงไม่ได้ (extractBranch uppercase เสมอ)
 const NO_BRANCH = '__none';
@@ -118,8 +119,9 @@ function HistoryEntry({ entry, generateCSV, triggerDownload, onDelete }) {
   );
 }
 
-export default function BoxList({ boxes, activeBoxId, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, setHistory, clearBoxes, clearFirestore, deleteBox }) {
+export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, deleteHistoryEntry, historyRetentionDays, clearBoxes, clearFirestore, deleteBox }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [search, setSearch] = useState('');
   const deletingBox = confirmDeleteId ? boxes.find(b => b.id === confirmDeleteId) || null : null;
 
   // ตัวกรองสาขา — scope ทั้งหน้า (ตารางวันนี้ + ชิปสรุป + Export + ประวัติ)
@@ -130,6 +132,8 @@ export default function BoxList({ boxes, activeBoxId, setTab, setActiveBoxId, sh
   const branchOpts = Object.keys(branchCounts).filter(k => k !== NO_BRANCH).sort();
   const untaggedN = branchCounts[NO_BRANCH] || 0;
   const branchBoxes = boxes.filter(b => matchBranch(b, branchFilter));
+  // Search มีผลเฉพาะตารางวันนี้หลังกรองสาขา; summary/export/history ยังใช้ branchBoxes ชุดเต็ม
+  const todayBoxes = filterTodayBoxes(branchBoxes, itemsByBox, search);
 
   // suffix ชื่อไฟล์ Export ตามสาขาที่กรอง: 'all' → ไม่เติม, สาขา → -SRC, ไม่ระบุ → -nobranch
   const exportSuffix = branchFilter === 'all' ? '' : branchFilter === NO_BRANCH ? '-nobranch' : `-${branchFilter}`;
@@ -153,15 +157,14 @@ export default function BoxList({ boxes, activeBoxId, setTab, setActiveBoxId, sh
     setConfirmDeleteId(null);
   }
 
-  function handleDeleteHistory(index) {
+  function handleDeleteHistory(entryId) {
     if (!window.confirm('ลบประวัติวันนี้ออกจากรายการ?')) return;
-    setHistory(prev => prev.filter((_, i) => i !== index));
+    deleteHistoryEntry(entryId);
   }
 
-  // ประวัติหลังกรองสาขา — เก็บ index เดิมไว้ (handleDeleteHistory ลบด้วย index ของ history เต็ม)
   // เลือกสาขาเจาะจง → ตัด entry ที่ไม่มีลังของสาขานั้นออก (เหลือเฉพาะวันที่เกี่ยวข้อง)
   const visibleHistory = history
-    .map((entry, i) => ({ entry, i, boxes: entry.boxes.filter(b => matchBranch(b, branchFilter)) }))
+    .map(entry => ({ entry, boxes: entry.boxes.filter(b => matchBranch(b, branchFilter)) }))
     .filter(h => branchFilter === 'all' || h.boxes.length > 0);
 
   return (
@@ -172,7 +175,13 @@ export default function BoxList({ boxes, activeBoxId, setTab, setActiveBoxId, sh
           <span className="title">📦 รายการลังวันนี้</span>
         </div>
         <div className="row">
-          <input className="input" placeholder="ค้นหา BX / POS / SKU…" style={{ width: 220 }} />
+          <input
+            className="input"
+            placeholder="ค้นหา BX / POS / SKU / Barcode / ชื่อ…"
+            style={{ width: 280 }}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
       </div>
 
@@ -236,7 +245,7 @@ export default function BoxList({ boxes, activeBoxId, setTab, setActiveBoxId, sh
 
         {/* today's box table — onDelete เฉพาะตารางนี้ (ลังจริง); ประวัติเป็น snapshot ลบไม่ได้ */}
         <BoxTable
-          boxes={branchBoxes}
+          boxes={todayBoxes}
           onOpen={(id) => { setActiveBoxId(id); setTab('scan'); }}
           onPrint={(id) => { setActiveBoxId(id); setTab('closed'); }}
           onDelete={(id) => setConfirmDeleteId(id)}
@@ -250,16 +259,16 @@ export default function BoxList({ boxes, activeBoxId, setTab, setActiveBoxId, sh
               gap: 10,
             }}>
               <span style={{ fontFamily: 'system-ui', fontSize: 20, fontWeight: 700, color: 'var(--mute)' }}>
-                ประวัติย้อนหลัง ({visibleHistory.length} วัน · เก็บไว้ 1 เดือน)
+                ประวัติย้อนหลัง ({visibleHistory.length} วัน · เก็บไว้ {historyRetentionDays} วัน)
               </span>
             </div>
-            {visibleHistory.map(({ entry, i, boxes: entryBoxes }) => (
+            {visibleHistory.map(({ entry, boxes: entryBoxes }) => (
               <HistoryEntry
-                key={i}
+                key={entry.id}
                 entry={{ ...entry, boxes: entryBoxes }}
                 generateCSV={generateCSV}
                 triggerDownload={triggerDownload}
-                onDelete={() => handleDeleteHistory(i)}
+                onDelete={() => handleDeleteHistory(entry.id)}
               />
             ))}
           </div>

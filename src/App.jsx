@@ -1,8 +1,14 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, runTransaction, query, where, documentId, getDocs, addDoc } from 'firebase/firestore';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { collection, doc, setDoc, deleteDoc, deleteField, onSnapshot, writeBatch, runTransaction, query, where, documentId, getDocs, addDoc } from 'firebase/firestore';
 import { db } from './firebase.js';
 // สูตร need + ตัวคูณหน่วยฐาน — ตัวเดียวกับที่ PackScanC ใช้จริง (ใช้ใน __wh.audit เพื่อยืนยันเลขบนจอพนักงาน)
-import { buildPackItems, lookupFactor, UNIT_FACTOR_OVERRIDE, STANDARD_UNIT_FACTOR, zoneOfItem, isUrgentItem, resolveBoxBranch, catalogSig } from './units.js';
+import { buildPackItems, lookupFactor, UNIT_FACTOR_OVERRIDE, STANDARD_UNIT_FACTOR, isUrgentItem, resolveBoxBranch, catalogSig } from './units.js';
+import {
+  HISTORY_RETENTION_DAYS,
+  buildTopLevelFieldPatch,
+  computeCatalogByPacker,
+  isHistoryExpired,
+} from './warehouseHelpers.js';
 
 import BoxList from './screens/BoxList.jsx';
 import PackScanC from './screens/PackScanC.jsx';
@@ -27,6 +33,13 @@ const TABS = [
   { k: 'scan',   label: 'แพ็คกิ้ง' },
   { k: 'closed', label: 'คลังสินค้าส่งออก' },
   { k: 'receive', label: '📥 รับสินค้า (สาขา)' },
+];
+
+const PACKERS = [
+  { code: 'EMP-01', name: 'มุก' },
+  { code: 'EMP-02', name: 'แล็ค' },
+  { code: 'EMP-03', name: 'พี' },
+  { code: 'EMP-04', name: 'ตั๋ง' },
 ];
 
 // tab ที่แต่ละ role เห็นบน Desktop (A1 login) — warehouse = งานคลัง, branch = รับสินค้าเท่านั้น (ปรับที่นี่จุดเดียว)
@@ -173,9 +186,6 @@ export default function App() {
       }
       setCatalogLoaded(true);
     }, onErr('catalog'));
-    const unsubCatalogByPacker = onSnapshot(doc(db, 'config', 'catalogByPacker'), snap => {
-      if (snap.exists()) setCatalogByPacker(snap.data().assignments || {});
-    }, onErr('catalogByPacker'));
     const unsubBarcodeMap = onSnapshot(doc(db, 'config', 'barcodeMap'), snap => {
       if (snap.exists()) {
         const entries = snap.data().entries || [];
@@ -243,7 +253,7 @@ export default function App() {
         .sort((a, b) => new Date(b.clearedAt) - new Date(a.clearedAt));
       setHistory(data);
     }, onErr('history'));
-    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCatalogByPacker(); unsubProgress(); unsubCostMap(); unsubFactorMap(); unsubLotMap(); unsubNameMap?.(); unsubZone(); unsubHistory(); }; // unsubNameMap เป็น null บน Android (ไม่ได้ subscribe) → ต้อง ?.()
+    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubProgress(); unsubCostMap(); unsubFactorMap(); unsubLotMap(); unsubNameMap?.(); unsubZone(); unsubHistory(); }; // unsubNameMap เป็น null บน Android (ไม่ได้ subscribe) → ต้อง ?.()
   }, []);
 
   function setBoxes(updater) {
@@ -258,7 +268,17 @@ export default function App() {
     const batch = writeBatch(db);
     let changes = 0;
     next.forEach(box => {
-      if (prevById.get(box.id) !== box) { batch.set(doc(db, 'boxes', box.id), box); changes++; }
+      const previous = prevById.get(box.id);
+      if (!previous) {
+        batch.set(doc(db, 'boxes', box.id), box);
+        changes++;
+      } else if (previous !== box) {
+        const patch = buildTopLevelFieldPatch(previous, box, deleteField());
+        if (Object.keys(patch).length > 0) {
+          batch.set(doc(db, 'boxes', box.id), patch, { merge: true });
+          changes++;
+        }
+      }
     });
     prev.filter(b => !next.find(n => n.id === b.id))
         .forEach(b => { batch.delete(doc(db, 'boxes', b.id)); changes++; });
@@ -359,28 +379,26 @@ export default function App() {
     // สาขาของลัง = สาขาของ "รายการที่พนักงานคนนี้ถือ" (resolveBoxBranch ใน units.js — เทสต์ตรงได้)
     // รองรับเบิกด่วนคนละสาขา: คนแพ็คด่วน (tick 📌เบิกด่วน อย่างเดียว) รายการ stamp สาขาเดียว → ลังได้สาขานั้น
     // พนักงานปกติไม่มี item.branch → fallback catalogMeta.branch = เส้นทางเดิม byte-identical
-    const boxBranch = resolveBoxBranch(catalogByPacker[packer?.code] || catalog, catalogMeta?.branch);
+    const boxBranch = resolveBoxBranch(packer ? (catalogByPacker[packer.code] ?? []) : catalog, catalogMeta?.branch);
     const newBox = { id: newId, pos: '—', status: 'open', packer: packer || null, branch: boxBranch, skuCount: 0, totalQty: 0, updated: time, createdAt: Date.now() };
     setBoxes(prev => [newBox, ...prev]);
     setActiveBoxId(newId);
     return newId;
   }
 
-  function clearBoxes() {
+  async function clearBoxes() {
     if (boxes.length === 0) { showToast('ไม่มีข้อมูลลังในวันนี้'); return; }
-    if (!window.confirm(`ล้างข้อมูลลังทั้งหมด ${boxes.length} ลัง?\nข้อมูลจะถูกเก็บในประวัติย้อนหลัง 7 วัน`)) return;
+    if (!window.confirm(`ล้างข้อมูลลังทั้งหมด ${boxes.length} ลัง?\nข้อมูลจะถูกเก็บในประวัติย้อนหลัง ${HISTORY_RETENTION_DAYS} วัน`)) return;
     const now = new Date();
     const dateKey = now.toISOString().slice(0, 10);
     const label = now.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
     const docId = String(now.getTime());
     const entry = { dateKey, label, clearedAt: now.toISOString(), boxes: [...boxes] };
-    const cutoff = new Date(now);
-    cutoff.setDate(cutoff.getDate() - 7);
 
     const batch = writeBatch(db);
-    // history: เขียน entry ใหม่ + ลบ entries เก่ากว่า 7 วัน (ทุกเครื่อง sync ผ่าน Firestore listener)
+    // history: เขียน entry ใหม่ + ลบ entries ที่เก่ากว่า retention (ครบ 30 วันพอดียังอยู่)
     batch.set(doc(db, 'history', docId), entry);
-    history.filter(h => h.id && new Date(h.clearedAt) <= cutoff).forEach(h => {
+    history.filter(h => h.id && isHistoryExpired(h.clearedAt, now, HISTORY_RETENTION_DAYS)).forEach(h => {
       batch.delete(doc(db, 'history', h.id));
     });
     // ล้าง boxes / items / progress / receive (เดิม)
@@ -388,17 +406,42 @@ export default function App() {
     Object.keys(itemsByBoxRef.current).forEach(id => batch.delete(doc(db, 'boxItems', id)));
     Object.keys(scanProgress).forEach(id => batch.delete(doc(db, 'progress', id)));
     batch.delete(doc(db, 'config', 'receive'));
-    batch.commit();
+    try {
+      await batch.commit();
+    } catch (err) {
+      console.error('clearBoxes failed:', err.code, err.message);
+      showToast('⚠ เริ่มวันถัดไปไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+      return;
+    }
 
     // Optimistic local update — Firestore listener จะ overwrite ใน sync ครั้งถัดไป
-    setHistory(prev => [{ ...entry, id: docId }, ...prev.filter(h => new Date(h.clearedAt) > cutoff)]);
+    setHistory(prev => [
+      { ...entry, id: docId },
+      ...prev.filter(h => h.id !== docId && !isHistoryExpired(h.clearedAt, now, HISTORY_RETENTION_DAYS)),
+    ]);
     boxesRef.current = [];
     itemsByBoxRef.current = {};
     receiveBoxIdsRef.current = [];
     _setBoxes([]);
     _setItemsByBox({});
     _setReceiveBoxIds([]);
-    showToast('ล้างข้อมูลแล้ว · เก็บประวัติไว้ 7 วัน');
+    showToast(`ล้างข้อมูลแล้ว · เก็บประวัติไว้ ${HISTORY_RETENTION_DAYS} วัน`);
+  }
+
+  async function deleteHistoryEntry(historyId) {
+    const removed = history.find(entry => entry.id === historyId);
+    if (!removed) return;
+    setHistory(prev => prev.filter(entry => entry.id !== historyId));
+    try {
+      await deleteDoc(doc(db, 'history', historyId));
+      showToast('ลบประวัติแล้ว ✓', 'success');
+    } catch (err) {
+      console.error('deleteHistoryEntry failed:', err.code, err.message);
+      setHistory(prev => prev.some(entry => entry.id === historyId)
+        ? prev
+        : [...prev, removed].sort((a, b) => new Date(b.clearedAt) - new Date(a.clearedAt)));
+      showToast('⚠ ลบประวัติไม่สำเร็จ รายการถูกคืนแล้ว', 'error');
+    }
   }
 
   // ลบลังเดียว (Outbound) — กรณียกเลิกรายการเบิก; ห้ามลบลังที่สาขารับแล้ว (เสีย audit trail การรับสินค้า)
@@ -462,7 +505,7 @@ export default function App() {
       _setItemsByBox({});
       _setReceiveBoxIds([]);
       setCatalog([]);
-      setCatalogByPacker({});
+      setZoneAssignments({});
       setBarcodeMap({});
       setFactorMap({});
       setNameMap({});
@@ -510,14 +553,6 @@ export default function App() {
 
   const showAll = false;
 
-  const PACKERS = [
-    { code: 'EMP-01', name: 'มุก' },
-    { code: 'EMP-02', name: 'แล็ค' },
-    { code: 'EMP-03', name: 'พี' },
-    { code: 'EMP-04', name: 'ตั๋ง' },
-  ];
-
-  const [catalogByPacker, setCatalogByPacker] = useState({});
   const [barcodeMap, setBarcodeMap] = useState({});
   const [factorMap, setFactorMap] = useState({}); // {sku__unit: ตัวคูณหน่วยฐาน} จาก R05.106 ColH — ใช้แปลงหน่วย picklist↔หน่วยที่สแกน
   const [nameMap, setNameMap] = useState({}); // {sku: ชื่อสินค้า} จาก R05.106 ColF — แหล่งชื่อสำรองตอนสแกนสินค้านอก Picklist (Outbound); คงเป็น {} บน Android (ไม่ subscribe)
@@ -528,6 +563,12 @@ export default function App() {
   const [costMapMeta, setCostMapMeta] = useState(null);
   const [lotMapMeta, setLotMapMeta] = useState(null);
   const [zoneAssignments, setZoneAssignments] = useState({});
+  // ใช้ Catalog + Zone Assignments สดเป็น source of truth; config/catalogByPacker
+  // เป็น cache สำหรับ client รุ่นเก่าเท่านั้นและไม่ถูกอ่านกลับใน client รุ่นนี้
+  const catalogByPacker = useMemo(
+    () => computeCatalogByPacker(catalog, zoneAssignments, PACKERS),
+    [catalog, zoneAssignments],
+  );
   const [showZoneAssign, setShowZoneAssign] = useState(false);
   const [showPicklistView, setShowPicklistView] = useState(false); // popup 📋 ดูรายการ Picklist (desktop, tab list)
 
@@ -606,7 +647,7 @@ export default function App() {
         console.log('3) แต่ละพนักงานเห็นเลขอะไรบนจอ (สูตรเดียวกับ PackScanC):');
         const perPacker = [];
         for (const p of PACKERS) {
-          const packCatalog = catalogByPacker[p.code] || catalog;
+          const packCatalog = catalogByPacker[p.code] ?? [];
           const assigned = packCatalog.filter(c => c.sku === s);
           if (assigned.length === 0) { perPacker.push({ พนักงาน: p.name, สถานะ: 'ไม่ได้รับ SKU นี้' }); continue; }
           // ลังของคนนี้ที่ปิด/ส่งออก/รับแล้ว และมี SKU นี้ = ตัวหักของสูตร
@@ -708,15 +749,9 @@ export default function App() {
     const matched = updated.filter(it => it.barcode).length; // จำนวนรายการเบิกที่ได้ barcode หลัง merge
     setCatalog(updated);
     setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(catalogMeta ? { _meta: catalogMeta } : {}) });
-    setCatalogByPacker(prev => {
-      const result = {};
-      for (const code of Object.keys(prev)) {
-        result[code] = applyBarcodeMap(prev[code], map);
-      }
-      setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result })
-        .catch(err => { console.error('Firestore catalogByPacker write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code, 'error'); });
-      return result;
-    });
+    const result = computeCatalogByPacker(updated, zoneAssignments, PACKERS);
+    setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result })
+      .catch(err => { console.error('Firestore catalogByPacker write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code, 'error'); });
     showToast(`Barcode map: ${matched} รายการ matched ✓`);
   }
 
@@ -757,42 +792,15 @@ export default function App() {
       });
   }
 
-  function distributeCatalog(items) {
-    const shuffled = [...items].sort(() => Math.random() - 0.5);
-    const result = Object.fromEntries(PACKERS.map(p => [p.code, []]));
-    shuffled.forEach((item, i) => {
-      result[PACKERS[i % PACKERS.length].code].push(item);
-    });
-    for (const code of Object.keys(result)) {
-      result[code].sort((a, b) => items.indexOf(a) - items.indexOf(b));
-    }
-    setCatalogByPacker(result);
-    setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
-  }
-
-  function computeCatalogByPacker(items, assignments) {
-    const result = {};
-    PACKERS.forEach(p => {
-      const zones = assignments[p.code] || [];
-      // zoneOfItem = แหล่งเดียว (units.js ใช้ร่วมกับ ZoneAssign)
-      // → รายการเบิกด่วนเข้า NOLOC_ZONE เสมอโดยไม่อ่าน Col G; โซนปกติยังอ่าน location เหมือนเดิม
-      result[p.code] = zones.length > 0
-        ? items.filter(item => zones.includes(zoneOfItem(item)))
-        : items;
-    });
-    return result;
-  }
-
   function handleZoneAssign(assignments) {
     setZoneAssignments(assignments);
     setDoc(doc(db, 'config', 'zoneAssignments'), { assignments });
-    const result = computeCatalogByPacker(catalog, assignments);
-    setCatalogByPacker(result);
+    const result = computeCatalogByPacker(catalog, assignments, PACKERS);
     setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
-  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   // Gate: ยังไม่ login → แสดงหน้า Login (ทั้ง Android + Desktop)
   if (!profile) {
@@ -906,9 +914,9 @@ export default function App() {
                   // ทุกเครื่อง → ลังใหม่ของงานปกติได้ branch null (สาขาสแกนรับไม่ได้) — เบิกด่วนไม่ใช่เจ้าของ _meta
                   const metaToWrite = opts?.urgent ? catalogMeta : meta;
                   // ใช้โซนที่กำหนดไว้เดิมกับ Picklist ใหม่ทันที — ไม่ต้องเข้าไปกดบันทึกโซนซ้ำทุกครั้งที่อัปโหลด
-                  const result = computeCatalogByPacker(updated, zoneAssignments);
+                  const result = computeCatalogByPacker(updated, zoneAssignments, PACKERS);
                   // guard 1MB/doc ก่อนแตะ state ใด ๆ — ครอบทั้ง append + replace (ไฟล์ปกติยักษ์ก็พังแบบเดียวกัน)
-                  // catalogByPacker เกินง่ายกว่า catalog: duplicate รายการต่อพนักงาน (คนไม่มีโซนได้ทั้ง catalog)
+                  // catalogByPacker ยังอาจมีขนาดใกล้ catalog ทั้งก้อน จึง guard แยกจาก catalog เสมอ
                   const catalogBytes = approxDocBytes({ items: updated, ...(metaToWrite ? { _meta: metaToWrite } : {}) });
                   const byPackerBytes = approxDocBytes({ assignments: result });
                   if (catalogBytes > CATALOG_DOC_LIMIT || byPackerBytes > CATALOG_DOC_LIMIT) {
@@ -919,7 +927,6 @@ export default function App() {
                   setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(metaToWrite ? { _meta: metaToWrite } : {}) })
                     .then(() => console.log('Firestore catalog saved', updated.length, 'items'))
                     .catch(err => { console.error('Firestore catalog write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code); });
-                  setCatalogByPacker(result);
                   setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result })
                     .catch(err => { console.error('Firestore catalogByPacker write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code, 'error'); });
                   showToast(opts?.urgent
@@ -1012,7 +1019,7 @@ export default function App() {
             </div>
 
             {packer ? (
-              <PackScanC key={`${packer.code}-${catalogSig(catalogByPacker[packer.code] || catalog)}`} {...screenProps} catalog={catalogByPacker[packer.code] || catalog} onScanProgress={handleScanProgress} catalogMeta={catalogMeta} />
+              <PackScanC key={`${packer.code}-${catalogSig(catalogByPacker[packer.code] ?? [])}`} {...screenProps} catalog={catalogByPacker[packer.code] ?? []} onScanProgress={handleScanProgress} catalogMeta={catalogMeta} />
             ) : (
               <div style={{
                 border: '2px dashed var(--line)', borderRadius: 14,

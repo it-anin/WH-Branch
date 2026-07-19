@@ -5,6 +5,7 @@ import { playScanSuccess, playScanFail, playOutOfStock, playShortSupply } from '
 // ตัวคูณหน่วยฐาน + สูตร need มาจาก units.js ที่เดียว (เดิมไฟล์นี้ประกาศซ้ำเองแล้วต้องแก้ 2 ที่ให้ตรงกัน)
 // buildPackItems = สูตรเดียวกับที่ __wh.audit ใช้ตรวจสอบ → เลขบนจอพนักงานกับผลตรวจสอบตรงกันเสมอ
 import { lookupFactor, buildPackItems } from '../units.js';
+import { findIncompletePackTarget } from '../warehouseHelpers.js';
 
 const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
@@ -493,10 +494,11 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
       return;
     }
     const barcode = val.trim();
-    const catMatch = catalog.find(it => matchBarcode(it, barcode));
-    if (!catMatch) { playScanFail(); showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
-    const match = items.find(it => it.sku === catMatch.sku && it.unit === catMatch.unit);
-    if (!match || match.gotBase >= match.need) { playScanFail(); showToast('⚠ ครบแล้ว', 'error'); return; }
+    const hasCatalogMatch = catalog.some(it => matchBarcode(it, barcode));
+    if (!hasCatalogMatch) { playScanFail(); showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
+    const scanTarget = findIncompletePackTarget(catalog, items, barcode, matchBarcode);
+    if (!scanTarget) { playScanFail(); showToast('⚠ ครบแล้ว', 'error'); return; }
+    const { catalogItem: catMatch, target: match } = scanTarget;
 
     // catMatch.barcode อาจเป็น comma-separated หลายตัวต่อ SKU (ดู matchBarcode ใน data.js) — เก็บตัวที่สแกนจริงไว้ export
     const scannedBarcode = catMatch.barcode.split(',').map(b => b.trim()).includes(barcode)
@@ -522,7 +524,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     // key ด้วย (lot + unit) — SKU เดียวสแกนปนหน่วย (เช่น แพ็ค + ลัง) ต้องแยก entry ไม่รวมทับหน่วย/บาร์โค้ดเป็นตัวล่าสุด
     const idx = next.findIndex(l => l.lot === lot && (l.unit || '') === (unit || ''));
     if (idx >= 0) {
-      next[idx] = { ...next[idx], qty: next[idx].qty + 1, ...(exp ? { exp } : {}), ...(scannedBarcode ? { scannedBarcode } : {}), ...(unit ? { unit } : {}) };
+      const updated = { ...next[idx], qty: next[idx].qty + 1, ...(exp ? { exp } : {}), ...(scannedBarcode ? { scannedBarcode } : {}), ...(unit ? { unit } : {}) };
+      next.splice(idx, 1);
+      next.push(updated); // เก็บกลุ่มที่สแกนล่าสุดไว้ท้าย array เพื่อให้ปุ่ม +/- ใช้ LIFO ได้จริง
     } else {
       next.push({ lot: lot || '', qty: 1, exp: exp || '', scannedBarcode: scannedBarcode || '', unit: unit || '' });
     }
@@ -550,7 +554,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
       }, HOLD_MS);
     }
     const newItems = items.map(it =>
-      it.sku === match.sku && it.unit === match.unit
+      it === match
         ? {
             ...it,
             got: it.got + 1,                      // จำนวนครั้งที่สแกน (ไว้ export ตามหน่วยที่สแกน)

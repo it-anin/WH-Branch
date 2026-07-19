@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "node --test tests/warehouse-p1.test.js tests/warehouse-p2-p3.test.js tests/branch-lot-exp.test.js",
+    "test:emulator": "node --test tests/firestore-emulator.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

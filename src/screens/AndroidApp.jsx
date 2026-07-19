@@ -37,7 +37,7 @@ export default function AndroidApp({
 }) {
   const branch = profile; // location = โปรไฟล์ที่ login (คลัง/สาขา) — Login แทน picker ขั้นที่ 1 เดิม
   const [branchStaff, setBranchStaff] = useState(null);
-  const packCatalog = packer ? (catalogByPacker[packer.code] || screenProps.catalog) : screenProps.catalog;
+  const packCatalog = packer ? (catalogByPacker[packer.code] ?? []) : screenProps.catalog;
   const isWarehouse = branch?.warehouse === true;
 
   // staff ขึ้นกับโหมด: WAREHOUSE → packers (lifted ที่ App.jsx), สาขา → branch.staff (local)

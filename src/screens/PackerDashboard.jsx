@@ -666,7 +666,7 @@ function Doughnut({ pct, size = 130, stroke = 14, color }) {
 }
 
 export default function PackerDashboard({ catalogByPacker, boxes, itemsByBox, PACKERS, scanProgress = {} }) {
-  const hasCatalog = Object.keys(catalogByPacker).length > 0;
+  const hasCatalog = Object.values(catalogByPacker).some(items => items.length > 0);
 
   const packerStats = PACKERS.map((p, i) => {
     const assigned = catalogByPacker[p.code] || [];

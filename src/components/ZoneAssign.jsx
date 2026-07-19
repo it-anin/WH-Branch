@@ -1,6 +1,11 @@
 import { useState } from 'react';
 // zoneOfItem = แหล่งเดียวของ logic โซน (ตรงกับ computeCatalogByPacker ใน App.jsx เสมอ)
 import { zoneOfItem, NOLOC_ZONE } from '../units.js';
+import {
+  assignZoneExclusively,
+  computeCatalogByPacker,
+  normalizeExclusiveZoneAssignments,
+} from '../warehouseHelpers.js';
 
 // label ของโซนพิเศษ "ไม่มี location" (Picklist เบิกด่วน) — ตัวโซนจริงใช้ชื่อดิบ
 const zoneLabel = (z) => z === NOLOC_ZONE ? '📌 เบิกด่วน' : z;
@@ -27,19 +32,21 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
     packers.forEach(p => { init[p.code] = zoneAssignments[p.code] || []; });
     return init;
   });
+  const [saveError, setSaveError] = useState('');
 
   function toggle(packerCode, zone) {
-    setAssignments(prev => {
-      const cur = prev[packerCode] || [];
-      const next = cur.includes(zone) ? cur.filter(z => z !== zone) : [...cur, zone].sort();
-      return { ...prev, [packerCode]: next };
-    });
+    setSaveError('');
+    setAssignments(prev => assignZoneExclusively(
+      prev,
+      packerCode,
+      zone,
+      !(prev[packerCode] || []).includes(zone),
+    ));
   }
 
+  const distributed = computeCatalogByPacker(catalog, assignments, packers);
   function countItems(packerCode) {
-    const assigned = assignments[packerCode] || [];
-    if (assigned.length === 0) return 0;
-    return catalog.filter(item => assigned.includes(zoneOfItem(item))).length;
+    return distributed[packerCode]?.length || 0;
   }
 
   const totalAssigned = packers.reduce((sum, p) => sum + countItems(p.code), 0);
@@ -50,8 +57,8 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
     const a = assignments[p.code] || [];
     return a.includes(NOLOC_ZONE) && a.length > 1;
   });
-  // เตือนถ้า tick 📌เบิกด่วน เกิน 1 คน — computeCatalogByPacker ให้แต่ละคนได้รายการด่วน "เต็มชุด" (ซ้ำ ไม่แบ่ง)
-  // → 2 คนต่างเห็นเต็ม + buildPackItems หักเฉพาะลังตัวเอง → แพ็คซ้ำ สาขารับเกิน; กติกาจริง = เบิกด่วน 1 คนต่อรอบ
+  // ตรวจ assignment เก่าที่เคย tick 📌เบิกด่วนซ้ำหลายคน — toggle ใหม่เป็น exclusive แล้ว
+  // และตอนบันทึกจะ normalize ให้พนักงานลำดับแรกเป็นเจ้าของเพียงคนเดียว
   const multiUrgent = packers.filter(p => (assignments[p.code] || []).includes(NOLOC_ZONE));
 
   return (
@@ -124,13 +131,25 @@ export default function ZoneAssign({ catalog, packers, zoneAssignments, onSave, 
             {multiUrgent.length > 1 && (
               <p style={{ marginTop: 8, fontSize: 12, color: 'var(--red)' }}>
                 ⚠ {multiUrgent.map(p => p.name).join(', ')} ถูก tick 📌เบิกด่วน พร้อมกัน —
-                ระบบจะให้ทั้งคู่ได้รายการด่วน<b>เต็มชุด (ซ้ำ)</b> เสี่ยงแพ็คซ้ำ/สาขารับเกิน · เบิกด่วนควรกำหนดให้พนักงาน 1 คนต่อรอบ
+                เป็นค่าซ้ำจากข้อมูลเดิม · เมื่อบันทึก ระบบจะเก็บโซนนี้ให้พนักงานลำดับแรกเพียงคนเดียว
+              </p>
+            )}
+            {saveError && (
+              <p style={{ marginTop: 8, fontSize: 12, color: 'var(--red)', fontWeight: 700 }}>
+                {saveError}
               </p>
             )}
 
             <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn sm" onClick={onClose}>ยกเลิก</button>
-              <button className="btn sm primary" onClick={() => { onSave(assignments); onClose(); }}>
+              <button className="btn sm primary" onClick={() => {
+                if (totalAssigned === 0) {
+                  setSaveError('⚠ กรุณากำหนดอย่างน้อย 1 โซนที่มีสินค้าให้พนักงานก่อนบันทึก');
+                  return;
+                }
+                onSave(normalizeExclusiveZoneAssignments(assignments, packers));
+                onClose();
+              }}>
                 บันทึก
               </button>
             </div>

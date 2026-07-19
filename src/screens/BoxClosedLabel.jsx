@@ -4,43 +4,7 @@ import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
 import { fixItemName, lookupFactor } from '../units.js';
 import { branchLabel } from '../branches.js';
-
-// พนักงาน Android กรอก Exp เป็น ค.ศ. (ตรงกับที่พิมพ์บนสินค้าจริง) แต่ไฟล์ Text ต้องเป็น พ.ศ. — แปลงตอน export
-// ปี < 2400 ถือว่าเป็น ค.ศ. (+543) — ลังเก่าก่อนเปลี่ยน label ที่กรอกเป็น พ.ศ. ไว้แล้ว (ปี >= 2400) จะไม่ถูกแปลงซ้ำ
-function toBuddhistExp(exp) {
-  if (!exp) return '';
-  const [d, m, y] = exp.split('/');
-  const yNum = Number(y);
-  if (!yNum) return exp;
-  return yNum < 2400 ? `${d}/${m}/${yNum + 543}` : exp;
-}
-
-// แตก item เป็นแถวต่อ LOT จริงที่พนักงานแพ็คสแกน (ดู scannedLots ใน PackScanC) — ใช้ร่วมทั้งตารางพรีวิว + ไฟล์ Text ให้ข้อมูลตรงกันเป๊ะ
-// exp คืนค่า ค.ศ. ดิบตามที่กรอก (ยังไม่แปลง พ.ศ. — export ค่อยแปลงเองตอนประกอบบรรทัด); ลังเก่าไม่มี scannedLots → แถวเดียวจาก l.lot/l.qty/l.exp
-function lotRows(l, lotMap) {
-  const fallbackBarcode = l.scannedBarcode || l.barcode || '';
-  const fallbackUnit = l.scannedUnit || l.unit || ''; // หน่วยที่สแกนจริง (เช่นกล่อง) ต่างจากหน่วย picklist (โหล) — ใช้คิดทุน/แสดงหน่วย
-  const fallbackLots = lotMap[l.sku] || [];
-  // exp fallback: ลังที่แพ็คก่อนมีไฟล์ LOT+EXP ไม่มี exp ติดมากับ scannedLots → เติมจาก lotMap ตาม lot ที่ตรงกัน (ได้ EXP ย้อนหลัง)
-  const lotExp = (lot) => fallbackLots.find(f => f.lot === lot)?.exp || '';
-  if (l.scannedLots && l.scannedLots.length > 0) {
-    return l.scannedLots.map(({ lot, qty, exp, scannedBarcode, unit }) => ({
-      barcode: scannedBarcode || fallbackBarcode,
-      qty,
-      lot,
-      exp: exp || lotExp(lot),
-      unit: unit || fallbackUnit,
-    }));
-  }
-  const fbLot = l.lot || fallbackLots[0]?.lot || '';
-  return [{
-    barcode: fallbackBarcode,
-    qty: l.qty ?? l.got ?? 0,
-    lot: fbLot,
-    exp: l.exp || lotExp(fbLot),
-    unit: fallbackUnit,
-  }];
-}
+import { adjustPackedItem, buildLotRows, toBuddhistExpiry } from '../warehouseHelpers.js';
 
 // reverse-lookup barcode → unit สำหรับ SKU นั้น (ใช้ใน edit mode เพื่ออัปเดต unit อัตโนมัติเมื่อสแกน barcode)
 function lookupUnitByBarcode(barcodeMap, sku, barcode) {
@@ -278,10 +242,10 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     const lines = boxItems.flatMap(l =>
       // โครงสร้าง POS: barcode TAB qty TAB cost + 6 TAB + lot TAB exp — exp แปลง ค.ศ.→พ.ศ. ตอนนี้
       // ทุน = costMap[sku__หน่วยที่สแกนจริง] (เช่นสแกนกล่อง → ทุนต่อกล่อง) ไม่ใช่หน่วย picklist
-      lotRows(l, lotMap).map(r => {
+      buildLotRows(l, lotMap).map(r => {
         const rawCost = costMap[`${l.sku}__${r.unit || l.unit}`] ?? 0;
         const cost = markup === 1 ? rawCost : Math.round(rawCost * markup * 100) / 100; // ปัด 2 ตำแหน่ง (เงิน)
-        return `${r.barcode}\t${r.qty}\t${cost}\t\t\t\t\t\t${r.lot}\t${toBuddhistExp(r.exp)}`;
+        return `${r.barcode}\t${r.qty}\t${cost}\t\t\t\t\t\t${r.lot}\t${toBuddhistExpiry(r.exp)}`;
       })
     );
     triggerDownload(lines.join('\n'), `${activeBox.id}.txt`, 'text/plain');
@@ -317,10 +281,10 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   }
 
   // แก้ไขจำนวนสินค้าในลังที่มีปัญหา (+/-)
-  function adjustQty(sku, delta) {
+  function adjustQty(rowIndex, delta) {
     if (!activeBox) return;
     const items = itemsByBox?.[activeBox.id] || [];
-    const next = items.map(l => l.sku === sku ? { ...l, qty: Math.max(0, (l.qty ?? l.got ?? 0) + delta) } : l);
+    const next = adjustPackedItem(items, rowIndex, delta, factorMap);
     setItemsByBox(prev => ({ ...prev, [activeBox.id]: next }));
   }
 
@@ -343,9 +307,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     const dateStr = `${dd}/${mm}/${yyyy}`;
     const headers = ['เลขที่ลังสินค้า', 'เลขที่เอกสาร', 'SKU', 'ชื่อสินค้า', 'Barcode', 'หน่วย', 'จำนวน', 'พนักงานแพ็คสินค้า', 'วันที่ส่งสินค้า'];
     const dataRows = closedBoxes.flatMap(b =>
-      // แตกแถวตาม (LOT + หน่วย) ด้วย lotRows — SKU เดียวสแกนปนหน่วย (แพ็ค + ลัง) แยกคนละแถว บาร์โค้ด/จำนวน/หน่วยของตัวเอง
+      // แตกแถวตาม (LOT + หน่วย) ด้วย buildLotRows — SKU เดียวสแกนปนหน่วย (แพ็ค + ลัง) แยกคนละแถว บาร์โค้ด/จำนวน/หน่วยของตัวเอง
       (itemsByBox?.[b.id] || []).map(l => fixItemName(l, nameMap)).flatMap(l =>
-        lotRows(l, lotMap).map(r => [
+        buildLotRows(l, lotMap).map(r => [
           b.id,
           b.pos && b.pos !== '—' ? b.pos : '',
           l.sku,
@@ -453,7 +417,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
   function handleSaveEdit() {
     if (!selectedId) return;
-    // clear scannedLots — view mode ใช้ lotRows() ซึ่งจะอ่าน qty จาก scannedLots[].qty ก่อน (ไม่ใช่ l.qty)
+    // clear scannedLots — view mode ใช้ buildLotRows() ซึ่งจะอ่าน qty จาก scannedLots[].qty ก่อน (ไม่ใช่ l.qty)
     // การล้าง scannedLots ทำให้ view mode ใช้ fallback path (l.qty / l.lot / l.exp) ที่ผู้ใช้เพิ่งแก้ไขไว้
     //
     // ⚠ ต้องคำนวณ gotBase ใหม่ด้วย — ฝั่งสาขาอ่าน getNeeded = gotBase ?? qty ?? got (เอา gotBase ก่อนเสมอ)
@@ -748,8 +712,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                         </tr>
                       </thead>
                       <tbody>
-                        {boxItems.map(l => (
-                          <tr key={l.sku}>
+                        {boxItems.map((l, rowIndex) => (
+                          <tr key={`${l.sku}__${l.unit || ''}__${rowIndex}`}>
                             <td>
                               <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
                               <div style={{ fontFamily: 'JetBrains Mono', fontSize: 15 }}>{l.name}</div>
@@ -757,9 +721,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                             <td style={{ fontFamily: 'JetBrains Mono' }}>{l.scannedUnit || l.unit}</td>
                             <td>
                               <div className="row" style={{ gap: 8, justifyContent: 'center', alignItems: 'center' }}>
-                                <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--red)', color: 'var(--red)', fontWeight: 700 }} onClick={() => adjustQty(l.sku, -1)}>−</button>
+                                <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--red)', color: 'var(--red)', fontWeight: 700 }} onClick={() => adjustQty(rowIndex, -1)}>−</button>
                                 <span style={{ fontFamily: 'system-ui', fontSize: 24, fontWeight: 700, minWidth: 30, textAlign: 'center' }}>{l.qty ?? l.got ?? 0}</span>
-                                <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--green)', color: 'var(--green)', fontWeight: 700 }} onClick={() => adjustQty(l.sku, +1)}>+</button>
+                                <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--green)', color: 'var(--green)', fontWeight: 700 }} onClick={() => adjustQty(rowIndex, +1)}>+</button>
                               </div>
                             </td>
                           </tr>
@@ -939,7 +903,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 <div style={{ border: '1.5px solid var(--line)', borderRadius: 8, overflow: 'auto', maxHeight: 320, background: 'white' }}>
                   {boxItems.length > 0 ? (() => {
                     const tableRows = boxItems.flatMap(l =>
-                      lotRows(l, lotMap).map(r => ({ ...r, sku: l.sku, name: l.name, unit: r.unit || l.unit, location: l.location }))
+                      buildLotRows(l, lotMap).map(r => ({ ...r, sku: l.sku, name: l.name, unit: r.unit || l.unit, location: l.location }))
                     );
                     const hasExp = tableRows.some(r => r.exp);
                     return (
