@@ -181,8 +181,16 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
         `ยืนยันอัปโหลดรายการเบิกด่วน?`
       );
       if (!ok) return;
+      const d = new Date();
+      const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+      const fileName = file.name.replace(/\.(csv|xlsx|xls)$/i, '');
       // ไม่ setBranch/setFileDate — badge ปุ่ม 1 ยังโชว์ Picklist ปกติของวัน (เบิกด่วนไม่ใช่เจ้าของ _meta)
-      onImport(items.map(it => ({ ...it, branch: b, urgent: true })), null, { urgent: true, branch: b });
+      onImport(items.map(it => ({ ...it, branch: b, urgent: true })), null, {
+        urgent: true,
+        branch: b,
+        fileDate: fd,
+        fileName,
+      });
     });
   }
 

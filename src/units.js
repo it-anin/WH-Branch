@@ -93,6 +93,51 @@ export function resolveBoxBranch(packCatalog, metaBranch) {
   return branches.length === 1 ? branches[0] : fallback;
 }
 
+// ชื่อ Picklist บนจอแพ็คต้องมาจาก "รายการที่พนักงานคนนี้ได้รับจริง"
+// ไม่ใช่ catalogMeta ของไฟล์ปกติทั้งระบบ เพราะพนักงานเบิกด่วนอาจแพ็คให้คนละสาขา
+export function resolvePackPicklistDisplay(packCatalog, catalogMeta) {
+  const items = packCatalog || [];
+  if (items.length === 0) return null;
+
+  const urgentOnly = items.every(isUrgentItem);
+  const normalOnly = items.every(item => !isUrgentItem(item));
+
+  if (urgentOnly) {
+    const branches = [...new Set(items.map(item => item.branch).filter(Boolean))];
+    const branch = branches.length === 1 ? branches[0] : null;
+    const urgentMeta = catalogMeta?.urgent;
+    const matchingMeta = urgentMeta && (!branch || urgentMeta.branch === branch) ? urgentMeta : null;
+    return {
+      branch,
+      urgent: true,
+      mixed: branches.length > 1,
+      label: matchingMeta?.fileName
+        || (branch ? `Picklist_${branch}_เบิกด่วน` : 'Picklist_เบิกด่วน'),
+      fileDate: matchingMeta?.fileDate || null,
+    };
+  }
+
+  if (normalOnly) {
+    const branch = catalogMeta?.branch || null;
+    return {
+      branch,
+      urgent: false,
+      mixed: false,
+      label: branch ? `Picklist_${branch}` : 'Picklist',
+      fileDate: catalogMeta?.fileDate || null,
+    };
+  }
+
+  // Assignment ที่ปนงานปกติกับเบิกด่วนต้องไม่แอบอ้างชื่อไฟล์ปกติไฟล์เดียว
+  return {
+    branch: null,
+    urgent: false,
+    mixed: true,
+    label: 'หลาย Picklist',
+    fileDate: null,
+  };
+}
+
 // เติมชื่อสินค้าจาก nameMap (R05.106 ColF) เมื่อ item ไม่มีชื่อ หรือชื่อเป็นเลข SKU
 // (แถวเก่าที่ lookupByScan เดิม fallback เป็น sku ตอนสแกนสินค้านอก Picklist) — heal ตอน render ไม่แตะข้อมูลใน Firestore
 // nameMap ว่าง (เช่นบน Android ที่ไม่ subscribe) → คืน object เดิมทั้ง reference = no-op สมบูรณ์

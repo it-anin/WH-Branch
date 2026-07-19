@@ -928,7 +928,16 @@ export default function App() {
                   const updated = opts?.urgent ? [...catalog.filter(it => !isUrgentItem(it)), ...mapped] : mapped;
                   // ⚠ setDoc ทับทั้ง doc — โหมดเบิกด่วนต้องเขียน _meta "เดิม" กลับไปด้วย ไม่งั้น catalogMeta หาย
                   // ทุกเครื่อง → ลังใหม่ของงานปกติได้ branch null (สาขาสแกนรับไม่ได้) — เบิกด่วนไม่ใช่เจ้าของ _meta
-                  const metaToWrite = opts?.urgent ? catalogMeta : meta;
+                  const metaToWrite = opts?.urgent
+                    ? {
+                        ...(catalogMeta || {}),
+                        urgent: {
+                          branch: opts.branch || null,
+                          fileDate: opts.fileDate || null,
+                          fileName: opts.fileName || null,
+                        },
+                      }
+                    : meta;
                   // ใช้โซนที่กำหนดไว้เดิมกับ Picklist ใหม่ทันที — ไม่ต้องเข้าไปกดบันทึกโซนซ้ำทุกครั้งที่อัปโหลด
                   const result = computeCatalogByPacker(updated, zoneAssignments, PACKERS);
                   // guard 1MB/doc ก่อนแตะ state ใด ๆ — ครอบทั้ง append + replace (ไฟล์ปกติยักษ์ก็พังแบบเดียวกัน)

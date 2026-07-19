@@ -4,7 +4,7 @@ import { generatePOS, matchBarcode } from '../data.js';
 import { playScanSuccess, playScanFail, playOutOfStock, playShortSupply } from '../sound.js';
 // ตัวคูณหน่วยฐาน + สูตร need มาจาก units.js ที่เดียว (เดิมไฟล์นี้ประกาศซ้ำเองแล้วต้องแก้ 2 ที่ให้ตรงกัน)
 // buildPackItems = สูตรเดียวกับที่ __wh.audit ใช้ตรวจสอบ → เลขบนจอพนักงานกับผลตรวจสอบตรงกันเสมอ
-import { lookupFactor, buildPackItems } from '../units.js';
+import { lookupFactor, buildPackItems, resolvePackPicklistDisplay } from '../units.js';
 import { findIncompletePackTarget } from '../warehouseHelpers.js';
 
 const PAGE_SIZE = 30;
@@ -351,6 +351,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
   // โมเดลหน่วยฐาน: need/gotBase คิดเป็น "หน่วยฐาน" (factor=1) ส่วน got = จำนวนครั้งที่สแกน (ไว้ export ตามหน่วยที่สแกนจริง)
   // factorOf(sku, unit) = จำนวนหน่วยฐานต่อ 1 หน่วยนั้น เช่น โหล=12 → สแกนบาร์โค้ดโหล 1 ครั้ง = +12 หน่วยฐาน
   const factorOf = (sku, unit) => lookupFactor(factorMap, sku, unit);
+  const picklistDisplay = resolvePackPicklistDisplay(catalog, catalogMeta);
   // หน่วยที่สแกน → resolve จาก barcodeMap (รู้ว่าบาร์โค้ดตัวนี้เป็นหน่วยอะไรของ SKU) เพื่อบวก gotBase ด้วย factor ที่ถูกต้อง
   const skuBarcodeUnit = useMemo(() => {
     const m = {};
@@ -901,9 +902,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
           {isAndroid ? (
             <span style={{ fontSize: 11, color: 'var(--mute)', fontFamily: 'system-ui' }}>
               {showCatalogLoading ? 'กำลังโหลด…' : `เช็ค ${doneCount}/${visibleItems.length}`}
-              {catalogMeta && (
+              {picklistDisplay && (
                 <span style={{ marginLeft: 6 }}>
-                  · 📋 {catalogMeta.branch ? `Picklist_${catalogMeta.branch}` : 'Picklist'}{catalogMeta.fileDate ? ` ${catalogMeta.fileDate}` : ''}
+                  · 📋 {picklistDisplay.mixed ? '⚠ ' : ''}{picklistDisplay.label}{picklistDisplay.fileDate ? ` ${picklistDisplay.fileDate}` : ''}
                 </span>
               )}
             </span>

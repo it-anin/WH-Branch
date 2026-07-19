@@ -11,6 +11,7 @@ import {
   findIncompletePackTarget,
   normalizeExclusiveZoneAssignments,
 } from '../src/warehouseHelpers.js';
+import { resolvePackPicklistDisplay } from '../src/units.js';
 
 const matchesBarcode = (item, barcode) =>
   String(item.barcode || '').split(',').map(value => value.trim()).includes(barcode);
@@ -30,6 +31,52 @@ test('packing selects the next incomplete duplicate SKU+unit row in order', () =
   assert.equal(found.itemIndex, 2);
   items = items.map((item, index) => index === found.itemIndex ? { ...item, gotBase: 1 } : item);
   assert.equal(findIncompletePackTarget(catalog, items, '8850001', matchesBarcode), null);
+});
+
+test('urgent-only packer sees the urgent Picklist branch instead of normal catalog metadata', () => {
+  const display = resolvePackPicklistDisplay(
+    [
+      { sku: 'URG-1', urgent: true, branch: 'SSS' },
+      { sku: 'URG-2', urgent: true, branch: 'SSS' },
+    ],
+    { branch: 'ONN', fileDate: '19/7/2026' },
+  );
+
+  assert.equal(display.label, 'Picklist_SSS_เบิกด่วน');
+  assert.equal(display.branch, 'SSS');
+  assert.equal(display.fileDate, null);
+  assert.equal(display.mixed, false);
+});
+
+test('urgent Picklist display uses its own filename and date metadata', () => {
+  const display = resolvePackPicklistDisplay(
+    [{ sku: 'URG-1', urgent: true, branch: 'SSS' }],
+    {
+      branch: 'ONN',
+      fileDate: '18/7/2026',
+      urgent: {
+        branch: 'SSS',
+        fileDate: '19/7/2026',
+        fileName: 'Picklist_SSS_เบิกด่วน_19072026',
+      },
+    },
+  );
+
+  assert.equal(display.label, 'Picklist_SSS_เบิกด่วน_19072026');
+  assert.equal(display.fileDate, '19/7/2026');
+});
+
+test('mixed normal and urgent assignment never presents itself as one normal Picklist', () => {
+  const display = resolvePackPicklistDisplay(
+    [
+      { sku: 'NORMAL-1' },
+      { sku: 'URG-1', urgent: true, branch: 'SSS' },
+    ],
+    { branch: 'ONN', fileDate: '19/7/2026' },
+  );
+
+  assert.equal(display.label, 'หลาย Picklist');
+  assert.equal(display.mixed, true);
 });
 
 test('receiving aggregates duplicate SKU rows before exact/short/over checks', () => {
