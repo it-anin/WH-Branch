@@ -37,18 +37,19 @@ const QTY_EDIT_MIN = 10;
 function LotExpList({ rows = [], compact = false }) {
   if (rows.length === 0) return null;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: compact ? 2 : 4 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 1 : 2, marginTop: compact ? 1 : 4, minWidth: 0 }}>
       {rows.map((row, index) => (
         <div
           key={`${row.lot || ''}__${row.exp || ''}__${index}`}
           className="mono"
           style={{
-            fontSize: compact ? 9 : 10,
-            lineHeight: 1.25,
+            fontSize: compact ? 8 : 10,
+            lineHeight: compact ? 1.1 : 1.25,
+            letterSpacing: compact ? '-0.2px' : undefined,
             color: 'var(--accent)',
             fontWeight: 700,
-            whiteSpace: 'normal',
-            overflowWrap: 'anywhere',
+            whiteSpace: compact ? 'nowrap' : 'normal',
+            overflowWrap: compact ? 'normal' : 'anywhere',
           }}
         >
           LOT: {row.lot || '—'} · EXP: {row.exp || '—'}
@@ -151,7 +152,7 @@ function ScannedItemRow({ l, count, over, done, onRemove, blind = false, editabl
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
           <div style={{ fontFamily: 'system-ui', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</div>
-          <LotExpList rows={l.lotExpRows} />
+          <LotExpList rows={l.lotExpRows} compact />
         </div>
         <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', flexShrink: 0 }}>{unitOf(l)}</div>
         {editable ? (
