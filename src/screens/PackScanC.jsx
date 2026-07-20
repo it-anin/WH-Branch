@@ -4,7 +4,14 @@ import { generatePOS, matchBarcode } from '../data.js';
 import { playScanSuccess, playScanFail, playOutOfStock, playShortSupply } from '../sound.js';
 // ตัวคูณหน่วยฐาน + สูตร need มาจาก units.js ที่เดียว (เดิมไฟล์นี้ประกาศซ้ำเองแล้วต้องแก้ 2 ที่ให้ตรงกัน)
 // buildPackItems = สูตรเดียวกับที่ __wh.audit ใช้ตรวจสอบ → เลขบนจอพนักงานกับผลตรวจสอบตรงกันเสมอ
-import { lookupFactor, buildPackItems, resolvePackPicklistDisplay } from '../units.js';
+import {
+  boxMatchesPicklistRuns,
+  buildPackItems,
+  lookupFactor,
+  packItemIdentity,
+  resolvePackPicklistDisplay,
+  withBoxPicklistRunFields,
+} from '../units.js';
 import { findIncompletePackTarget } from '../warehouseHelpers.js';
 
 const PAGE_SIZE = 30;
@@ -173,7 +180,7 @@ function BoxHistoryModal({ boxes, itemsByBox, packer, onClose }) {
                     </thead>
                     <tbody>
                       {selectedItems.map((l, i) => (
-                        <tr key={l.sku}>
+                        <tr key={`${packItemIdentity(l)}-${i}`}>
                           <td style={{ color: 'var(--mute)', fontFamily: 'system-ui', fontSize: 18 }}>{i + 1}</td>
                           <td>
                             <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
@@ -229,7 +236,7 @@ function ItemCard({ c, done, partial, exiting, settled, onMarkOutOfStock }) {
 
   function confirmOutOfStock() {
     setConfirming(false);
-    onMarkOutOfStock(c.sku);
+    onMarkOutOfStock(packItemIdentity(c));
   }
   function cancelOutOfStock() {
     setConfirming(false);
@@ -391,6 +398,18 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     Object.values(holdTimeoutsRef.current).forEach(clearTimeout);
     Object.values(exitTimeoutsRef.current).forEach(clearTimeout);
   }, []);
+  // Catalog รอบใหม่ทำให้ component remount แต่ activeBoxId อยู่ที่ App และอาจยังชี้ลังรอบเก่า
+  // ปลดลังออกทันทีเพื่อกันสแกนสินค้ารอบใหม่ลงลัง/สาขาเดิม; ลังเดิมยังอยู่ในรายการให้คลังตรวจสอบได้
+  useEffect(() => {
+    if (!activeBoxId) return;
+    const activeBox = boxes.find(box => box.id === activeBoxId);
+    if (!activeBox) return;
+    const wrongPacker = activeBox.packer?.code && activeBox.packer.code !== packer?.code;
+    const staleRun = !boxMatchesPicklistRuns(activeBox, catalog, catalogMeta?.picklistRunId);
+    if (!wrongPacker && !staleRun) return;
+    setActiveBoxId(null);
+    showToast('Picklist เปลี่ยนรอบ · กรุณาเปิดลังใหม่ก่อนสแกน', 'warn');
+  }, [activeBoxId, boxes, catalog, catalogMeta?.picklistRunId, packer?.code, setActiveBoxId, showToast]);
   const barcodeRef = useRef(null);
 
   // Android: คืน focus กลับ barcode input หลัง render — ยกเว้นตอนที่ช่องค้นหาเปิดอยู่ หรือ popup เลือก/ใส่ LOT เปิดอยู่ (ต้องพิมพ์ในช่องนั้น)
@@ -400,7 +419,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
 
   const boxLabel = activeBoxId || (isAndroid ? 'ยังไม่เปิดลัง' : 'BX-????');
   // ซ่อนรายการที่ปัดทำเครื่องหมาย "ของหมด" แล้ว ออกจาก checklist ที่แสดง (ของจริงยังอยู่ใน items เพื่อรักษายอดที่แพ็คไปแล้ว)
-  const visibleItems = items.filter(it => !dismissedSkus.has(it.sku));
+  const visibleItems = items.filter(it => !dismissedSkus.has(packItemIdentity(it)));
   const filtered = search.trim()
     ? visibleItems.filter(it =>
         it.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -411,7 +430,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
   // ระหว่างค้างหน้าตรวจสอบ (holdingSkus) หรือกำลังเล่น slide-up (exitingSkus) ยังไม่ถูกเลื่อน — อยู่ตำแหน่งเดิมจนกว่า animation จบ
   const sorted = isAndroid
     ? [...filtered].sort((a, b) => {
-        const aKey = `${a.sku}__${a.unit}`, bKey = `${b.sku}__${b.unit}`;
+        const aKey = packItemIdentity(a), bKey = packItemIdentity(b);
         const aSettled = a.gotBase >= a.need && !holdingSkus.has(aKey) && !exitingSkus.has(aKey);
         const bSettled = b.gotBase >= b.need && !holdingSkus.has(bKey) && !exitingSkus.has(bKey);
         return (aSettled ? 1 : 0) - (bSettled ? 1 : 0);
@@ -488,6 +507,16 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
   // Logic กลาง — ใช้ทั้ง HID keyboard (handleBarcode) และ Broadcast wh-scan (useEffect)
   async function processBarcode(val) {
     if (!val?.trim() || isClosing || pendingLot || confirmOver) return;
+    const currentBox = activeBoxId ? boxes.find(box => box.id === activeBoxId) : null;
+    const wrongPacker = currentBox?.packer?.code && currentBox.packer.code !== packer?.code;
+    const staleRun = currentBox && !boxMatchesPicklistRuns(currentBox, catalog, catalogMeta?.picklistRunId);
+    const inactiveBox = currentBox && currentBox.status !== 'open' && currentBox.status !== 'packing';
+    if (wrongPacker || staleRun || inactiveBox) {
+      setActiveBoxId(null);
+      playScanFail();
+      showToast('⚠ Picklist เปลี่ยนรอบหรือลังเดิมไม่พร้อมใช้งาน · กรุณาเปิดลังใหม่', 'error');
+      return;
+    }
     // Android: บังคับกด "เปิดลัง" ก่อนสแกนเสมอ (เก็บ KPI เวลาเปิดลัง — ดู handleOpenBox/doClose) — Desktop ยัง auto-open เหมือนเดิม
     if (isAndroid && !activeBoxId) {
       playScanFail();
@@ -540,7 +569,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     playScanSuccess();
     // เพิ่งครบ (ก่อนสแกนนี้ยังไม่ครบ, หลังสแกนนี้ครบพอดี) → ค้างหน้าไว้ที่ตำแหน่งเดิม HOLD_MS ก่อน slide-up หาย (EXIT_MS) แล้วค่อยเลื่อนไปท้าย
     if (isAndroid && (match.gotBase || 0) < match.need && (match.gotBase || 0) + factor >= match.need) {
-      const key = `${match.sku}__${match.unit}`;
+      const key = packItemIdentity(match);
       setHoldingSkus(prev => new Set(prev).add(key));
       clearTimeout(holdTimeoutsRef.current[key]);
       clearTimeout(exitTimeoutsRef.current[key]);
@@ -609,12 +638,12 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
 
   // ปัด card ยืนยัน "ของหมด" — แช่ need ไว้ที่ got ปัจจุบัน (กันถูกดึงไปลังถัดไปซ้ำ) + ซ่อนออกจาก checklist
   // ของที่แพ็คไปแล้ว (got > 0) ยังนับใน packedItems ตอนปิดลังตามปกติ — ไม่เสียยอดที่สแกนไปแล้ว
-  function handleMarkOutOfStock(sku) {
-    const target = items.find(it => it.sku === sku);
+  function handleMarkOutOfStock(itemKey) {
+    const target = items.find(it => packItemIdentity(it) === itemKey);
     const hasScanned = (target?.gotBase ?? 0) > 0; // สแกนไปแล้วบางส่วน = ของไม่พอ, ยังไม่สแกน = ของหมด
-    const newItems = items.map(it => it.sku === sku ? { ...it, need: it.gotBase } : it);
+    const newItems = items.map(it => packItemIdentity(it) === itemKey ? { ...it, need: it.gotBase } : it);
     setItems(newItems);
-    setDismissedSkus(prev => new Set(prev).add(sku));
+    setDismissedSkus(prev => new Set(prev).add(itemKey));
     if (activeBoxId && onScanProgress) onScanProgress(activeBoxId, newItems);
     // บันทึกไว้ตรวจย้อนหลัง (dismissals/) — การปัดเป็น local state ล้วน ไม่งั้นไม่เหลือร่องรอยเลยว่าใครปัดอะไรทิ้ง
     // ⚠ try/catch จำเป็น ไม่ใช่ส่วนเกิน: ฝั่ง App.jsx กัน promise reject ด้วย .catch แล้ว แต่ addDoc throw
@@ -622,9 +651,11 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     // การบันทึกเพื่อตรวจสอบต้องไม่มีวันขวางงานหน้างาน
     try {
       onDismiss?.({
-        sku, name: target?.name ?? '', unit: target?.unit ?? '',
+        sku: target?.sku ?? '', name: target?.name ?? '', unit: target?.unit ?? '',
         need: target?.need ?? 0, gotBase: target?.gotBase ?? 0,
         boxId: activeBoxId || null,
+        ...(target?.picklistRunId ? { picklistRunId: target.picklistRunId } : {}),
+        ...(target?.picklistRowId ? { picklistRowId: target.picklistRowId } : {}),
       });
     } catch (err) {
       console.error('dismissal log failed (ปัดต่อได้ตามปกติ):', err);
@@ -664,7 +695,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     const packedItems = items.filter(it => it.got > 0).map(it => ({ ...it, qty: it.got }));
     setBoxes(prev => prev.map(b =>
       b.id === closingBoxId
-        ? { ...b, status: 'closed', packer: packer || b.packer || null, skuCount: packedItems.length, totalQty: packedItems.reduce((s, it) => s + it.qty, 0), pos, updated: time, closedAt: Date.now() }
+        ? withBoxPicklistRunFields({ ...b, status: 'closed', packer: packer || b.packer || null, skuCount: packedItems.length, totalQty: packedItems.reduce((s, it) => s + it.qty, 0), pos, updated: time, closedAt: Date.now() }, packedItems)
         : b
     ));
     setItemsByBox(prev => ({ ...prev, [closingBoxId]: packedItems }));
@@ -1035,13 +1066,13 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: isAndroid ? '1fr' : '1fr 1fr', gap: isAndroid ? 6 : 12 }}>
             {pageItems.map((c) => {
-              const key = `${c.sku}__${c.unit}`;
+              const key = packItemIdentity(c);
               const done = c.gotBase >= c.need;
               const partial = c.gotBase > 0 && c.gotBase < c.need;
               const exiting = isAndroid && done && exitingSkus.has(key);
               const settled = isAndroid && done && !holdingSkus.has(key) && !exitingSkus.has(key);
               return (
-                <ItemCard key={c.sku} c={c} done={done} partial={partial} exiting={exiting} settled={settled} onMarkOutOfStock={handleMarkOutOfStock} />
+                <ItemCard key={key} c={c} done={done} partial={partial} exiting={exiting} settled={settled} onMarkOutOfStock={handleMarkOutOfStock} />
               );
             })}
           </div>

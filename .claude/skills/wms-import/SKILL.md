@@ -42,7 +42,7 @@ description: Use when touching import components src/components/Import*.jsx (Imp
   - **⚠ ห้ามกรองด้วย `zoneOfItem(it) === NOLOC_ZONE`** — คืน NOLOC_ZONE ให้**รายการปกติที่ location ว่าง**ด้วย → จะลบรายการปกติทิ้ง; ใช้ **`isUrgentItem` (units.js) เท่านั้น** = แหล่งเดียว (`zoneOfItem` เรียกตัวนี้ต่อ)
 - **ทำไมไม่ทับ catalog ทั้งก้อน:** key ของ PackScanC = `${packer.code}-${catalogSig(รายการคนนั้น)}` → แตะเฉพาะรายการด่วนทำให้เนื้อหาของคนอื่นเท่าเดิม (⚠ key นี้เคยเป็น `.length` → คนโซนด่วนอัปสาขาอื่นจำนวนเท่าเดิมแล้วไม่ remount = สแกนไม่ได้ ดู CLAUDE.md *Remount key ของ PackScanC*)
   → จอไม่ remount ของที่สแกนค้างรอด = **แทรกกลางวันได้**; เฉพาะคนที่ tick 📌เบิกด่วน (NOLOC_ZONE) จอรีเซ็ต
-- **⚠ "แทนที่รายการ" ≠ "รีเซ็ตยอดที่แพ็คแล้ว"** — `buildPackItems` ยังหักของที่แพ็คลงลังปิดแล้ว (match `sku__unit` จาก `itemsByBox` ไม่ผูกกับ catalog) → อัปไฟล์ด่วนเดิมซ้ำหลังแพ็คไป 4/10 เห็น **need = 6** ไม่ใช่ 10 (ถูกแล้ว — เหมือน Picklist ปกติอัปซ้ำ)
+- **อัปโหลดแต่ละครั้ง = Picklist Run ใหม่** — ระบบสร้าง `picklistRunId` แยก normal/urgent และหักยอดด้วย `runId + sku + unit`; อัปไฟล์ด่วนซ้ำจึงเริ่มยอดใหม่ ส่วนงานปกติไม่ถูกรีเซ็ต. ลังรอบเก่ายังคงส่งออก/รับเข้าได้แต่ไม่หักยอดรอบใหม่
 - **ด่วน 2 สาขาพร้อมกันไม่รองรับ** — คน tick 📌เบิกด่วน ถือทั้งคู่ → `resolveBoxBranch` เจอ branch ปน → fallback ไปสาขา Picklist ปกติ = **ลังด่วนสาขาผิดเงียบๆ**; การล้างทุกสาขาทำให้เข้าสถานะนี้ยากขึ้น (เดิม append ทำให้ปนสะสมได้ง่าย)
 - **การมองเห็น:** รายการด่วน stamp `urgent: true` และ `branch` ต่อรายการ → `zoneOfItem` (units.js) จัดเข้า `NOLOC_ZONE` เสมอโดย **ไม่อ่าน Col G/location** → เห็นเฉพาะคน tick 📌เบิกด่วน ใน ZoneAssign; `item.branch` รองรับรายการด่วนเก่าที่ import ก่อนมี field `urgent`
 - **สาขา:** `item.branch` stamp ต่อรายการ → `createNewBox` ใช้ `resolveBoxBranch` (units.js) — คนแพ็คด่วนได้ลังสาขาไฟล์ด่วน
@@ -145,6 +145,7 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 - **{filename}** ใน Barcode — ชื่อไฟล์ไม่มีนามสกุล เช่น `R05.106`
 - วันที่ใน badge ทุกปุ่มมาจาก **`new Date()` ตอนกดอัปโหลด** (วันที่อัปโหลดจริง) — เดิมใช้ `file.lastModified` (Date Modified ของไฟล์) แต่ทำให้ badge ขึ้นวันเก่าตามวันแก้ไขไฟล์ ไม่ใช่วันที่อัปล่าสุด จึงเปลี่ยนเป็นวันอัปโหลดจริงทั้ง 4 ปุ่ม
 - badge sync ผ่าน Firestore `_meta` field — **ทุกเครื่องเห็นเหมือนกัน** และยังอยู่หลัง reload (App.jsx อ่าน `catalogMeta` / `barcodeMapMeta` / `costMapMeta` จาก `onSnapshot` → ส่งเป็น `meta` prop ให้แต่ละ component)
+- `config/catalog._meta.picklistRunId` + `picklistRunStartedAt` เป็นรอบงานปกติ; `_meta.urgent` มี Run ID ของงานด่วนแยกกัน. Catalog row ถูก stamp `picklistRunId/picklistRowId` และคง field นี้ผ่าน barcode-map/zone distribution ไปถึง `boxItems`
 - **ImportLotMap มี progress bar ระหว่างอัปโหลด** (ไฟล์ LOT มักใหญ่ + aggregation 2-pass + Firestore write ก้อนใหญ่ → ช้ากว่าไฟล์อื่น): state `stage` (`reading` 15% → `parsing` 45% → `saving` 75% → `done` 100%) แสดงแถบ progress + label แทนปุ่ม/chip ปกติระหว่างอัปโหลด, ปุ่ม disable กันกดซ้ำ; ใช้ `setTimeout(fn, 0)` คั่นก่อนงาน sync หนัก (parse) เพื่อให้ browser repaint stage label ก่อน freeze
   - **`handleLotMapImport` (App.jsx) return promise ของ `setDoc`** (ไม่ fire-and-forget แบบไฟล์อื่น) — ให้ ImportLotMap รู้ว่า Firestore เขียนเสร็จจริงเมื่อไหร่ ก่อนโชว์ `done` + toast success
 

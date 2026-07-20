@@ -1,4 +1,4 @@
-import { lookupFactor, zoneOfItem } from './units.js';
+import { lookupFactor, picklistRunKey, zoneOfItem } from './units.js';
 
 export const HISTORY_RETENTION_DAYS = 30;
 
@@ -171,24 +171,24 @@ export function buildReceiveLotExpMap(items, lotMap = {}) {
 // A barcode can be repeated on multiple Picklist rows. Walk the packing rows in
 // their original order and select the first matching row that is not complete.
 export function findIncompletePackTarget(catalog, items, barcode, matchesBarcode) {
-  const matchingKeys = new Set(
-    (catalog || [])
-      .filter(item => matchesBarcode(item, barcode))
-      .map(item => `${item.sku}\u0000${item.unit || ''}`),
-  );
+  const matchingCatalog = (catalog || []).filter(item => matchesBarcode(item, barcode));
+  const matchingKeys = new Set(matchingCatalog.map(item =>
+    `${picklistRunKey(item.picklistRunId)}\u0000${item.sku}\u0000${item.unit || ''}`,
+  ));
   if (matchingKeys.size === 0) return null;
 
   const itemIndex = (items || []).findIndex(item =>
-    matchingKeys.has(`${item.sku}\u0000${item.unit || ''}`)
+    matchingKeys.has(`${picklistRunKey(item.picklistRunId)}\u0000${item.sku}\u0000${item.unit || ''}`)
     && numberOrZero(item.gotBase) < numberOrZero(item.need),
   );
   if (itemIndex < 0) return null;
 
   const target = items[itemIndex];
-  const catalogItem = (catalog || []).find(item =>
+  const catalogItem = matchingCatalog.find(item =>
     item.sku === target.sku
     && (item.unit || '') === (target.unit || '')
-    && matchesBarcode(item, barcode),
+    && picklistRunKey(item.picklistRunId) === picklistRunKey(target.picklistRunId)
+    && (!item.picklistRowId || !target.picklistRowId || item.picklistRowId === target.picklistRowId),
   );
   return catalogItem ? { catalogItem, target, itemIndex } : null;
 }

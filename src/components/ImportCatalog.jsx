@@ -92,6 +92,7 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
   const urgentRef = useRef(null);
   const [branch, setBranch] = useState(null);
   const [fileDate, setFileDate] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   const displayBranch = branch ?? meta?.branch;
   const displayFileDate = fileDate ?? meta?.fileDate;
@@ -118,7 +119,7 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
 
   // ── ปุ่ม 1: Picklist ปกติ (replace ทั้ง catalog) ──
   function handleFile(e) {
-    readItems(e, (items, file) => {
+    readItems(e, async (items, file) => {
       // ปุ่มนี้ replace ทั้ง catalog — ไฟล์เบิกด่วนหลุดเข้ามา = ล้าง Picklist ทั้งวันทิ้ง เหลือแต่รายการด่วน
       if (/เบิกด่วน/.test(file.name)) {
         alert(
@@ -143,11 +144,29 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
         );
         if (!ok) return;
       }
-      setBranch(b);
       const d = new Date(); // วันที่อัปโหลดจริง (ไม่ใช่ file.lastModified ที่เป็นวันแก้ไขไฟล์)
       const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+      const fileName = file.name.replace(/\.(csv|xlsx|xls)$/i, '');
+      if (catalog.length > 0) {
+        const ok = window.confirm(
+          `เริ่ม Picklist รอบใหม่ — ${items.length} รายการ\n\n` +
+          `รายการปัจจุบัน ${catalog.length} รายการจะถูกแทนที่\n` +
+          `ยอดจากลังรอบเดิมจะไม่ถูกนำมาหักกับไฟล์ใหม่นี้\n` +
+          `ลังเดิมที่ส่งออกหรือรอสาขารับยังคงอยู่ตามปกติ\n\n` +
+          `ยืนยันอัปโหลด Picklist รอบใหม่?`
+        );
+        if (!ok) return;
+      }
+      setImporting(true);
+      let accepted;
+      try {
+        accepted = await onImport(items, { branch: b, fileDate: fd, fileName });
+      } finally {
+        setImporting(false);
+      }
+      if (accepted === false) return;
+      setBranch(b);
       setFileDate(fd);
-      onImport(items, { branch: b, fileDate: fd });
     });
   }
 
@@ -155,7 +174,7 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
   // → stamp branch ลงทุกรายการ (เบิกด่วนคนละสาขากับงานปกติได้ — createNewBox อ่าน item.branch ผ่าน resolveBoxBranch)
   // → urgent=true → zoneOfItem จัดเข้า NOLOC_ZONE เสมอโดยไม่อ่าน Col G → เห็นเฉพาะคนที่ tick โซน 📌เบิกด่วน
   function handleUrgentFile(e) {
-    readItems(e, (items, file) => {
+    readItems(e, async (items, file) => {
       const b = extractBranch(file.name);
       // ไม่มีรหัสสาขา = หนักกว่าฝั่ง Picklist ปกติ: item.branch เป็น null → resolveBoxBranch fallback
       // ไปสาขาของ Picklist ปกติ → ลังเบิกด่วนได้สาขาผิดแบบเงียบ ๆ (สาขาปลายทางจริงรับไม่ได้)
@@ -176,6 +195,7 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
           ? `จะ "แทนที่" รายการเบิกด่วนเดิมทั้งหมด (${urgentCount} รายการ) ทุกสาขา\n`
           : `จะเพิ่มเป็นรายการเบิกด่วนชุดใหม่\n`) +
         `รายการ Picklist ปกติไม่ถูกแตะ\n` +
+        `ยอดจากรายการเบิกด่วนรอบเดิมจะไม่ถูกนำมาหักกับรอบใหม่นี้\n` +
         `เห็นเฉพาะพนักงานที่ถูก tick โซน 📌เบิกด่วน ในหน้ากำหนดโซน\n\n` +
         `⚠ พนักงานคนนั้นจอจะรีเซ็ต — ให้ปิดลังที่ค้างอยู่ก่อน\n\n` +
         `ยืนยันอัปโหลดรายการเบิกด่วน?`
@@ -185,12 +205,19 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
       const fd = `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
       const fileName = file.name.replace(/\.(csv|xlsx|xls)$/i, '');
       // ไม่ setBranch/setFileDate — badge ปุ่ม 1 ยังโชว์ Picklist ปกติของวัน (เบิกด่วนไม่ใช่เจ้าของ _meta)
-      onImport(items.map(it => ({ ...it, branch: b, urgent: true })), null, {
-        urgent: true,
-        branch: b,
-        fileDate: fd,
-        fileName,
-      });
+      setImporting(true);
+      let accepted;
+      try {
+        accepted = await onImport(items.map(it => ({ ...it, branch: b, urgent: true })), null, {
+          urgent: true,
+          branch: b,
+          fileDate: fd,
+          fileName,
+        });
+      } finally {
+        setImporting(false);
+      }
+      if (accepted === false) return;
     });
   }
 
@@ -206,9 +233,11 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className={`btn sm${displayFileDate ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => fileRef.current?.click()}>
+      <button className={`btn sm${displayFileDate ? ' primary' : ''}`} style={{ minWidth: 240 }} disabled={importing} onClick={() => fileRef.current?.click()}>
         {'1 · '}
-        {displayFileDate
+        {importing
+          ? 'กำลังบันทึก Picklist…'
+          : displayFileDate
           ? displayBranch ? `✅ อัปโหลดไฟล์ Picklist_${displayBranch} แล้ว` : '⚠ อัปโหลดไฟล์ Picklist แล้ว (ไม่มีรหัสสาขา)'
           : '⇑ อัปโหลดไฟล์ Picklist'}
       </button>
@@ -229,7 +258,7 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
       {/* ปุ่มเบิกด่วน — อยู่นอกลำดับบังคับ 1-4 (ไม่มีเลขนำหน้า, ไม่ล็อก) เพราะเป็นงานแทรกกลางวัน
           chip นับด้วย isUrgentItem → อัปไฟล์เดิมซ้ำแล้วเลขต้องไม่โต = เห็นได้ทันทีว่าแทนที่ ไม่ได้บวกทับ */}
       <input ref={urgentRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleUrgentFile} />
-      <button className={`btn sm${urgentCount > 0 ? ' primary' : ''}`} style={{ minWidth: 240 }} onClick={() => urgentRef.current?.click()}>
+      <button className={`btn sm${urgentCount > 0 ? ' primary' : ''}`} style={{ minWidth: 240 }} disabled={importing} onClick={() => urgentRef.current?.click()}>
         📌 อัปโหลดไฟล์ Picklist เบิกด่วน
       </button>
       {urgentCount > 0 && (

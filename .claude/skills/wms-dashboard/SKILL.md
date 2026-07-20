@@ -13,7 +13,7 @@ description: Use when touching src/screens/PackerDashboard.jsx — real-time pac
 ---
 ## PackerDashboard — Logic สำคัญ
 - แสดง real-time counter ใหญ่: `totalGot / totalNeed ชิ้น`
-- `totalGot` = closed boxes (จาก `itemsByBox`) + in-progress (จาก `scanProgress`) ต่อ packer
+- `totalGot` = closed boxes (จาก `itemsByBox`) + in-progress (จาก `scanProgress`) ต่อ packer **เฉพาะ `picklistRunId` ที่อยู่ใน assignment ปัจจุบัน**; ลังรอบเก่าไม่ถูกรวมใน Dashboard รอบใหม่
 - `scanProgress` ข้าม-reference กับ `boxes` เพื่อหา packer ของแต่ละ in-progress box
 - Props: `catalogByPacker, boxes, itemsByBox, PACKERS, scanProgress`
 

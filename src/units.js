@@ -68,16 +68,100 @@ export const zoneOf = (location) => {
 export const isUrgentItem = (item) => item?.urgent === true || Boolean(item?.branch);
 export const zoneOfItem = (item) => isUrgentItem(item) ? NOLOC_ZONE : zoneOf(item?.location);
 
+// รหัสรอบ Picklist แยกยอดแพ็คของไฟล์ใหม่ออกจากลังเดิม โดยไม่ต้อง migrate ข้อมูลเก่า
+// catalog/ลังเก่าที่ไม่มีรหัสจะอยู่ใน legacy run เดียวกันและยังทำงานแบบเดิมได้
+export const LEGACY_PICKLIST_RUN_ID = '__legacy__';
+
+export const picklistRunKey = (value) => {
+  const id = String(value ?? '').trim();
+  return id || LEGACY_PICKLIST_RUN_ID;
+};
+
+export function createPicklistRunId(kind = 'normal', now = Date.now(), nonce = '') {
+  const prefix = kind === 'urgent' ? 'U' : 'N';
+  const randomPart = String(nonce || globalThis.crypto?.randomUUID?.().replace(/-/g, '').slice(0, 12)
+    || Math.random().toString(36).slice(2, 14));
+  return `${prefix}-${Number(now).toString(36)}-${randomPart}`;
+}
+
+export function stampPicklistRun(items, runId) {
+  const id = picklistRunKey(runId);
+  if (id === LEGACY_PICKLIST_RUN_ID) throw new Error('picklist-run-id-required');
+  return (items || []).map((item, index) => ({
+    ...item,
+    picklistRunId: id,
+    picklistRowId: `${id}:${index + 1}`,
+  }));
+}
+
+export function mergePicklistRun(currentCatalog, incomingItems, { urgent = false, runId } = {}) {
+  const stamped = stampPicklistRun(incomingItems, runId);
+  return urgent
+    ? [...(currentCatalog || []).filter(item => !isUrgentItem(item)), ...stamped]
+    : stamped;
+}
+
+export const effectivePicklistRunKey = (box, item) => {
+  const itemId = String(item?.picklistRunId ?? '').trim();
+  if (itemId) return picklistRunKey(itemId);
+  const boxId = String(box?.picklistRunId ?? '').trim();
+  if (boxId) return picklistRunKey(boxId);
+  return LEGACY_PICKLIST_RUN_ID;
+};
+
+export const picklistProgressKey = (runId, sku, unit) =>
+  JSON.stringify([picklistRunKey(runId), String(sku ?? ''), String(unit ?? '')]);
+
+export const picklistRunKeysOf = (items) => [...new Set(
+  (items || []).map(item => picklistRunKey(item?.picklistRunId)),
+)];
+
+export const packItemIdentity = (item) => item?.picklistRowId
+  || picklistProgressKey(item?.picklistRunId, item?.sku, item?.unit);
+
+export function samePicklistRun(catalogItem, box, packedItem) {
+  return picklistRunKey(catalogItem?.picklistRunId) === effectivePicklistRunKey(box, packedItem);
+}
+
+// กล่องหนึ่งใบอาจถูกกำหนดทั้งงานปกติและเบิกด่วน (UI เตือนอยู่แล้ว) จึงเก็บ array เมื่อมีหลาย run
+// item.picklistRunId ยังคงเป็น source of truth ตอนหักยอด; field บนกล่องใช้กันลังเปิดค้างข้ามรอบและช่วย audit
+export function boxPicklistRunFields(items) {
+  const keys = picklistRunKeysOf(items);
+  if (keys.length === 0 || (keys.length === 1 && keys[0] === LEGACY_PICKLIST_RUN_ID)) return {};
+  if (keys.length === 1) return { picklistRunId: keys[0] };
+  return { picklistRunIds: keys };
+}
+
+export function withBoxPicklistRunFields(box, items) {
+  const { picklistRunId: _oldRunId, picklistRunIds: _oldRunIds, ...base } = box || {};
+  return { ...base, ...boxPicklistRunFields(items) };
+}
+
+function boxPicklistRunKeys(box) {
+  if (Array.isArray(box?.picklistRunIds) && box.picklistRunIds.length > 0) {
+    return [...new Set(box.picklistRunIds.map(picklistRunKey))];
+  }
+  return [picklistRunKey(box?.picklistRunId)];
+}
+
+export function boxMatchesPicklistRuns(box, catalog, fallbackRunId = null) {
+  const catalogKeys = picklistRunKeysOf(catalog);
+  if (catalogKeys.length === 0 && fallbackRunId) catalogKeys.push(picklistRunKey(fallbackRunId));
+  if (catalogKeys.length === 0) catalogKeys.push(LEGACY_PICKLIST_RUN_ID);
+  const boxKeys = boxPicklistRunKeys(box);
+  return catalogKeys.length === boxKeys.length && catalogKeys.every(key => boxKeys.includes(key));
+}
+
 // ลายเซ็นเนื้อหาของ catalog ที่พนักงานถือ — ใช้เป็น key remount PackScanC (แทน .length อย่างเดียว)
 // ⚠ ทำไม: key เดิม `${code}-${length}` ชนกันเมื่ออัป Picklist เบิกด่วนชุดใหม่ (สาขาอื่น) ที่จำนวนรายการเท่าเดิม
 //   → React เห็น key ไม่เปลี่ยน → PackScanC ไม่ remount → items (state) ค้างรายการเก่า → สแกนของใหม่เด้ง "ครบแล้ว"
-// hash จาก sku+unit+qty+branch (djb2) → เปลี่ยนเมื่อ "เนื้อหา" เปลี่ยนจริง; พนักงานที่ list ไม่เปลี่ยน sig เท่าเดิม
+// hash จาก run+sku+unit+qty+branch (djb2) → อัปไฟล์รอบใหม่ต้อง remount แม้เนื้อหาเหมือนเดิมทุกช่อง
 //   → ไม่ remount → ของที่สแกนค้างในลังไม่หาย (การันตีเดียวกับ key เดิม แต่แม่นกว่า เพราะดูเนื้อหาไม่ใช่แค่จำนวน)
 // computeCatalogByPacker filter ตามโซนแบบ deterministic (คงลำดับ) → sig เสถียรข้ามการ import เนื้อหาเดิมซ้ำ
 export function catalogSig(items) {
   let h = 5381;
   for (const it of items || []) {
-    const s = `${it.sku}|${it.unit}|${it.qty}|${it.branch || ''}`;
+    const s = `${picklistRunKey(it.picklistRunId)}|${it.sku}|${it.unit}|${it.qty}|${it.branch || ''}`;
     for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   }
   return `${(items || []).length}:${h >>> 0}`;
@@ -155,7 +239,7 @@ function packedBaseOf({ boxes, itemsByBox, fOf, matchBox }) {
     if (!matchBox(b)) return;
     if (!(b.status === 'closed' || b.status === 'exported' || b.status === 'received')) return;
     (itemsByBox[b.id] || []).forEach(it => {
-      const key = `${it.sku}__${it.unit}`;
+      const key = picklistProgressKey(effectivePicklistRunKey(b, it), it.sku, it.unit);
       const base = it.gotBase ?? ((it.qty ?? it.got ?? 0) * fOf(it.sku, it.unit));
       packedBase[key] = (packedBase[key] || 0) + base;
     });
@@ -171,7 +255,7 @@ function packedBaseOf({ boxes, itemsByBox, fOf, matchBox }) {
 function walkNeeds(catalog, packedBase, fOf) {
   const remaining = { ...packedBase };
   return catalog.map(c => {
-    const key = `${c.sku}__${c.unit}`;
+    const key = picklistProgressKey(c.picklistRunId, c.sku, c.unit);
     const needFull = c.qty * fOf(c.sku, c.unit);
     const use = Math.min(remaining[key] || 0, needFull);
     remaining[key] = (remaining[key] || 0) - use;
@@ -204,6 +288,8 @@ export function buildPackItems({ catalog, boxes, itemsByBox, packer, factorMap }
       need: walked[i].needFull - walked[i].use, got: 0, gotBase: 0,
       baseUnit: baseUnitOf(c.sku, c.unit),
       location: c.location || '',
+      picklistRunId: c.picklistRunId,
+      picklistRowId: c.picklistRowId || `${picklistRunKey(c.picklistRunId)}:${i + 1}`,
     }))
     .filter(it => it.need > 0); // แพ็คครบแล้ว → หายจาก checklist
 }

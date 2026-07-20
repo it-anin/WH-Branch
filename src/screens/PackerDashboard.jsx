@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
+import { effectivePicklistRunKey, picklistRunKeysOf } from '../units.js';
 
 const PACKER_COLORS = ['#e8692b', '#2b6ce8', '#5c8a3a', '#d94a8a'];
 
@@ -510,7 +511,8 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
   const layoutRef = useRef(null);
   const prevProgRef = useRef({});
   const dataRef = useRef({});
-  dataRef.current = { boxes, skuZone, skuLocation, packerZones };
+  const activeRunKeysByPacker = Object.fromEntries(packers.map(p => [p.code, new Set(p.activeRunKeys || [])]));
+  dataRef.current = { boxes, skuZone, skuLocation, packerZones, activeRunKeysByPacker };
 
   useEffect(() => {
     const el = wrapRef.current; if (!el) return;
@@ -522,12 +524,18 @@ function WarehouseScene({ packers, catalogByPacker, boxes, scanProgress }) {
   // ตรวจจับการสแกน → ตั้งเป้าหมายโซน
   useEffect(() => {
     const chars = charsRef.current; if (!chars || !layoutRef.current) return;
-    const { boxes, skuZone, skuLocation } = dataRef.current;
+    const { boxes, skuZone, skuLocation, activeRunKeysByPacker } = dataRef.current;
     const standPos = layoutRef.current.standPos;
     const prev = prevProgRef.current;
     const cur = {};
     Object.entries(scanProgress).forEach(([boxId, items]) => {
-      cur[boxId] = {}; (items || []).forEach(it => { cur[boxId][it.sku] = it.got; });
+      const box = boxes.find(candidate => candidate.id === boxId);
+      const code = box?.packer?.code;
+      const activeRuns = activeRunKeysByPacker?.[code];
+      cur[boxId] = {};
+      (items || []).forEach(it => {
+        if (activeRuns?.has(effectivePicklistRunKey(box, it))) cur[boxId][it.sku] = it.got;
+      });
     });
     Object.entries(cur).forEach(([boxId, m]) => {
       if (!(boxId in prev)) return; // ลังที่เพิ่งโผล่/ข้อมูลค้าง → ตั้ง baseline เฉย ๆ ไม่อนิเมท
@@ -667,34 +675,45 @@ function Doughnut({ pct, size = 130, stroke = 14, color }) {
 
 export default function PackerDashboard({ catalogByPacker, boxes, itemsByBox, PACKERS, scanProgress = {} }) {
   const hasCatalog = Object.values(catalogByPacker).some(items => items.length > 0);
+  const activeRunsByPacker = Object.fromEntries(PACKERS.map(p => [p.code, new Set(picklistRunKeysOf(catalogByPacker[p.code] || []))]));
 
   const packerStats = PACKERS.map((p, i) => {
     const assigned = catalogByPacker[p.code] || [];
+    const activeRuns = activeRunsByPacker[p.code];
     const need = assigned.reduce((s, it) => s + (it.qty || 0), 0);
 
     const myBoxes = boxes.filter(b =>
       b.packer?.code === p.code &&
-      (b.status === 'closed' || b.status === 'exported' || b.status === 'received')
+      (b.status === 'closed' || b.status === 'exported' || b.status === 'received') &&
+      (itemsByBox[b.id] || []).some(item => activeRuns.has(effectivePicklistRunKey(b, item)))
     );
     const gotClosed = myBoxes.reduce((s, b) => {
-      const items = itemsByBox[b.id] || [];
+      const items = (itemsByBox[b.id] || []).filter(item => activeRuns.has(effectivePicklistRunKey(b, item)));
       return s + items.reduce((ss, it) => ss + (it.qty || it.got || 0), 0);
     }, 0);
     const gotInProgress = Object.entries(scanProgress)
       .filter(([boxId]) => boxes.find(b => b.id === boxId)?.packer?.code === p.code)
-      .flatMap(([, items]) => items)
+      .flatMap(([boxId, items]) => {
+        const box = boxes.find(candidate => candidate.id === boxId);
+        return (items || []).filter(item => activeRuns.has(effectivePicklistRunKey(box, item)));
+      })
       .reduce((s, it) => s + it.got, 0);
     const got = gotClosed + gotInProgress;
 
     const pct = need > 0 ? got / need : 0;
     const color = PACKER_COLORS[i % PACKER_COLORS.length];
 
-    return { ...p, need, got, pct, color, closedBoxes: myBoxes.length, skuCount: assigned.length };
+    return { ...p, need, got, pct, color, closedBoxes: myBoxes.length, skuCount: assigned.length, activeRunKeys: [...activeRuns] };
   });
 
   const totalNeed = packerStats.reduce((s, p) => s + p.need, 0);
   const totalGot  = packerStats.reduce((s, p) => s + p.got, 0);
   const totalPct  = totalNeed > 0 ? totalGot / totalNeed : 0;
+  const currentClosedCount = boxes.filter(box => {
+    if (!(box.status === 'closed' || box.status === 'exported')) return false;
+    const activeRuns = activeRunsByPacker[box.packer?.code];
+    return activeRuns && (itemsByBox[box.id] || []).some(item => activeRuns.has(effectivePicklistRunKey(box, item)));
+  }).length;
 
   return (
     <div className="frame" style={{ padding: 24 }}>
@@ -705,7 +724,7 @@ export default function PackerDashboard({ catalogByPacker, boxes, itemsByBox, PA
           <span style={{ color: 'var(--mute)', fontSize: 32 }}> / {totalNeed} ชิ้น</span>
         </div>
         <div style={{ fontFamily: 'system-ui', fontSize: 15, color: 'var(--mute)', marginTop: 4 }}>
-          แพ็คกิ้งวันนี้ · {Math.round(totalPct * 100)}% เสร็จแล้ว · {boxes.filter(b => b.status === 'closed' || b.status === 'exported').length} ลังปิดแล้ว
+          แพ็คกิ้งรอบนี้ · {Math.round(totalPct * 100)}% เสร็จแล้ว · {currentClosedCount} ลังปิดแล้ว
         </div>
       </div>
 

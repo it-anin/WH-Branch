@@ -2,7 +2,21 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { collection, doc, setDoc, deleteDoc, deleteField, onSnapshot, writeBatch, runTransaction, query, where, documentId, getDocs, addDoc } from 'firebase/firestore';
 import { db } from './firebase.js';
 // สูตร need + ตัวคูณหน่วยฐาน — ตัวเดียวกับที่ PackScanC ใช้จริง (ใช้ใน __wh.audit เพื่อยืนยันเลขบนจอพนักงาน)
-import { buildPackItems, lookupFactor, UNIT_FACTOR_OVERRIDE, STANDARD_UNIT_FACTOR, isUrgentItem, resolveBoxBranch, catalogSig } from './units.js';
+import {
+  boxPicklistRunFields,
+  buildPackItems,
+  catalogSig,
+  createPicklistRunId,
+  effectivePicklistRunKey,
+  isUrgentItem,
+  lookupFactor,
+  mergePicklistRun,
+  picklistRunKey,
+  resolveBoxBranch,
+  samePicklistRun,
+  STANDARD_UNIT_FACTOR,
+  UNIT_FACTOR_OVERRIDE,
+} from './units.js';
 import {
   HISTORY_RETENTION_DAYS,
   buildTopLevelFieldPatch,
@@ -85,6 +99,7 @@ export default function App() {
   const [activeBoxId, setActiveBoxId] = useState(null);
   const [packer, setPacker] = useState(null);
   const [catalog, setCatalog] = useState([]);
+  const [catalogImporting, setCatalogImporting] = useState(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false); // true หลังได้ Firestore snapshot ของ catalog ครั้งแรก — แยก "กำลังโหลด" จาก "catalog ว่างจริงๆ"
   const [itemsByBox, _setItemsByBox] = useState({});
   const [history, setHistory] = useState(() => {
@@ -387,7 +402,14 @@ export default function App() {
     if (items.length === 0) {
       deleteDoc(doc(db, 'progress', boxId));
     } else {
-      const progress = items.filter(it => it.got > 0).map(it => ({ sku: it.sku, got: it.got }));
+      const progress = items.filter(it => it.got > 0).map(it => ({
+        sku: it.sku,
+        unit: it.unit || '',
+        got: it.got,
+        gotBase: it.gotBase ?? it.got,
+        ...(it.picklistRunId ? { picklistRunId: it.picklistRunId } : {}),
+        ...(it.picklistRowId ? { picklistRowId: it.picklistRowId } : {}),
+      }));
       if (progress.length > 0) setDoc(doc(db, 'progress', boxId), { items: progress });
     }
   }
@@ -461,8 +483,10 @@ export default function App() {
     // สาขาของลัง = สาขาของ "รายการที่พนักงานคนนี้ถือ" (resolveBoxBranch ใน units.js — เทสต์ตรงได้)
     // รองรับเบิกด่วนคนละสาขา: คนแพ็คด่วน (tick 📌เบิกด่วน อย่างเดียว) รายการ stamp สาขาเดียว → ลังได้สาขานั้น
     // พนักงานปกติไม่มี item.branch → fallback catalogMeta.branch = เส้นทางเดิม byte-identical
-    const boxBranch = resolveBoxBranch(packer ? (catalogByPacker[packer.code] ?? []) : catalog, catalogMeta?.branch);
-    const newBox = { id: newId, pos: '—', status: 'open', packer: packer || null, branch: boxBranch, skuCount: 0, totalQty: 0, updated: time, createdAt: Date.now() };
+    const packCatalog = packer ? (catalogByPacker[packer.code] ?? []) : catalog;
+    const boxBranch = resolveBoxBranch(packCatalog, catalogMeta?.branch);
+    const runFields = boxPicklistRunFields(packCatalog);
+    const newBox = { id: newId, pos: '—', status: 'open', packer: packer || null, branch: boxBranch, ...runFields, skuCount: 0, totalQty: 0, updated: time, createdAt: Date.now() };
     setBoxes(prev => [newBox, ...prev]);
     setActiveBoxId(newId);
     return newId;
@@ -741,7 +765,7 @@ export default function App() {
         const rows = catalog.filter(c => c.sku === s);
         console.log(`%c===== audit SKU ${s} =====`, 'font-weight:bold');
         console.log(`1) Picklist (catalog): ${rows.length} แถว` + (rows.length > 1 ? ' ⚠ SKU นี้มีหลายแถว — พนักงานอาจถูกแบ่งคนละแถว' : ''));
-        console.table(rows.length ? rows.map(c => ({ sku: c.sku, name: c.name, unit: c.unit, qty: c.qty, location: c.location, barcode: c.barcode })) : [{ note: 'ไม่พบใน catalog — SKU นี้ไม่ได้อยู่ใน Picklist ที่ import ล่าสุด' }]);
+        console.table(rows.length ? rows.map(c => ({ sku: c.sku, name: c.name, unit: c.unit, qty: c.qty, location: c.location, barcode: c.barcode, picklistRunId: c.picklistRunId || 'legacy' })) : [{ note: 'ไม่พบใน catalog — SKU นี้ไม่ได้อยู่ใน Picklist ที่ import ล่าสุด' }]);
         if (rows.length) {
           console.log('2) ตัวคูณหน่วยฐาน (factor) ต่อหน่วยที่ Picklist ใช้:');
           console.table(rows.map(c => {
@@ -759,22 +783,34 @@ export default function App() {
           const packCatalog = catalogByPacker[p.code] ?? [];
           const assigned = packCatalog.filter(c => c.sku === s);
           if (assigned.length === 0) { perPacker.push({ พนักงาน: p.name, สถานะ: 'ไม่ได้รับ SKU นี้' }); continue; }
-          // ลังของคนนี้ที่ปิด/ส่งออก/รับแล้ว และมี SKU นี้ = ตัวหักของสูตร
-          const packedIn = boxes
-            .filter(b => b.packer?.code === p.code && ['closed', 'exported', 'received'].includes(b.status))
-            .flatMap(b => (itemsByBox[b.id] || []).filter(it => it.sku === s)
-              .map(it => ({ box: b.id, status: b.status, unit: it.unit, qty: it.qty, gotBase: it.gotBase ?? `(ไม่มี → ${it.qty ?? it.got ?? 0}×factor)` })));
           const shown = buildPackItems({ catalog: packCatalog, boxes, itemsByBox, packer: p, factorMap }).filter(it => it.sku === s);
           assigned.forEach(c => {
-            const row = shown.find(it => it.unit === c.unit);
-            const deducted = packedIn.reduce((sum, x) => sum + (typeof x.gotBase === 'number' ? x.gotBase : 0), 0);
+            const packedIn = boxes
+              .filter(b => b.packer?.code === p.code && ['closed', 'exported', 'received'].includes(b.status))
+              .flatMap(b => (itemsByBox[b.id] || [])
+                .filter(it => it.sku === s && (it.unit || '') === (c.unit || '') && samePicklistRun(c, b, it))
+                .map(it => ({
+                  box: b.id,
+                  status: b.status,
+                  run: effectivePicklistRunKey(b, it),
+                  unit: it.unit,
+                  qty: it.qty,
+                  gotBase: it.gotBase ?? ((it.qty ?? it.got ?? 0) * lookupFactor(factorMap, it.sku, it.unit)),
+                })));
+            const row = shown.find(it =>
+              (c.picklistRowId && it.picklistRowId ? it.picklistRowId === c.picklistRowId : it.unit === c.unit)
+              && picklistRunKey(it.picklistRunId) === picklistRunKey(c.picklistRunId),
+            );
+            const fullNeed = c.qty * lookupFactor(factorMap, c.sku, c.unit);
+            const deducted = row ? fullNeed - row.need : fullNeed;
             perPacker.push({
               พนักงาน: p.name,
+              รอบ: c.picklistRunId || 'legacy',
               คำนวณ: `${c.qty} × ${lookupFactor(factorMap, c.sku, c.unit)} − ${deducted} (${packedIn.map(x => x.box).join(',') || 'ยังไม่แพ็ค'})`,
               ขึ้นบนจอ: row ? `${row.need} ${row.baseUnit}` : '— หายจาก checklist (แพ็คครบแล้ว)',
             });
+            if (packedIn.length) { console.log(`   ↳ ${p.name} · ${c.unit} · run ${c.picklistRunId || 'legacy'} แพ็คไปแล้วในลังที่ปิด:`); console.table(packedIn); }
           });
-          if (packedIn.length) { console.log(`   ↳ ${p.name} แพ็คไปแล้วในลังที่ปิด:`); console.table(packedIn); }
         }
         console.table(perPacker);
         const openProg = boxes.filter(b => b.status === 'open' || b.status === 'packing')
@@ -786,7 +822,7 @@ export default function App() {
           const snap = await getDocs(query(collection(db, 'dismissals'), where('sku', '==', s)));
           const ds = snap.docs.map(d => d.data())
             .sort((a, b) => (b.at || 0) - (a.at || 0))
-            .map(d => ({ เมื่อ: new Date(d.at).toLocaleString('th-TH'), พนักงาน: d.packer?.name, ประเภท: d.kind === 'out' ? 'ของหมด (ยังไม่สแกน)' : 'ของไม่พอ', สแกนไปแล้ว: d.gotBase, ต้องการ: d.need, ลัง: d.boxId || '—' }));
+            .map(d => ({ เมื่อ: new Date(d.at).toLocaleString('th-TH'), พนักงาน: d.packer?.name, รอบ: d.picklistRunId || 'legacy', ประเภท: d.kind === 'out' ? 'ของหมด (ยังไม่สแกน)' : 'ของไม่พอ', สแกนไปแล้ว: d.gotBase, ต้องการ: d.need, ลัง: d.boxId || '—' }));
           console.table(ds.length ? ds : [{ note: 'ไม่เคยถูกปัดทิ้ง' }]);
         } catch (err) {
           console.error('อ่าน dismissals ไม่ได้:', err.code || err.message);
@@ -859,7 +895,7 @@ export default function App() {
     setCatalog(updated);
     setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(catalogMeta ? { _meta: catalogMeta } : {}) });
     const result = computeCatalogByPacker(updated, zoneAssignments, PACKERS);
-    setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result })
+    setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result, ...(catalogMeta ? { _meta: catalogMeta } : {}) })
       .catch(err => { console.error('Firestore catalogByPacker write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code, 'error'); });
     showToast(`Barcode map: ${matched} รายการ matched ✓`);
   }
@@ -905,7 +941,7 @@ export default function App() {
     setZoneAssignments(assignments);
     setDoc(doc(db, 'config', 'zoneAssignments'), { assignments });
     const result = computeCatalogByPacker(catalog, assignments, PACKERS);
-    setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result });
+    setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result, ...(catalogMeta ? { _meta: catalogMeta } : {}) });
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
@@ -1015,11 +1051,26 @@ export default function App() {
             <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <ImportCatalog catalog={catalog} meta={catalogMeta} onImport={(items, meta, opts) => {
-                  const mapped = Object.keys(barcodeMap).length > 0 ? applyBarcodeMap(items, barcodeMap) : items;
+                  if (catalogImporting) {
+                    showToast('กำลังบันทึก Picklist รอบก่อน กรุณารอให้เสร็จก่อน', 'warn');
+                    return false;
+                  }
+                  const boxesWithProgress = boxes.filter(box =>
+                    (box.status === 'open' || box.status === 'packing')
+                    && (scanProgress[box.id] || []).some(item => (item.got ?? item.gotBase ?? 0) > 0),
+                  );
+                  if (boxesWithProgress.length > 0) {
+                    showToast(`⚠ อัปโหลดไม่ได้ — มี ${boxesWithProgress.length} ลังกำลังแพ็ค กรุณาปิดหรือตรวจลังให้เรียบร้อยก่อนเริ่ม Picklist รอบใหม่`, 'error');
+                    return false;
+                  }
+
+                  const startedAt = Date.now();
+                  const runId = createPicklistRunId(opts?.urgent ? 'urgent' : 'normal', startedAt);
+                  const source = Object.keys(barcodeMap).length > 0 ? applyBarcodeMap(items, barcodeMap) : items;
+                  const updated = mergePicklistRun(catalog, source, { urgent: Boolean(opts?.urgent), runId });
                   // เบิกด่วน (opts.urgent) = แทนที่รายการด่วนเดิม "ทั้งหมดทุกสาขา" — อัปซ้ำได้ชุดใหม่เสมอ ไม่บวกทับ
                   // รายการ Picklist ปกติไม่ถูกแตะ → จำนวนรายการของพนักงานคนอื่นเท่าเดิม → key ของ PackScanC ไม่เปลี่ยน → จอไม่ remount
                   // ⚠ ต้องกรองด้วย isUrgentItem เท่านั้น — zoneOfItem(it)===NOLOC_ZONE จะเหวี่ยงรายการปกติที่ location ว่างทิ้งไปด้วย
-                  const updated = opts?.urgent ? [...catalog.filter(it => !isUrgentItem(it)), ...mapped] : mapped;
                   // ⚠ setDoc ทับทั้ง doc — โหมดเบิกด่วนต้องเขียน _meta "เดิม" กลับไปด้วย ไม่งั้น catalogMeta หาย
                   // ทุกเครื่อง → ลังใหม่ของงานปกติได้ branch null (สาขาสแกนรับไม่ได้) — เบิกด่วนไม่ใช่เจ้าของ _meta
                   const metaToWrite = opts?.urgent
@@ -1029,34 +1080,55 @@ export default function App() {
                           branch: opts.branch || null,
                           fileDate: opts.fileDate || null,
                           fileName: opts.fileName || null,
+                          picklistRunId: runId,
+                          picklistRunStartedAt: startedAt,
                         },
                       }
-                    : meta;
+                    : {
+                        ...(meta || {}),
+                        picklistRunId: runId,
+                        picklistRunStartedAt: startedAt,
+                      };
                   // ใช้โซนที่กำหนดไว้เดิมกับ Picklist ใหม่ทันที — ไม่ต้องเข้าไปกดบันทึกโซนซ้ำทุกครั้งที่อัปโหลด
                   const result = computeCatalogByPacker(updated, zoneAssignments, PACKERS);
                   // guard 1MB/doc ก่อนแตะ state ใด ๆ — ครอบทั้ง append + replace (ไฟล์ปกติยักษ์ก็พังแบบเดียวกัน)
                   // catalogByPacker ยังอาจมีขนาดใกล้ catalog ทั้งก้อน จึง guard แยกจาก catalog เสมอ
                   const catalogBytes = approxDocBytes({ items: updated, ...(metaToWrite ? { _meta: metaToWrite } : {}) });
-                  const byPackerBytes = approxDocBytes({ assignments: result });
+                  const byPackerBytes = approxDocBytes({ assignments: result, _meta: metaToWrite });
                   if (catalogBytes > CATALOG_DOC_LIMIT || byPackerBytes > CATALOG_DOC_LIMIT) {
                     showToast(`⚠ ไฟล์ใหญ่เกินระบบรองรับ — รวม ${updated.length} รายการ ≈ ${Math.round(Math.max(catalogBytes, byPackerBytes) / 1024)}KB (ลิมิต ~950KB) กรุณาลดรายการหรือแยกไฟล์`, 'error');
-                    return;
+                    return false;
                   }
+                  const previousCatalog = catalog;
+                  const previousMeta = catalogMeta;
+                  setCatalogImporting(true);
                   setCatalog(updated);
-                  setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(metaToWrite ? { _meta: metaToWrite } : {}) })
-                    .then(() => console.log('Firestore catalog saved', updated.length, 'items'))
-                    .catch(err => { console.error('Firestore catalog write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code); });
-                  setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result })
-                    .catch(err => { console.error('Firestore catalogByPacker write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code, 'error'); });
-                  showToast(opts?.urgent
-                    ? `📌 เบิกด่วน ${items.length} รายการ (${opts.branch || 'ไม่ระบุสาขา'}) — แทนที่รายการด่วนเดิมแล้ว ✓`
-                    : `นำเข้าแล้ว ${items.length} รายการ ✓`);
+                  setCatalogMeta(metaToWrite);
+                  const importBatch = writeBatch(db);
+                  importBatch.set(doc(db, 'config', 'catalog'), { items: updated, _meta: metaToWrite });
+                  importBatch.set(doc(db, 'config', 'catalogByPacker'), { assignments: result, _meta: metaToWrite });
+                  return importBatch.commit()
+                    .then(() => {
+                      console.log('Firestore catalog saved', updated.length, 'items', runId);
+                      showToast(opts?.urgent
+                        ? `📌 เบิกด่วน ${items.length} รายการ (${opts.branch || 'ไม่ระบุสาขา'}) — เริ่มรอบใหม่แล้ว ✓`
+                        : `นำเข้าแล้ว ${items.length} รายการ · เริ่มรอบใหม่ ✓`);
+                      return true;
+                    })
+                    .catch(err => {
+                      setCatalog(previousCatalog);
+                      setCatalogMeta(previousMeta);
+                      console.error('Firestore Picklist import failed:', err.code, err.message);
+                      showToast('⚠ บันทึก Picklist ไม่สำเร็จ: ' + err.code, 'error');
+                      return false;
+                    })
+                    .finally(() => setCatalogImporting(false));
                 }} />
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn sm" onClick={() => setShowPicklistView(true)}>
                     📋 ดูรายการ Picklist
                   </button>
-                  <button className="btn sm" style={{ minWidth: 240 }} onClick={() => setShowZoneAssign(true)}>
+                  <button className="btn sm" style={{ minWidth: 240 }} disabled={catalogImporting} onClick={() => setShowZoneAssign(true)}>
                     📍 กำหนดโซน
                   </button>
                 </div>
@@ -1065,23 +1137,23 @@ export default function App() {
                 matchCount={Object.keys(barcodeMap).length}
                 meta={barcodeMapMeta}
                 onImport={handleBarcodeMapImport}
-                locked={!hasCatalog}
-                lockedHint="อัปโหลดไฟล์ Picklist ก่อน"
+                locked={!hasCatalog || catalogImporting}
+                lockedHint={catalogImporting ? 'กำลังบันทึก Picklist กรุณารอ' : 'อัปโหลดไฟล์ Picklist ก่อน'}
               />
               <ImportCostMap
                 matchCount={Object.keys(costMap).length}
                 meta={costMapMeta}
                 onImport={handleCostMapImport}
-                locked={!hasBarcodeMap}
-                lockedHint="อัปโหลดไฟล์ R05.106 ก่อน"
+                locked={!hasBarcodeMap || catalogImporting}
+                lockedHint={catalogImporting ? 'กำลังบันทึก Picklist กรุณารอ' : 'อัปโหลดไฟล์ R05.106 ก่อน'}
               />
               <ImportLotMap
                 matchCount={Object.keys(lotMap).length}
                 meta={lotMapMeta}
                 onImport={handleLotMapImport}
                 factorMap={factorMap}
-                locked={!hasCostMap}
-                lockedHint="อัปโหลดไฟล์ R05.105 ก่อน"
+                locked={!hasCostMap || catalogImporting}
+                lockedHint={catalogImporting ? 'กำลังบันทึก Picklist กรุณารอ' : 'อัปโหลดไฟล์ R05.105 ก่อน'}
               />
             </div>
             <BoxList {...screenProps} />

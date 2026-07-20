@@ -21,6 +21,7 @@ import {
   isHistoryExpired,
   normalizeReceiveProblem,
 } from '../src/warehouseHelpers.js';
+import { buildPackItems } from '../src/units.js';
 
 const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
 const run = Boolean(emulatorHost);
@@ -126,6 +127,56 @@ test('warehouse lifecycle persists open to received without orphaning box items'
     assert.deepEqual(itemSnapshot.data().items, persistedItems);
   } finally {
     await Promise.all([deleteDoc(boxRef).catch(() => {}), deleteDoc(itemsRef).catch(() => {})]);
+    await closeClient(client);
+  }
+});
+
+test('Picklist run fields roundtrip and old runs do not complete the active run', { skip: !run }, async () => {
+  const client = makeClient(`picklist-run-${Date.now()}`);
+  const suffix = Date.now();
+  const oldId = `RUN-OLD-${suffix}`;
+  const newId = `RUN-NEW-${suffix}`;
+  const catalogRef = doc(client.db, 'config', `test-catalog-${suffix}`);
+  const oldBoxRef = doc(client.db, 'boxes', oldId);
+  const newBoxRef = doc(client.db, 'boxes', newId);
+  const oldItemsRef = doc(client.db, 'boxItems', oldId);
+  const newItemsRef = doc(client.db, 'boxItems', newId);
+  const packer = { code: 'P1', name: 'พนักงาน 1' };
+  const catalog = [{
+    sku: 'SKU-RUN', unit: 'ชิ้น', qty: 2, name: 'สินค้าทดสอบ', barcode: '111',
+    picklistRunId: 'N-NEW', picklistRowId: 'N-NEW:1',
+  }];
+
+  try {
+    const seed = writeBatch(client.db);
+    seed.set(catalogRef, { items: catalog, _meta: { picklistRunId: 'N-NEW', picklistRunStartedAt: suffix } });
+    seed.set(oldBoxRef, { id: oldId, status: 'closed', packer, picklistRunId: 'N-OLD', branch: 'SSS' });
+    seed.set(oldItemsRef, { items: [{ sku: 'SKU-RUN', unit: 'ชิ้น', qty: 2, gotBase: 2, picklistRunId: 'N-OLD' }] });
+    seed.set(newBoxRef, { id: newId, status: 'closed', packer, picklistRunId: 'N-NEW', branch: 'SSS' });
+    seed.set(newItemsRef, { items: [{ sku: 'SKU-RUN', unit: 'ชิ้น', qty: 2, gotBase: 2, picklistRunId: 'N-NEW' }] });
+    await seed.commit();
+
+    const [savedCatalog, savedOldBox, savedNewBox, savedOldItems, savedNewItems] = await Promise.all([
+      getDoc(catalogRef), getDoc(oldBoxRef), getDoc(newBoxRef), getDoc(oldItemsRef), getDoc(newItemsRef),
+    ]);
+    assert.equal(savedCatalog.data()._meta.picklistRunId, 'N-NEW');
+    assert.equal(savedOldBox.data().picklistRunId, 'N-OLD');
+    assert.equal(savedNewItems.data().items[0].picklistRunId, 'N-NEW');
+
+    const boxes = [savedOldBox.data(), savedNewBox.data()];
+    const itemsByBox = {
+      [oldId]: savedOldItems.data().items,
+      [newId]: savedNewItems.data().items,
+    };
+    assert.deepEqual(buildPackItems({ catalog, boxes, itemsByBox, packer, factorMap: {} }), []);
+    assert.equal(buildPackItems({ catalog, boxes: [boxes[0]], itemsByBox, packer, factorMap: {} })[0].need, 2);
+
+    await setDoc(oldBoxRef, { status: 'received', receivedBy: { code: 'SSS-01' } }, { merge: true });
+    const receivedOldBox = (await getDoc(oldBoxRef)).data();
+    assert.equal(receivedOldBox.status, 'received');
+    assert.equal(receivedOldBox.picklistRunId, 'N-OLD');
+  } finally {
+    await Promise.all([catalogRef, oldBoxRef, newBoxRef, oldItemsRef, newItemsRef].map(ref => deleteDoc(ref).catch(() => {})));
     await closeClient(client);
   }
 });
