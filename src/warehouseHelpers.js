@@ -2,10 +2,104 @@ import { lookupFactor, zoneOfItem } from './units.js';
 
 export const HISTORY_RETENTION_DAYS = 30;
 
+export const RECEIVE_PROBLEM_TYPE_OPTIONS = [
+  { value: 'damaged', label: 'ชำรุด' },
+  { value: 'lot_exp_mismatch', label: 'LOT/EXP ไม่ตรง' },
+  { value: 'wrong_item', label: 'สินค้าผิด' },
+  { value: 'other', label: 'อื่น ๆ' },
+];
+
+export const RECEIVE_PROBLEM_STATUSES = new Set([
+  'draft',
+  'pending_recheck',
+  'submitted',
+  'resolved',
+]);
+
 const numberOrZero = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 };
+
+const cleanText = (value) => String(value ?? '').trim();
+
+// Deterministic Firestore id: one receive problem per box + SKU. Encoding each
+// segment also prevents a slash in an imported box/SKU from becoming a path.
+export function receiveProblemId(boxId, sku) {
+  const encodeSegment = value => encodeURIComponent(cleanText(value)).replace(/_/g, '%5F');
+  return `${encodeSegment(boxId)}__${encodeSegment(sku)}`;
+}
+
+export function normalizeReceiveProblem(input, now = Date.now()) {
+  const boxId = cleanText(input?.boxId);
+  const sku = cleanText(input?.sku);
+  const status = RECEIVE_PROBLEM_STATUSES.has(input?.status) ? input.status : 'draft';
+  const allowedTypes = new Set(RECEIVE_PROBLEM_TYPE_OPTIONS.map(option => option.value));
+  const types = [...new Set((input?.types || []).filter(type => allowedTypes.has(type)))];
+  const affected = Number(input?.affectedQty);
+  const affectedQty = Number.isInteger(affected) && affected > 0 ? affected : null;
+  const createdAt = Number.isFinite(Number(input?.createdAt)) ? Number(input.createdAt) : now;
+
+  return {
+    ...input,
+    id: receiveProblemId(boxId, sku),
+    boxId,
+    sku,
+    name: cleanText(input?.name),
+    barcode: cleanText(input?.barcode),
+    unit: cleanText(input?.unit),
+    lotExpRows: (input?.lotExpRows || []).map(row => ({
+      lot: cleanText(row?.lot),
+      exp: cleanText(row?.exp),
+    })),
+    types,
+    affectedQty,
+    note: cleanText(input?.note),
+    image: input?.image || null,
+    imageName: cleanText(input?.imageName),
+    reportedBy: input?.reportedBy || null,
+    status,
+    createdAt,
+    updatedAt: now,
+  };
+}
+
+export function upsertReceiveProblemList(problems, problem) {
+  const next = normalizeReceiveProblem(problem, problem?.updatedAt || Date.now());
+  return [...(problems || []).filter(item => item.id !== next.id), next]
+    .sort((a, b) => numberOrZero(a.createdAt) - numberOrZero(b.createdAt));
+}
+
+export function problemTypeLabels(types) {
+  const labels = Object.fromEntries(RECEIVE_PROBLEM_TYPE_OPTIONS.map(option => [option.value, option.label]));
+  return (types || []).map(type => labels[type] || type);
+}
+
+export function receiveProblemRoute({ result, recheckMode = false, isPharmacist = false, hasProblems = false }) {
+  if (result === 'ok') {
+    return hasProblems
+      ? { action: 'submit_problem', problemStatus: 'submitted', problemType: 'item' }
+      : { action: 'receive_pending', problemStatus: null, problemType: null };
+  }
+  if (recheckMode && isPharmacist) {
+    return {
+      action: 'submit_problem',
+      problemStatus: hasProblems ? 'submitted' : null,
+      problemType: hasProblems ? 'mixed' : 'incomplete',
+    };
+  }
+  return {
+    action: 'pending_recheck',
+    problemStatus: hasProblems ? 'pending_recheck' : null,
+    problemType: 'incomplete',
+  };
+}
+
+export function isReceiveProblemExpired(problem, now, retentionDays = HISTORY_RETENTION_DAYS) {
+  if (problem?.status === 'draft' || problem?.status === 'pending_recheck') return false;
+  const timestamp = numberOrZero(problem?.resolvedAt || problem?.submittedAt || problem?.updatedAt);
+  return timestamp > 0 && timestamp < historyCutoff(now, retentionDays).getTime();
+}
 
 export const expectedBaseQty = (item) =>
   numberOrZero(item?.gotBase ?? item?.qty ?? item?.got ?? 0);

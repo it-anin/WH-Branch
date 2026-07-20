@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
 import { fixItemName, lookupFactor } from '../units.js';
 import { branchLabel } from '../branches.js';
-import { adjustPackedItem, buildLotRows, toBuddhistExpiry } from '../warehouseHelpers.js';
+import { adjustPackedItem, buildLotRows, problemTypeLabels, toBuddhistExpiry } from '../warehouseHelpers.js';
 
 // reverse-lookup barcode → unit สำหรับ SKU นั้น (ใช้ใน edit mode เพื่ออัปเดต unit อัตโนมัติเมื่อสแกน barcode)
 function lookupUnitByBarcode(barcodeMap, sku, barcode) {
@@ -121,7 +121,7 @@ function StickerLabel({ box }) {
   );
 }
 
-export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, costMap = {}, lotMap = {}, barcodeMap = {}, nameMap = {}, factorMap = {}, catalog = [] }) {
+export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, loadReceiveProblems = async () => [], commitReceiveOutcome = null, costMap = {}, lotMap = {}, barcodeMap = {}, nameMap = {}, factorMap = {}, catalog = [] }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
@@ -144,6 +144,11 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const [addScan, setAddScan]       = useState('');             // barcode input สำหรับเพิ่มสินค้าใหม่ใน edit mode
   const [addScanErr, setAddScanErr] = useState('');
   const [boxNote, setBoxNote]       = useState('');             // หมายเหตุต่อลัง — sync กับ box.note ใน Firestore
+  const [receiveProblems, setReceiveProblems] = useState([]);
+  const [receiveProblemsBoxId, setReceiveProblemsBoxId] = useState(null);
+  const [receiveProblemsLoading, setReceiveProblemsLoading] = useState(false);
+  const [receiveProblemsError, setReceiveProblemsError] = useState(false);
+  const [problemResolving, setProblemResolving] = useState(false);
 
   // อนุมัติแล้ว = exported/received, รออนุมัติ = closed (ยังไม่ส่ง POS)
   const isApproved = (b) => b.status === 'exported' || b.status === 'received';
@@ -188,6 +193,17 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const activeBox = boxes.find(b => b.id === selectedId) || null;
   // heal ชื่อที่เป็นเลข SKU (แถวเก่าจาก lookupByScan เดิม) ด้วย nameMap ตั้งแต่จุด derive — ตาราง/edit/Excel ได้ชื่อครบโดยไม่ต้องแตะข้อมูล
   const boxItems = (selectedId ? (itemsByBox?.[selectedId] || []) : []).map(l => fixItemName(l, nameMap));
+  const submittedReceiveProblems = receiveProblemsBoxId === selectedId
+    ? receiveProblems.filter(problem => problem.status === 'submitted')
+    : [];
+  const expectsReceiveProblems = activeBox?.problemType === 'item'
+    || activeBox?.problemType === 'mixed'
+    || (activeBox?.problemIds || []).length > 0;
+  const expectedReceiveProblemCount = activeBox?.problemCount || activeBox?.problemIds?.length || 0;
+  const receiveProblemsMissing = expectsReceiveProblems
+    && (receiveProblemsBoxId !== selectedId || expectedReceiveProblemCount > submittedReceiveProblems.length)
+    && !receiveProblemsLoading
+    && !receiveProblemsError;
 
   const resetFilters = () => { setBranchFilter('all'); setPackerFilter('all'); setOutboundFilter('all'); };
 
@@ -289,13 +305,33 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   }
 
   // แก้ไข/อนุมัติ → ปิดสถานะปัญหา + อัปเดต skuCount/totalQty (แจ้งกลับหน้ารับสินค้า)
-  function resolveProblem() {
-    if (!activeBox) return;
+  async function resolveProblem() {
+    if (!activeBox || problemResolving) return;
     const items = itemsByBox?.[activeBox.id] || [];
     const totalQty = items.reduce((s, l) => s + (l.qty ?? l.got ?? 0), 0);
     const skuCount = items.filter(l => (l.qty ?? l.got ?? 0) > 0).length;
-    setBoxes(prev => prev.map(b => b.id === activeBox.id ? { ...b, problemResolved: true, skuCount, totalQty } : b));
-    showToast(`แก้ไข ${activeBox.id} เรียบร้อย ✓ · แจ้งกลับหน้ารับสินค้า`, 'success');
+    const patch = {
+      problemResolved: true,
+      problemResolvedAt: new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      skuCount,
+      totalQty,
+    };
+    setProblemResolving(true);
+    try {
+      if (commitReceiveOutcome) {
+        const saved = await commitReceiveOutcome(activeBox.id, patch, submittedReceiveProblems, 'resolved');
+        setReceiveProblems(saved);
+        setReceiveProblemsBoxId(activeBox.id);
+      } else {
+        setBoxes(prev => prev.map(b => b.id === activeBox.id ? { ...b, ...patch } : b));
+      }
+      showToast(`แก้ไข ${activeBox.id} เรียบร้อย ✓ · แจ้งกลับหน้ารับสินค้า`, 'success');
+    } catch (err) {
+      console.error('resolve receive problems failed:', err.code || err.message);
+      showToast('⚠ อนุมัติการแก้ไขไม่สำเร็จ กรุณาลองใหม่', 'error');
+    } finally {
+      setProblemResolving(false);
+    }
   }
 
   function handleExportItems() {
@@ -343,13 +379,20 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   function requestDelete(boxId) {
     setConfirmDeleteId(boxId);
   }
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!confirmDeleteId) return;
-    deleteBox(confirmDeleteId);
-    if (selectedId === confirmDeleteId) setSelectedId(null);
-    if (activeBoxId === confirmDeleteId) setActiveBoxId(null);
-    showToast(`ลบลัง ${confirmDeleteId} แล้ว`, 'success');
-    setConfirmDeleteId(null);
+    const targetId = confirmDeleteId;
+    try {
+      const deleted = await deleteBox(targetId);
+      if (!deleted) return;
+      if (selectedId === targetId) setSelectedId(null);
+      if (activeBoxId === targetId) setActiveBoxId(null);
+      showToast(`ลบลัง ${targetId} แล้ว`, 'success');
+      setConfirmDeleteId(null);
+    } catch (err) {
+      console.error('deleteBox failed:', err.code || err.message);
+      showToast('⚠ ลบลังไม่สำเร็จ กรุณาลองใหม่', 'error');
+    }
   }
 
   // reset state เมื่อเปลี่ยนลัง
@@ -357,6 +400,36 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     setEditMode(false); setEditItems([]); setAddScan(''); setAddScanErr(''); setProblemEditing(false);
     setBoxNote(boxes.find(b => b.id === selectedId)?.note || '');
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    let cancelled = false;
+    const box = boxes.find(item => item.id === selectedId);
+    const hasItemProblems = box?.problemType === 'item' || box?.problemType === 'mixed' || (box?.problemIds || []).length > 0;
+    if (!selectedId || !hasItemProblems) {
+      setReceiveProblems([]);
+      setReceiveProblemsBoxId(null);
+      setReceiveProblemsLoading(false);
+      setReceiveProblemsError(false);
+      return () => { cancelled = true; };
+    }
+    setReceiveProblemsLoading(true);
+    setReceiveProblemsError(false);
+    setReceiveProblemsBoxId(null);
+    loadReceiveProblems(selectedId)
+      .then(problems => {
+        if (cancelled) return;
+        setReceiveProblems(problems);
+        setReceiveProblemsBoxId(selectedId);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setReceiveProblemsError(true);
+        console.error('warehouse loadReceiveProblems failed:', err.code || err.message);
+        showToast('⚠ โหลดรายละเอียดปัญหารายสินค้าไม่สำเร็จ', 'error');
+      })
+      .finally(() => { if (!cancelled) setReceiveProblemsLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedId, activeBox?.problemType, activeBox?.problemCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // บันทึก Note ต่อลัง → box.note (sync Firestore) → โชว์บนสติกเกอร์ (StickerLabel อ่าน box.note)
   function saveBoxNote() {
@@ -693,6 +766,47 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               )}
             </div>
 
+            {(receiveProblemsLoading || receiveProblemsError || receiveProblemsMissing || submittedReceiveProblems.length > 0) && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 14, color: 'var(--red)', fontWeight: 700, marginBottom: 7 }}>
+                  ปัญหารายสินค้า {receiveProblemsLoading ? '· กำลังโหลด…' : receiveProblemsError ? '· โหลดไม่สำเร็จ กรุณาเลือกลังใหม่เพื่อลองอีกครั้ง' : `(${submittedReceiveProblems.length})`}
+                </div>
+                {receiveProblemsMissing && (
+                  <div style={{ marginBottom: 8, padding: '8px 10px', border: '1.5px solid var(--red)', borderRadius: 8, background: '#fde8e8', color: 'var(--red)', fontFamily: 'system-ui', fontSize: 13, fontWeight: 700 }}>
+                    ⚠ พบรายละเอียดปัญหาไม่ครบ ({submittedReceiveProblems.length}/{expectedReceiveProblemCount}) จึงยังอนุมัติไม่ได้
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
+                  {submittedReceiveProblems.map(problem => (
+                    <div key={problem.id} style={{ border: '1.5px solid var(--red)', borderRadius: 10, padding: 12, background: '#fff8f8', minWidth: 0 }}>
+                      <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{problem.sku}</div>
+                      <div style={{ fontFamily: 'system-ui', fontSize: 15, fontWeight: 800 }}>{problem.name || problem.sku}</div>
+                      {problem.barcode && <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>Barcode: {problem.barcode}</div>}
+                      <div style={{ fontFamily: 'system-ui', fontSize: 13, color: '#c0392b', fontWeight: 700, marginTop: 5 }}>
+                        {problemTypeLabels(problem.types).join(', ')}
+                      </div>
+                      {problem.affectedQty && (
+                        <div style={{ fontFamily: 'system-ui', fontSize: 13, marginTop: 3 }}>
+                          จำนวนที่มีปัญหา: <b>{problem.affectedQty} {problem.unit || 'หน่วยฐาน'}</b>
+                        </div>
+                      )}
+                      {(problem.lotExpRows || []).length > 0 && (
+                        <div style={{ marginTop: 5 }}>
+                          {problem.lotExpRows.map((row, index) => (
+                            <div key={`${row.lot || ''}-${row.exp || ''}-${index}`} className="mono" style={{ fontSize: 10, color: 'var(--accent)' }}>
+                              LOT: {row.lot || '—'} · EXP: {row.exp || '—'}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {problem.note && <div style={{ fontFamily: 'system-ui', fontSize: 12, marginTop: 6, whiteSpace: 'pre-wrap' }}>📝 {problem.note}</div>}
+                      {problem.image && <img src={problem.image} alt={`หลักฐาน ${problem.sku}`} style={{ width: '100%', maxHeight: 220, marginTop: 8, borderRadius: 8, border: '1px solid var(--line)', objectFit: 'contain', display: 'block', background: 'white' }} />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {activeBox.problemNote && (
               <div style={{ marginBottom: 12, padding: '10px 14px', border: '1.5px solid var(--red)', borderRadius: 10, background: '#fde8e8', fontFamily: 'JetBrains Mono', fontSize: 14, color: '#c0392b' }}>
                 📝 {activeBox.problemNote}
@@ -744,9 +858,10 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                   >✎ แก้ไขรายการสินค้า</button>
                   <button
                     className="btn sm"
+                    disabled={problemResolving || receiveProblemsLoading || receiveProblemsError || receiveProblemsMissing}
                     style={{ background: 'var(--green)', borderColor: 'var(--green)', color: 'white', fontWeight: 700 }}
                     onClick={resolveProblem}
-                  >✓ อนุมัติ</button>
+                  >{problemResolving ? 'กำลังอนุมัติ…' : '✓ อนุมัติ'}</button>
                 </div>
               </div>
 

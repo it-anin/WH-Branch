@@ -8,6 +8,8 @@ import {
   buildTopLevelFieldPatch,
   computeCatalogByPacker,
   isHistoryExpired,
+  isReceiveProblemExpired,
+  normalizeReceiveProblem,
 } from './warehouseHelpers.js';
 
 import BoxList from './screens/BoxList.jsx';
@@ -315,6 +317,71 @@ export default function App() {
     });
   }
 
+  async function loadReceiveProblems(boxId) {
+    if (!boxId) return [];
+    const snap = await getDocs(query(
+      collection(db, 'receiveProblems'),
+      where('boxId', '==', boxId),
+    ));
+    return snap.docs
+      .map(problemDoc => ({ ...problemDoc.data(), id: problemDoc.id }))
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  }
+
+  async function upsertReceiveProblem(problem) {
+    const normalized = normalizeReceiveProblem(problem);
+    if (!normalized.boxId || !normalized.sku || normalized.types.length === 0) {
+      throw new Error('invalid-receive-problem');
+    }
+    await setDoc(doc(db, 'receiveProblems', normalized.id), normalized, { merge: true });
+    return normalized;
+  }
+
+  async function deleteReceiveProblem(problemId) {
+    if (!problemId) return;
+    await deleteDoc(doc(db, 'receiveProblems', problemId));
+  }
+
+  // Write the box outcome and every item problem atomically. The transaction
+  // also rechecks the live box lock so a stale confirmation dialog cannot win.
+  async function commitReceiveOutcome(boxId, boxPatch, problems = [], problemStatus = null, expectedReceivingCode = null) {
+    const now = Date.now();
+    const savedProblems = (problems || []).map(problem => normalizeReceiveProblem({
+      ...problem,
+      ...(problemStatus ? { status: problemStatus } : {}),
+      ...(problemStatus === 'submitted' ? { submittedAt: problem.submittedAt || now } : {}),
+      ...(problemStatus === 'resolved' ? { resolvedAt: now } : {}),
+    }, now));
+    const boxRef = doc(db, 'boxes', boxId);
+    await runTransaction(db, async transaction => {
+      const boxSnapshot = await transaction.get(boxRef);
+      if (!boxSnapshot.exists()) {
+        const error = new Error('receive-box-missing');
+        error.code = 'receive-box-missing';
+        throw error;
+      }
+      const current = boxSnapshot.data();
+      if (expectedReceivingCode && (current.status === 'received' || current.receivePending)) {
+        const error = new Error('receive-box-already-finished');
+        error.code = 'receive-box-already-finished';
+        throw error;
+      }
+      if (expectedReceivingCode && current.receivingBy?.code && current.receivingBy.code !== expectedReceivingCode) {
+        const error = new Error('receive-lock-lost');
+        error.code = 'receive-lock-lost';
+        throw error;
+      }
+      transaction.set(boxRef, boxPatch, { merge: true });
+      savedProblems.forEach(problem => {
+        transaction.set(doc(db, 'receiveProblems', problem.id), problem, { merge: true });
+      });
+    });
+
+    boxesRef.current = boxesRef.current.map(box => box.id === boxId ? { ...box, ...boxPatch } : box);
+    _setBoxes(boxesRef.current);
+    return savedProblems;
+  }
+
   function handleScanProgress(boxId, items) {
     if (!boxId) return;
     if (items.length === 0) {
@@ -410,11 +477,28 @@ export default function App() {
     const docId = String(now.getTime());
     const entry = { dateKey, label, clearedAt: now.toISOString(), boxes: [...boxes] };
 
+    let problemSnap;
+    try {
+      problemSnap = await getDocs(collection(db, 'receiveProblems'));
+    } catch (err) {
+      console.error('clearBoxes problem cleanup failed:', err.code, err.message);
+      showToast('⚠ ตรวจสอบข้อมูลปัญหาก่อนเริ่มวันถัดไปไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
+      return;
+    }
+    const currentBoxIds = new Set(boxesRef.current.map(box => box.id));
     const batch = writeBatch(db);
     // history: เขียน entry ใหม่ + ลบ entries ที่เก่ากว่า retention (ครบ 30 วันพอดียังอยู่)
     batch.set(doc(db, 'history', docId), entry);
     history.filter(h => h.id && isHistoryExpired(h.clearedAt, now, HISTORY_RETENTION_DAYS)).forEach(h => {
       batch.delete(doc(db, 'history', h.id));
+    });
+    problemSnap.docs.forEach(problemDoc => {
+      const problem = problemDoc.data();
+      const isUnsubmittedForClearedBox = currentBoxIds.has(problem.boxId)
+        && (problem.status === 'draft' || problem.status === 'pending_recheck');
+      if (isUnsubmittedForClearedBox || isReceiveProblemExpired(problem, now, HISTORY_RETENTION_DAYS)) {
+        batch.delete(problemDoc.ref);
+      }
     });
     // ล้าง boxes / items / progress / receive (เดิม)
     boxesRef.current.forEach(b => batch.delete(doc(db, 'boxes', b.id)));
@@ -461,15 +545,22 @@ export default function App() {
 
   // ลบลังเดียว (Outbound) — กรณียกเลิกรายการเบิก; ห้ามลบลังที่สาขารับแล้ว (เสีย audit trail การรับสินค้า)
   // bypass setBoxes/setItemsByBox wrapper เพราะ setItemsByBox ไม่ deleteDoc ให้ตอน key หายไปจาก object (ต่างจาก setBoxes ที่ diff ให้)
-  function deleteBox(boxId) {
+  async function deleteBox(boxId) {
     const box = boxesRef.current.find(b => b.id === boxId);
-    if (!box || box.status === 'received') return;
+    if (!box || box.status === 'received') return false;
 
+    const problemSnap = await getDocs(query(
+      collection(db, 'receiveProblems'),
+      where('boxId', '==', boxId),
+    ));
     const batch = writeBatch(db);
     batch.delete(doc(db, 'boxes', boxId));
     batch.delete(doc(db, 'boxItems', boxId));
     batch.delete(doc(db, 'progress', boxId)); // กันไว้เผื่อหลงเหลือ — ปกติ doClose() ลบไปแล้ว
-    batch.commit();
+    problemSnap.docs
+      .filter(problemDoc => problemDoc.data().status === 'draft' || problemDoc.data().status === 'pending_recheck')
+      .forEach(problemDoc => batch.delete(problemDoc.ref));
+    await batch.commit();
 
     boxesRef.current = boxesRef.current.filter(b => b.id !== boxId);
     _setBoxes(boxesRef.current);
@@ -484,6 +575,7 @@ export default function App() {
       _setReceiveBoxIds(receiveBoxIdsRef.current);
       setDoc(doc(db, 'config', 'receive'), { ids: receiveBoxIdsRef.current });
     }
+    return true;
   }
 
   async function clearFirestore() {
@@ -502,6 +594,8 @@ export default function App() {
       // dismissals ไม่มี listener → ไม่มี local state ให้อ่าน id ต้อง getDocs เอา (reset ทั้งระบบเท่านั้นที่ลบ)
       const dismissSnap = await getDocs(collection(db, 'dismissals'));
       dismissSnap.docs.forEach(d => batch.delete(d.ref));
+      const receiveProblemsSnap = await getDocs(collection(db, 'receiveProblems'));
+      receiveProblemsSnap.docs.forEach(d => batch.delete(d.ref));
       batch.delete(doc(db, 'config', 'catalog'));
       batch.delete(doc(db, 'config', 'barcodeMap'));
       batch.delete(doc(db, 'config', 'catalogByPacker'));
@@ -816,7 +910,7 @@ export default function App() {
   }
 
   const receiveDataLoadError = receiveDataLoadErrors.boxes || receiveDataLoadErrors.boxItems;
-  const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearFirestore, deleteBox, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearFirestore, deleteBox, loadReceiveProblems, upsertReceiveProblem, deleteReceiveProblem, commitReceiveOutcome, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   // Gate: ยังไม่ login → แสดงหน้า Login (ทั้ง Android + Desktop)
   if (!profile) {

@@ -5,10 +5,14 @@ import { ALL_BRANCH_STAFF } from '../branches.js';
 import { playScanSuccess, playBoxScan, playScanFail } from '../sound.js';
 import { lookupFactor, buildBarcodeIndex } from '../units.js';
 import {
+  RECEIVE_PROBLEM_TYPE_OPTIONS,
   aggregateReceiveItems,
   buildReceiveDifferences,
   buildReceiveLotExpMap,
+  problemTypeLabels,
+  receiveProblemRoute,
   resolveReceiveBoxScan,
+  upsertReceiveProblemList,
 } from '../warehouseHelpers.js';
 
 // Desktop staff filter dropdown ใช้รายชื่อรวมทุกสาขา; Android ใช้ staff ของสาขาที่เลือก (controlled mode)
@@ -280,7 +284,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onClick }) {
   );
 }
 
-export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null, barcodeMap = {}, factorMap = {}, lotMap = {}, receiveDataReady = true, receiveDataLoadError = null }) {
+export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null, barcodeMap = {}, factorMap = {}, lotMap = {}, receiveDataReady = true, receiveDataLoadError = null, loadReceiveProblems = async () => [], upsertReceiveProblem = async problem => problem, deleteReceiveProblem = async () => {}, commitReceiveOutcome = null }) {
   const [internalBranchStaff, setInternalBranchStaff] = useState(null);
   const isControlled = branchStaffProp !== undefined;
   const branchStaff = isControlled ? branchStaffProp : internalBranchStaff;
@@ -301,6 +305,18 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [supervisorCode, setSupervisorCode] = useState('');
   const [reportOpen, setReportOpen]   = useState(false);
   const [reportImage, setReportImage] = useState(null);
+  const [problemTargetSku, setProblemTargetSku] = useState(null);
+  const [problemTypes, setProblemTypes] = useState([]);
+  const [problemAffectedQty, setProblemAffectedQty] = useState('');
+  const [problemDraftNote, setProblemDraftNote] = useState('');
+  const [receiveProblems, setReceiveProblems] = useState([]);
+  const [problemsLoading, setProblemsLoading] = useState(false);
+  const [problemsLoadError, setProblemsLoadError] = useState(false);
+  const [problemSaving, setProblemSaving] = useState(false);
+  const [problemDeletingId, setProblemDeletingId] = useState(null);
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
+  const [outcomeHasProblems, setOutcomeHasProblems] = useState(false);
+  const [outcomeProblemCount, setOutcomeProblemCount] = useState(0);
   // recheckMode = เภสัชสแกนซ้ำลังที่มีปัญหา 'incomplete' — แสดงเฉพาะ SKU ที่ไม่ครบ
   const [recheckMode, setRecheckMode] = useState(false);
   const [staffMenuOpen, setStaffMenuOpen] = useState(false);
@@ -311,6 +327,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const itemScanRef = useRef(null);
   const staffMenuRef = useRef(null);
   const pendingBoxScanRef = useRef('');
+  const problemLoadSeqRef = useRef(0);
+  const imageLoadSeqRef = useRef(0);
 
   // ลังที่เครื่องนี้กำลังตรวจ = local state (ตั้งตอน startReceive) — ไม่ดึงจาก receiveBoxIds ที่ sync ข้ามเครื่องผ่าน Firestore
   // (เดิมใช้ receiveBoxIds[last] → 2 เครื่องสแกนคนละลัง จอเด้งเห็นลังเดียวกัน = ตัวที่ sync ล่าสุดชนะ เสี่ยงยืนยันผิดลัง)
@@ -319,6 +337,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const isViewingOther = viewingId !== null && phase !== 'result';
   const viewingBox     = viewingId ? boxes.find(b => b.id === viewingId) : null;
   const viewingItems   = viewingId ? (itemsByBox[viewingId] || []) : [];
+  const activeReceiveProblems = receiveProblems.filter(problem =>
+    problem.boxId === foundBox?.id
+    && (problem.status === 'draft' || problem.status === 'pending_recheck'),
+  );
 
   // ลังที่พนักงานหน้าร้านสแกนรับแล้ว (รออนุมัติ) หรือเคยเข้ารับใน session นี้ — pending ขึ้นก่อน
   // Desktop: ปุ่มเลือกพนักงาน = filter เฉพาะลังที่พนักงานคนนั้นสแกน (receivedBy)
@@ -382,15 +404,48 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     return () => document.removeEventListener('mousedown', handler);
   }, [staffMenuOpen]);
 
+  function clearProblemEditor() {
+    imageLoadSeqRef.current += 1;
+    setReportOpen(false);
+    setReportImage(null);
+    setProblemTargetSku(null);
+    setProblemTypes([]);
+    setProblemAffectedQty('');
+    setProblemDraftNote('');
+    setProblemSaving(false);
+  }
+
+  function loadProblemsForBox(boxId) {
+    const seq = ++problemLoadSeqRef.current;
+    setProblemsLoading(true);
+    setProblemsLoadError(false);
+    setReceiveProblems([]);
+    loadReceiveProblems(boxId)
+      .then(problems => {
+        if (problemLoadSeqRef.current !== seq) return;
+        setReceiveProblems(problems);
+      })
+      .catch(err => {
+        if (problemLoadSeqRef.current !== seq) return;
+        setProblemsLoadError(true);
+        console.error('loadReceiveProblems failed:', err.code || err.message);
+        showToast('⚠ โหลดปัญหาที่บันทึกไว้ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ต', 'error');
+      })
+      .finally(() => {
+        if (problemLoadSeqRef.current === seq) setProblemsLoading(false);
+      });
+  }
+
   // เด้งกลับหน้าสแกน + แจ้งเหตุ — reset ชุดเดียวกับ handleScanNext แต่ "ไม่แตะ receivingBy" (ล็อกไม่ใช่ของเราแล้ว)
   // ใช้ร่วม: effect ถูกตรวจแทน / guard ใน handleConfirm / handleReportProblem
   function resetToScan(message) {
     playScanFail();
     showToast(message, 'error');
-    setConfirmIncomplete(false); setConfirmNext(false); setReportOpen(false); setReportImage(null); // ปิด dialog ที่อาจค้าง
+    setConfirmIncomplete(false); setConfirmNext(false); clearProblemEditor(); // ปิด dialog ที่อาจค้าง
     setScanCounts({}); setQuery(''); setNotFound(false);
     setItemScan(''); setLastScannedSku(null); setScanError('');
-    setVerifyResult(null); setSupervisorCode(''); setRecheckMode(false);
+    setVerifyResult(null); setSupervisorCode(''); setRecheckMode(false); setOutcomeHasProblems(false); setOutcomeProblemCount(0);
+    setReceiveProblems([]); setProblemsLoadError(false); problemLoadSeqRef.current += 1;
     setViewingId(null); setScannedBoxId(null); setPhase('scan');
   }
 
@@ -419,10 +474,14 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setItemScan('');
     setLastScannedSku(null);
     setScanError('');
+    clearProblemEditor();
+    setOutcomeHasProblems(false);
+    setOutcomeProblemCount(0);
     setQuery('');
     setViewingId(null);
     setScannedBoxId(box.id);   // ผูกลังที่ตรวจกับเครื่องนี้ (ไม่พึ่ง receiveBoxIds ที่แชร์)
     setPhase('verify');
+    loadProblemsForBox(box.id);
   }
 
   // ยืนยัน "ตรวจแทน" ลังที่คนอื่นล็อกไว้ — startReceive ทับ receivingBy เป็นคนนี้ + reset นับใหม่ + เข้า verify
@@ -500,7 +559,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         return;
       }
       playScanFail();
-      showToast(`⚠ ${boxLabel}แจ้งปัญหาแล้ว · รอเภสัชตรวจสอบ`, 'error');
+      showToast(`⚠ ${boxLabel}แจ้งปัญหาแล้ว · รอการแก้ไข`, 'error');
       return;
     }
     if (box.receivePending) {
@@ -544,15 +603,46 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   async function handleImageChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const seq = ++imageLoadSeqRef.current;
     const dataUrl = await compressImage(file);
-    setReportImage({ url: dataUrl || URL.createObjectURL(file), name: file.name });
+    if (imageLoadSeqRef.current !== seq) return;
+    if (!dataUrl) {
+      showToast('⚠ อ่านรูปไม่สำเร็จ กรุณาเลือกรูปใหม่', 'error');
+      return;
+    }
+    setReportImage({ url: dataUrl, name: file.name });
   }
 
-  // Android: ยืนยันแจ้งปัญหา → persist ลง box (sync ให้หัวหน้าตรวจที่ Desktop)
-  function handleReportProblem() {
-    if (!foundBox) return;
-    // ลังถูกตรวจแทน/ยืนยันไปแล้วระหว่างเรานับ (foundBox sync สดจาก boxes) → บล็อกก่อนเขียนทับสถานะ
-    // ปกติ effect ถูกตรวจแทนเด้งออกให้ก่อนแล้ว — guard นี้กันหน้าต่างแคบที่กดพอดีก่อน effect รัน
+  function openProblemEditor(sku = lastScannedSku) {
+    if (!sku) {
+      showToast('⚠ กรุณาสแกนสินค้าที่มีปัญหาก่อน', 'error');
+      setTimeout(() => itemScanRef.current?.focus(), 50);
+      return;
+    }
+    const item = boxItems.find(row => row.sku === sku);
+    if (!item) return;
+    const existing = activeReceiveProblems.find(problem => problem.sku === sku);
+    setProblemTargetSku(sku);
+    setProblemTypes(existing?.types || []);
+    setProblemAffectedQty(existing?.affectedQty ? String(existing.affectedQty) : '');
+    setProblemDraftNote(existing?.note || '');
+    setReportImage(existing?.image ? { url: existing.image, name: existing.imageName || 'รูปเดิม' } : null);
+    setReportOpen(true);
+  }
+
+  function closeProblemEditor() {
+    clearProblemEditor();
+    setTimeout(() => itemScanRef.current?.focus(), 50);
+  }
+
+  function toggleProblemType(type) {
+    setProblemTypes(prev => prev.includes(type)
+      ? prev.filter(value => value !== type)
+      : [...prev, type]);
+  }
+
+  async function handleReportProblem() {
+    if (!foundBox || !problemTargetSku || problemSaving) return;
     if (foundBox.receivingBy?.code && foundBox.receivingBy.code !== branchStaff?.code) {
       resetToScan(`⚠ ลัง ${foundBox.id} ถูก ${foundBox.receivingBy.name || 'พนักงานอื่น'} ตรวจแทนแล้ว`);
       return;
@@ -561,24 +651,70 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       resetToScan(`⚠ ลัง ${foundBox.id} ถูกยืนยันรับไปแล้ว`);
       return;
     }
-    setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
-      ...b,
-      problemReported: true,
-      problemResolved: false,
-      problemType: 'damaged',
-      problemImage: reportImage?.url || null,
-      problemBy: branchStaff || null,
-      problemScanCounts: { ...scanCounts },
-      problemNote: '',
-      problemAt: new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-      receivingBy: null, // ปลดล็อก
-      updated: new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
-    } : b));
-    showToast('แจ้งปัญหาแล้ว·ส่งให้เภสัชตรวจสอบ', 'error');
-    setScanCounts({}); setQuery(''); setNotFound(false);
-    setItemScan(''); setLastScannedSku(null); setScanError('');
-    setVerifyResult(null); setViewingId(null);
-    setScannedBoxId(null); setPhase('scan'); setReportOpen(false); setReportImage(null);
+    if (problemTypes.length === 0) {
+      showToast('⚠ เลือกประเภทปัญหาอย่างน้อย 1 รายการ', 'error');
+      return;
+    }
+    const affectedQty = problemAffectedQty.trim() === '' ? null : Number(problemAffectedQty);
+    if (affectedQty !== null && (!Number.isInteger(affectedQty) || affectedQty <= 0)) {
+      showToast('⚠ จำนวนที่มีปัญหาต้องเป็นจำนวนเต็มบวก', 'error');
+      return;
+    }
+
+    const item = boxItems.find(row => row.sku === problemTargetSku);
+    const existing = activeReceiveProblems.find(problem => problem.sku === problemTargetSku);
+    if (!item) return;
+    const sessionSeq = problemLoadSeqRef.current;
+    setProblemSaving(true);
+    try {
+      const saved = await upsertReceiveProblem({
+        ...existing,
+        boxId: foundBox.id,
+        sku: item.sku,
+        name: item.name,
+        barcode: item.barcode || item.scannedBarcode || '',
+        unit: unitOf(item),
+        lotExpRows: item.lotExpRows || [],
+        types: problemTypes,
+        affectedQty,
+        note: problemDraftNote,
+        image: reportImage?.url || null,
+        imageName: reportImage?.name || '',
+        reportedBy: branchStaff || null,
+        status: existing?.status || (recheckMode ? 'pending_recheck' : 'draft'),
+        createdAt: existing?.createdAt || Date.now(),
+      });
+      if (problemLoadSeqRef.current !== sessionSeq) return;
+      setReceiveProblems(prev => upsertReceiveProblemList(prev, saved));
+      clearProblemEditor();
+      showToast(`บันทึกปัญหา SKU ${item.sku} แล้ว · สแกนสินค้าต่อได้`, 'success');
+      setTimeout(() => itemScanRef.current?.focus(), 50);
+    } catch (err) {
+      if (problemLoadSeqRef.current !== sessionSeq) return;
+      console.error('upsertReceiveProblem failed:', err.code || err.message);
+      setProblemSaving(false);
+      showToast('⚠ บันทึกปัญหาไม่สำเร็จ · ข้อมูลยังอยู่ กดลองใหม่', 'error');
+    }
+  }
+
+  async function handleDeleteProblem(problem) {
+    if (!problem?.id || problemDeletingId || !window.confirm(`ลบปัญหา SKU ${problem.sku}?`)) return;
+    const sessionSeq = problemLoadSeqRef.current;
+    setProblemDeletingId(problem.id);
+    try {
+      await deleteReceiveProblem(problem.id);
+      if (problemLoadSeqRef.current !== sessionSeq) return;
+      setReceiveProblems(prev => prev.filter(item => item.id !== problem.id));
+      if (problemTargetSku === problem.sku) clearProblemEditor();
+      showToast(`ลบปัญหา SKU ${problem.sku} แล้ว`, 'success');
+    } catch (err) {
+      if (problemLoadSeqRef.current !== sessionSeq) return;
+      console.error('deleteReceiveProblem failed:', err.code || err.message);
+      showToast('⚠ ลบปัญหาไม่สำเร็จ รายการยังอยู่', 'error');
+    } finally {
+      setProblemDeletingId(null);
+      setTimeout(() => itemScanRef.current?.focus(), 50);
+    }
   }
 
   function saveProblemNote() {
@@ -598,7 +734,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setConfirmIncomplete(true);
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
+    if (confirmSubmitting) return;
     setConfirmIncomplete(false);
     if (!foundBox) return;
     // ลังถูกตรวจแทน/ยืนยันไปแล้วระหว่างเรานับ (foundBox sync สดจาก boxes ทุก render) → บล็อกก่อนเขียนทับสถานะ
@@ -612,95 +749,141 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       resetToScan(`⚠ ลัง ${foundBox.id} ถูกยืนยันรับไปแล้ว`);
       return;
     }
+    if (problemsLoading) {
+      showToast('กำลังโหลดปัญหาที่บันทึกไว้ กรุณารอสักครู่', 'error');
+      return;
+    }
+    if (problemsLoadError) {
+      showToast('⚠ ยังตรวจสอบ Draft เดิมไม่ได้ กดโหลดใหม่ก่อนยืนยัน', 'error');
+      return;
+    }
     // recheck: เช็คเฉพาะ verifyItems (SKU ที่ขาดรอบแรก) แต่เภสัชนับใหม่จาก 0 เทียบ qty เต็ม, normal: เช็คทุก SKU
     const hasOver = verifyItems.some(l => (scanCounts[l.sku] || 0) > getNeeded(l));
     const result = !allChecked ? 'fail' : hasOver ? 'over' : 'ok';
-    setVerifyResult(result);
-    setViewingId(null);
     const time = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    const nowStr = new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const problems = [...activeReceiveProblems];
+    const hasProblems = problems.length > 0;
+    const route = receiveProblemRoute({
+      result,
+      recheckMode,
+      isPharmacist: branchStaff?.role === 'pharmacist',
+      hasProblems,
+    });
+    let boxPatch;
+    let outcomeToast = null;
 
-    if (recheckMode && result === 'ok') {
-      // เภสัช recheck สำเร็จ → ปลดปัญหา + รออนุมัติเอกสาร
-      setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
-        ...b,
-        problemResolved: true,
-        problemResolvedBy: branchStaff || null,
-        problemResolvedAt: new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    if (route.action === 'receive_pending') {
+      boxPatch = {
+        ...(recheckMode ? {
+          problemResolved: true,
+          problemResolvedBy: branchStaff || null,
+          problemResolvedAt: nowStr,
+        } : {}),
         receivePending: true,
         receivedBy: branchStaff || null,
         receivingBy: null,
         updated: time,
-      } : b));
-    } else if (result === 'ok') {
-      // ครบ (รอบแรก) → ส่งให้เภสัชอนุมัติเอกสาร
-      setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
-        ...b,
-        receivePending: true,
-        receivedBy: branchStaff || null,
-        receivingBy: null,
-        updated: time,
-      } : b));
-    } else if (recheckMode && branchStaff?.role === 'pharmacist') {
-      // เภสัช recheck แล้วยังขาด/เกิน → ยืนยันสินค้าขาด → auto-แจ้งคลัง + auto-generate note
-      const mergedCounts = { ...foundBox.problemScanCounts, ...scanCounts };
-      const shortList = buildReceiveDifferences(boxItems, mergedCounts);
-      // หัวข้อ note + toast ต้องสะท้อนว่าขาด/เกิน/ทั้งคู่ (เดิม hardcode "ขาด" → กรณีเกินแจ้งผิด)
-      const hasShort  = shortList.some(x => x.diff > 0); // diff = need - got → บวก = ขาด
-      const hasExcess = shortList.some(x => x.diff < 0); // ลบ = เกิน
-      const kindLabel = hasShort && hasExcess ? 'ขาด/เกิน' : hasExcess ? 'เกิน' : 'ขาด';
-      const autoNote = `🧪 เภสัชยืนยันสินค้า${kindLabel}:\n` + shortList
-        .map(x => x.diff > 0 ? `• ${x.sku} ${x.name} ขาด ${x.diff} ชิ้น` : `• ${x.sku} ${x.name} เกิน ${-x.diff} ชิ้น`)
-        .join('\n');
-      const nowStr = new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-      setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
-        ...b,
+      };
+    } else if (route.action === 'submit_problem' && result === 'ok') {
+      boxPatch = {
         problemReported: true,
         problemResolved: false,
-        problemReviewed: true,                  // ⭐ auto-แจ้งคลัง — Outbound badge ขึ้นทันที
-        problemType: 'incomplete',
-        problemImage: b.problemImage || null,
-        problemBy: b.problemBy || branchStaff || null,
+        problemReviewed: true,
+        problemType: 'item',
+        problemIds: problems.map(problem => problem.id),
+        problemCount: problems.length,
+        problemBy: foundBox.problemBy || branchStaff || null,
+        problemScanCounts: { ...scanCounts },
+        problemAt: foundBox.problemAt || nowStr,
+        receivePending: false,
+        receivingBy: null,
+        updated: time,
+      };
+      outcomeToast = `⚠ ส่งปัญหาสินค้า ${problems.length} รายการให้คลังแล้ว`;
+    } else if (route.action === 'submit_problem') {
+      const mergedCounts = { ...foundBox.problemScanCounts, ...scanCounts };
+      const differences = buildReceiveDifferences(boxItems, mergedCounts);
+      const hasShort = differences.some(item => item.diff > 0);
+      const hasExcess = differences.some(item => item.diff < 0);
+      const kindLabel = hasShort && hasExcess ? 'ขาด/เกิน' : hasExcess ? 'เกิน' : 'ขาด';
+      const autoNote = `🧪 เภสัชยืนยันสินค้า${kindLabel}:\n` + differences
+        .map(item => item.diff > 0
+          ? `• ${item.sku} ${item.name} ขาด ${item.diff} ชิ้น`
+          : `• ${item.sku} ${item.name} เกิน ${-item.diff} ชิ้น`)
+        .join('\n');
+      boxPatch = {
+        problemReported: true,
+        problemResolved: false,
+        problemReviewed: true,
+        problemType: route.problemType,
+        ...(hasProblems ? {
+          problemIds: problems.map(problem => problem.id),
+          problemCount: problems.length,
+        } : {}),
+        problemBy: foundBox.problemBy || branchStaff || null,
         problemScanCounts: mergedCounts,
         problemNote: autoNote,
-        problemAt: b.problemAt || nowStr,
+        problemAt: foundBox.problemAt || nowStr,
         problemConfirmedBy: branchStaff || null,
         problemConfirmedAt: nowStr,
         receivingBy: null,
         updated: time,
-      } : b));
-      showToast(`⚠ เภสัชยืนยันสินค้า${kindLabel} · แจ้งคลังสินค้าแล้ว`, 'error');
-    } else if (recheckMode) {
-      // พนักงานทั่วไป recheck แล้วยังขาด/เกิน (= ของขาด/เกินจริง ไม่ใช่สแกนพลาด) → คงเป็น problem รอเภสัช
-      // ไม่ auto-confirm/แจ้งคลังแทนเภสัช (ต่างจาก branch เภสัชด้านบน) — เก็บ count รอบล่าสุดไว้ให้เภสัชดู
-      const mergedCounts = { ...foundBox.problemScanCounts, ...scanCounts };
-      setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
-        ...b,
-        problemReported: true,
-        problemResolved: false,
-        problemType: 'incomplete',
-        problemScanCounts: mergedCounts,
-        receivingBy: null,
-        updated: time,
-      } : b));
-      showToast('รีเช็คแล้วยังไม่ตรง · รอเภสัชตรวจสอบ', 'error');
+      };
+      outcomeToast = `⚠ เภสัชยืนยันสินค้า${kindLabel} · แจ้งคลังสินค้าแล้ว`;
     } else {
-      // พนักงานทั่วไป (ยืนยันครั้งแรก ไม่ใช่ recheck): ไม่ครบ/เกิน → ส่งให้รีเช็ค (รอเภสัช)
-      setBoxes(prev => prev.map(b => b.id === foundBox.id ? {
-        ...b,
+      const mergedCounts = recheckMode
+        ? { ...foundBox.problemScanCounts, ...scanCounts }
+        : { ...scanCounts };
+      boxPatch = {
         problemReported: true,
         problemResolved: false,
+        problemReviewed: false,
         problemType: 'incomplete',
-        problemImage: null,
-        problemBy: branchStaff || null,
-        problemScanCounts: { ...scanCounts },
-        problemNote: '',
-        problemAt: new Date().toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        ...(hasProblems ? {
+          problemIds: problems.map(problem => problem.id),
+          problemCount: problems.length,
+        } : {}),
+        problemBy: foundBox.problemBy || branchStaff || null,
+        problemScanCounts: mergedCounts,
+        problemNote: foundBox.problemNote || '',
+        problemAt: foundBox.problemAt || nowStr,
         receivingBy: null,
         updated: time,
-      } : b));
+      };
+      outcomeToast = recheckMode
+        ? 'รีเช็คแล้วยังไม่ตรง · รอเภสัชตรวจสอบ'
+        : hasProblems
+          ? 'จำนวนยังไม่ตรง · เก็บปัญหาที่บันทึกไว้และส่งเข้ารีเช็ค'
+          : null;
     }
-    setPendingApprovalBoxId(foundBox.id);
-    setPhase('result');
+
+    setConfirmSubmitting(true);
+    try {
+      const savedProblems = commitReceiveOutcome
+        ? await commitReceiveOutcome(foundBox.id, boxPatch, problems, route.problemStatus, branchStaff?.code || null)
+        : problems;
+      if (!commitReceiveOutcome) {
+        setBoxes(prev => prev.map(box => box.id === foundBox.id ? { ...box, ...boxPatch } : box));
+      }
+      if (savedProblems.length > 0) setReceiveProblems(savedProblems);
+      setVerifyResult(result);
+      setViewingId(null);
+      setOutcomeHasProblems(route.action === 'submit_problem' && hasProblems);
+      setOutcomeProblemCount(route.action === 'submit_problem' ? problems.length : 0);
+      setPendingApprovalBoxId(foundBox.id);
+      setPhase('result');
+      if (outcomeToast) showToast(outcomeToast, 'error');
+    } catch (err) {
+      console.error('commitReceiveOutcome failed:', err.code || err.message);
+      if (err.code === 'receive-lock-lost' || err.code === 'receive-box-already-finished' || err.code === 'receive-box-missing') {
+        resetToScan('⚠ ลังนี้ถูกจัดการจากอีกเครื่องแล้ว · กรุณาสแกนใหม่');
+      } else {
+        showToast('⚠ ยืนยันรับสินค้าไม่สำเร็จ · จำนวนและ Draft ยังอยู่ กดลองใหม่', 'error');
+      }
+    } finally {
+      setConfirmSubmitting(false);
+    }
   }
 
   function handleApprove(targetBoxId) {
@@ -721,6 +904,12 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       setVerifyResult(null);
       setSupervisorCode('');
       setRecheckMode(false);
+      clearProblemEditor();
+      setReceiveProblems([]);
+      setProblemsLoadError(false);
+      setOutcomeHasProblems(false);
+      setOutcomeProblemCount(0);
+      problemLoadSeqRef.current += 1;
       setScannedBoxId(null);
       setPhase('scan');
     }
@@ -736,6 +925,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setSupervisorCode('');
     setVerifyResult(null);
     setRecheckMode(false);
+    clearProblemEditor();
+    setOutcomeHasProblems(false);
+    setOutcomeProblemCount(0);
     setPhase('verify');
     showToast('รีเช็คสินค้า · สแกนสินค้าใหม่อีกครั้ง');
   }
@@ -752,6 +944,12 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setVerifyResult(null);
     setSupervisorCode('');
     setRecheckMode(false);
+    clearProblemEditor();
+    setReceiveProblems([]);
+    setProblemsLoadError(false);
+    setOutcomeHasProblems(false);
+    setOutcomeProblemCount(0);
+    problemLoadSeqRef.current += 1;
     setScannedBoxId(null);
     setPhase('scan');
   }
@@ -768,7 +966,6 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     if (!match) {
       playScanFail();
       setScanError(`ไม่มี SKU นี้ในลัง`);
-      setLastScannedSku(null);
       showToast('⚠ ไม่มี SKU นี้ในลัง', 'error');
       return;
     }
@@ -778,7 +975,6 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       const prevCount = foundBox.problemScanCounts[match.sku] || 0;
       if (prevCount === getNeeded(match)) {
         setScanError(`SKU นี้ถูกต้องแล้วในรอบแรก — ตรวจซ้ำเฉพาะที่ขาด/เกิน`);
-        setLastScannedSku(null);
         return;
       }
     }
@@ -834,6 +1030,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     : boxItems;
   const allChecked       = verifyItems.length > 0 && verifyItems.every(fullyChecked);
   const doneCount        = verifyItems.filter(fullyChecked).length;
+  const problemTargetItem = problemTargetSku ? boxItems.find(item => item.sku === problemTargetSku) : null;
   const scannedSkuCount  = verifyItems.filter(l => (scanCounts[l.sku] || 0) >= 1).length;
 
   return (
@@ -1296,7 +1493,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                   background: 'var(--accent-soft)', textAlign: 'center',
                 }}>
                   <div style={{ fontFamily: 'system-ui', fontSize: 17, fontWeight: 700, color: 'var(--accent)' }}>
-                    ✓ {recheckMode ? 'รีเช็คแล้ว · รอเภสัชอนุมัติเอกสาร' : 'ส่งให้เภสัชอนุมัติเอกสารแล้ว'}
+                    ✓ {outcomeHasProblems
+                      ? `บันทึกปัญหา ${outcomeProblemCount} รายการ · ส่งให้คลังแล้ว`
+                      : recheckMode ? 'รีเช็คแล้ว · รอเภสัชอนุมัติเอกสาร' : 'ส่งให้เภสัชอนุมัติเอกสารแล้ว'}
                   </div>
                   <div style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)', marginTop: 4 }}>
                     กดปุ่ม [+ ลังถัดไป] เพื่อสแกนลังต่อ
@@ -1305,7 +1504,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
               ) : (
                 <div style={{ border: '2px solid #e67e22', borderRadius: 12, padding: '14px 16px', background: '#fff3cd', textAlign: 'center' }}>
                   <div style={{ fontFamily: 'system-ui', fontSize: 17, fontWeight: 700, color: '#b86000' }}>
-                    ✓ {recheckMode ? 'รีเช็คสินค้าแล้ว' : 'ส่งให้เภสัชรีเช็คสินค้า'}
+                    ✓ {outcomeHasProblems ? 'ส่งปัญหารายสินค้าและจำนวนให้คลังแล้ว' : recheckMode ? 'รีเช็คสินค้าแล้ว' : 'ส่งให้เภสัชรีเช็คสินค้า'}
                   </div>
                   <div style={{ fontFamily: 'system-ui', fontSize: 14, color: '#b86000', marginTop: 4 }}>
                     {verifyResult === 'over' ? 'สินค้าเกินจำนวน' : 'สินค้าไม่ครบ'}
@@ -1531,6 +1730,41 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                     );
                   })()}
 
+                  {(problemsLoading || problemsLoadError || activeReceiveProblems.length > 0) && (
+                    <div style={{ marginTop: 12, padding: '10px 12px', border: '1.5px solid #e67e22', borderRadius: 10, background: '#fff8f0' }}>
+                      <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 800, color: '#b86000', marginBottom: 7 }}>
+                        ⚠ ปัญหาที่บันทึก {problemsLoading ? '· กำลังโหลด…' : problemsLoadError ? '· โหลดไม่สำเร็จ' : `(${activeReceiveProblems.length})`}
+                      </div>
+                      {problemsLoadError && (
+                        <button className="btn sm" style={{ marginBottom: 7, borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => loadProblemsForBox(foundBox?.id)}>ลองโหลดใหม่</button>
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {activeReceiveProblems.map(problem => (
+                          <div key={problem.id} style={{ background: 'white', border: '1px solid #efc48d', borderRadius: 8, padding: '8px 10px' }}>
+                            <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 700 }}>{problem.name || problem.sku}</div>
+                                <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>{problem.sku}</div>
+                                <LotExpList rows={problem.lotExpRows || []} compact />
+                                <div style={{ fontFamily: 'system-ui', fontSize: 11, color: '#b86000', marginTop: 3 }}>
+                                  {problemTypeLabels(problem.types).join(', ')}
+                                  {problem.affectedQty ? ` · ${problem.affectedQty} ${problem.unit || 'หน่วยฐาน'}` : ''}
+                                </div>
+                                {problem.note && <div style={{ fontFamily: 'system-ui', fontSize: 11, color: '#555', marginTop: 2 }}>{problem.note}</div>}
+                              </div>
+                              <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                                <button className="btn sm ghost" onClick={() => openProblemEditor(problem.sku)}>แก้</button>
+                                <button className="btn sm" disabled={problemDeletingId === problem.id} style={{ color: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => handleDeleteProblem(problem)}>
+                                  {problemDeletingId === problem.id ? '…' : 'ลบ'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {isReceived ? (
                     <div style={{
                       marginTop: 14, padding: '12px 18px',
@@ -1542,52 +1776,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                     </div>
                   ) : (
                     <>
-                      {reportOpen && (
-                        <div style={{
-                          marginTop: 14,
-                          border: '1.5px solid var(--red)', borderRadius: 12,
-                          padding: '14px 16px', background: '#fde8e8',
-                        }}>
-                          <div style={{ fontFamily: 'system-ui', fontSize: 14, color: 'var(--red)', marginBottom: 10 }}>
-                            ⚠ แนบรูปหลักฐาน (ถ้ามี)
-                          </div>
-                          <label style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 8,
-                            padding: '8px 14px', cursor: 'pointer',
-                            border: '1.5px dashed var(--red)', borderRadius: 10,
-                            fontFamily: 'system-ui', fontSize: 14, color: 'var(--red)',
-                            background: 'white',
-                          }}>
-                            📷 {reportImage ? 'เปลี่ยนรูป' : 'เลือกรูปภาพ'}
-                            <input
-                              type="file" accept="image/*" capture="environment"
-                              style={{ display: 'none' }}
-                              onChange={handleImageChange}
-                            />
-                          </label>
-                          {reportImage && (
-                            <div style={{ marginTop: 10 }}>
-                              <img
-                                src={reportImage.url}
-                                alt="รูปหลักฐาน"
-                                style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, border: '1.5px solid var(--line)', objectFit: 'contain', display: 'block' }}
-                              />
-                              <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', marginTop: 4 }}>
-                                {reportImage.name}
-                              </div>
-                            </div>
-                          )}
-                          <div className="row" style={{ marginTop: 12, gap: 8, justifyContent: 'flex-end' }}>
-                            <button className="btn sm ghost" onClick={() => { setReportOpen(false); setReportImage(null); }}>ยกเลิก</button>
-                            <button className="btn lg" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={handleReportProblem}>
-                              ยืนยันแจ้งปัญหา
-                            </button>
-                          </div>
-                        </div>
-                      )}
                       <div className="row" style={{ marginTop: 14, gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        <button className="btn lg" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => setReportOpen(p => !p)}>⚠ แจ้งปัญหา</button>
-                        <button className="btn primary lg" onClick={requestConfirm}>✓ ยืนยันรับสินค้า</button>
+                        <button className="btn lg" disabled={!lastScannedSku || problemSaving} style={{ borderColor: 'var(--red)', color: 'var(--red)', opacity: lastScannedSku ? 1 : 0.55 }} onClick={() => openProblemEditor()}>⚠ แจ้งปัญหาสินค้านี้</button>
+                        <button className="btn primary lg" disabled={confirmSubmitting || problemsLoading || problemsLoadError || problemSaving} onClick={requestConfirm}>
+                          {confirmSubmitting ? 'กำลังยืนยัน…' : '✓ ยืนยันรับสินค้า'}
+                        </button>
                       </div>
                     </>
                   )}
@@ -1597,6 +1790,58 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
           )}
         </div>
       </div>
+
+      {reportOpen && problemTargetItem && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+          <div style={{ background: 'white', borderRadius: 14, padding: '18px 18px', boxShadow: '0 8px 32px rgba(0,0,0,0.28)', width: '100%', maxWidth: 460, maxHeight: '92vh', overflowY: 'auto' }}>
+            <div style={{ fontFamily: 'system-ui', fontSize: 18, fontWeight: 800, color: 'var(--red)', marginBottom: 4 }}>⚠ แจ้งปัญหาสินค้านี้</div>
+            <div style={{ fontFamily: 'system-ui', fontSize: 14, fontWeight: 700 }}>{problemTargetItem.name}</div>
+            <div className="mono" style={{ fontSize: 11, color: 'var(--mute)', marginBottom: 4 }}>SKU {problemTargetItem.sku}</div>
+            <LotExpList rows={problemTargetItem.lotExpRows || []} />
+
+            <div style={{ marginTop: 14, fontFamily: 'system-ui', fontSize: 13, fontWeight: 700 }}>ประเภทปัญหา <span style={{ color: 'var(--red)' }}>*</span></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, marginTop: 7 }}>
+              {RECEIVE_PROBLEM_TYPE_OPTIONS.map(option => (
+                <label key={option.value} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 9px', border: `1.5px solid ${problemTypes.includes(option.value) ? 'var(--red)' : 'var(--line)'}`, borderRadius: 8, background: problemTypes.includes(option.value) ? '#fde8e8' : 'white', fontFamily: 'system-ui', fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={problemTypes.includes(option.value)} onChange={() => toggleProblemType(option.value)} />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+
+            <label style={{ display: 'block', marginTop: 12, fontFamily: 'system-ui', fontSize: 13, fontWeight: 700 }}>
+              จำนวนที่มีปัญหา ({unitOf(problemTargetItem) || 'หน่วยฐาน'}) · ไม่บังคับ
+              <input className="input" type="number" inputMode="numeric" min="1" step="1" value={problemAffectedQty} onChange={event => setProblemAffectedQty(event.target.value)} placeholder="เว้นว่างได้" style={{ width: '100%', marginTop: 5 }} />
+            </label>
+
+            <label style={{ display: 'block', marginTop: 10, fontFamily: 'system-ui', fontSize: 13, fontWeight: 700 }}>
+              หมายเหตุ · ไม่บังคับ
+              <textarea className="input" value={problemDraftNote} onChange={event => setProblemDraftNote(event.target.value)} placeholder="อธิบายปัญหาที่พบ" style={{ width: '100%', minHeight: 64, resize: 'vertical', marginTop: 5 }} />
+            </label>
+
+            <div style={{ marginTop: 10 }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer', border: '1.5px dashed var(--red)', borderRadius: 9, fontFamily: 'system-ui', fontSize: 13, color: 'var(--red)', background: 'white' }}>
+                📷 {reportImage ? 'เปลี่ยนรูป' : 'แนบรูป (ไม่บังคับ)'}
+                <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleImageChange} />
+              </label>
+              {reportImage && (
+                <div style={{ marginTop: 8 }}>
+                  <img src={reportImage.url} alt="รูปหลักฐาน" style={{ maxWidth: '100%', maxHeight: 190, borderRadius: 8, border: '1.5px solid var(--line)', objectFit: 'contain', display: 'block' }} />
+                  <button className="btn sm ghost" style={{ marginTop: 5, color: 'var(--red)' }} onClick={() => setReportImage(null)}>เอารูปออก</button>
+                </div>
+              )}
+            </div>
+
+            <div className="row" style={{ marginTop: 16, gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn ghost" disabled={problemSaving} onClick={closeProblemEditor}>ยกเลิก</button>
+              <button className="btn primary" disabled={problemSaving} onClick={handleReportProblem}>
+                {problemSaving ? 'กำลังบันทึก…' : 'บันทึกปัญหา'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {takeoverBox && createPortal(
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -1624,8 +1869,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
               ยืนยันแล้วจะแก้ไขไม่ได้
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-              <button className="btn ghost" onClick={() => setConfirmIncomplete(false)}>ยกเลิก</button>
-              <button className="btn primary" onClick={handleConfirm}>ยืนยัน</button>
+              <button className="btn ghost" disabled={confirmSubmitting} onClick={() => setConfirmIncomplete(false)}>ยกเลิก</button>
+              <button className="btn primary" disabled={confirmSubmitting} onClick={handleConfirm}>{confirmSubmitting ? 'กำลังยืนยัน…' : 'ยืนยัน'}</button>
             </div>
           </div>
         </div>,
