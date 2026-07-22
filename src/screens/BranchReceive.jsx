@@ -91,7 +91,7 @@ function compressImage(file, maxW = 800, quality = 0.7) {
 //         — ถ้าโชว์สีตั้งแต่ตอนนับ พนักงานปรับเลขจนไฟเขียวได้โดยไม่ต้องนับของ = ด่านตรวจไร้ความหมาย
 // editable = แก้จำนวนได้ (เฉพาะ SKU ที่ของเยอะ ดู QTY_EDIT_MIN) — แถวโผล่ต่อเมื่อยิงบาร์โค้ดแล้วเท่านั้น
 //            (scannedItems filter count > 0) จึงยังต้องมีของจริงในมือก่อนถึงจะปรับจำนวนได้
-function ScannedItemRow({ l, count, over, done, onRemove, blind = false, editable = false, onQtyChange }) {
+function ScannedItemRow({ l, count, over, done, onRemove, blind = false, editable = false, hideQuantity = false, onQtyChange }) {
   const [dragX, setDragX] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const dragRef = useRef({ x: 0, dragging: false });
@@ -159,7 +159,7 @@ function ScannedItemRow({ l, count, over, done, onRemove, blind = false, editabl
           <LotExpList rows={l.lotExpRows} compact />
         </div>
         <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', flexShrink: 0 }}>{unitOf(l)}</div>
-        {editable ? (
+        {hideQuantity ? null : editable ? (
           <input
             type="number"
             inputMode="numeric"
@@ -1028,8 +1028,14 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const verifyItems      = (recheckMode && foundBox?.problemScanCounts)
     ? boxItems.filter(l => (foundBox.problemScanCounts[l.sku] || 0) !== getNeeded(l))
     : boxItems;
+  // หน้าจอรีเช็คต้องเป็น blind receiving เช่นกัน: แสดงเฉพาะ SKU ที่รอบแรกไม่ตรง
+  // และซ่อน SKU ออกจากรายการทันทีเมื่อรอบรีเช็คนับได้ตรงพอดี
+  const pendingRecheckItems = recheckMode
+    ? verifyItems.filter(l => (scanCounts[l.sku] || 0) !== getNeeded(l))
+    : [];
+  // หน้าผลรีเช็คแสดงเฉพาะรายการที่ยังนับไม่ตรงเท่านั้น; รายการที่ครบแล้วไม่ต้องย้อนมาให้สับสน
+  const resultItems      = recheckMode ? pendingRecheckItems : boxItems;
   const allChecked       = verifyItems.length > 0 && verifyItems.every(fullyChecked);
-  const doneCount        = verifyItems.filter(fullyChecked).length;
   const problemTargetItem = problemTargetSku ? boxItems.find(item => item.sku === problemTargetSku) : null;
   const scannedSkuCount  = verifyItems.filter(l => (scanCounts[l.sku] || 0) >= 1).length;
 
@@ -1433,7 +1439,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                 }
               </div>
 
-              <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 280, overflowY: 'auto', marginBottom: 14 }}>
+              {resultItems.length > 0 && <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white', maxHeight: 280, overflowY: 'auto', marginBottom: 14 }}>
                 <table className="tbl" style={{ fontSize: 12 }}>
                   <thead style={{ position: 'sticky', top: 0 }}>
                     <tr>
@@ -1441,11 +1447,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                       <th>SKU / ชื่อ</th>
                       <th style={{ width: isAndroid ? 44 : 70 }}>หน่วย</th>
                       {!recheckMode && <th style={{ width: isAndroid ? 42 : 60, textAlign: 'center' }}>ของเข้า</th>}
-                      <th style={{ width: isAndroid ? 50 : 70, textAlign: 'center' }}>นับได้</th>
+                      {!recheckMode && <th style={{ width: isAndroid ? 50 : 70, textAlign: 'center' }}>นับได้</th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {boxItems.map((l) => {
+                    {resultItems.map((l) => {
                       const needed = getNeeded(l);
                       const count  = scanCounts[l.sku] || 0;
                       const over   = count > needed;
@@ -1477,15 +1483,17 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                               {needed}
                             </td>
                           )}
-                          <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: isAndroid ? 16 : 22, fontWeight: 700, color: countColor }}>
-                            {count}{over && <span style={{ fontSize: isAndroid ? 10 : 13, marginLeft: 2 }}>+{count - needed}</span>}
-                          </td>
+                          {!recheckMode && (
+                            <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: isAndroid ? 16 : 22, fontWeight: 700, color: countColor }}>
+                              {count}{over && <span style={{ fontSize: isAndroid ? 10 : 13, marginLeft: 2 }}>+{count - needed}</span>}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-              </div>
+              </div>}
 
               {verifyResult === 'ok' ? (
                 <div style={{
@@ -1630,48 +1638,48 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                   )}
 
                   {/* recheck mode: แสดงรายการสินค้าที่ต้องรีเช็ค (ขาด/เกิน) ให้เภสัชเห็นก่อนสแกน */}
-                  {recheckMode && isAndroid && verifyItems.length > 0 && (
+                  {recheckMode && isAndroid && pendingRecheckItems.length > 0 && (
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: '#e67e22', marginBottom: 6 }}>
-                        🧪 สินค้าที่ต้องรีเช็ค ({doneCount}/{verifyItems.length} SKU)
+                        🧪 สินค้าที่ต้องรีเช็ค
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 280, overflowY: 'auto' }}>
-                        {verifyItems.map(l => {
-                          const needed = getNeeded(l);
-                          const myCount = scanCounts[l.sku] || 0;
-                          const done = myCount >= needed;
-                          return (
+                        {pendingRecheckItems.map(l => (
                             <div key={l.sku} style={{
                               display: 'flex', alignItems: 'center', gap: 8,
                               padding: '7px 10px', borderRadius: 8,
-                              border: `1.5px solid ${done ? 'var(--ok)' : '#e67e22'}`,
-                              background: done ? '#e8f0d8' : '#fff8f0',
+                              border: '1.5px solid #e67e22',
+                              background: '#fff8f0',
                             }}>
                               <span style={{ fontSize: 16, width: 22, textAlign: 'center', flexShrink: 0 }}>
-                                {done ? '✓' : '○'}
+                                ○
                               </span>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 600, color: done ? 'var(--ok)' : 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.name}</div>
+                                <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.name}</div>
                                 <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>{l.sku}</div>
                                 <LotExpList rows={l.lotExpRows} compact />
                               </div>
-                              <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 700, textAlign: 'right', flexShrink: 0, color: done ? 'var(--ok)' : '#e67e22' }}>
-                                {myCount}/{needed} {unitOf(l)}
+                              <div style={{ fontFamily: 'system-ui', fontSize: 12, color: 'var(--mute)', flexShrink: 0 }}>
+                                {unitOf(l)}
                               </div>
                             </div>
-                          );
-                        })}
+                          ))}
                       </div>
                     </div>
                   )}
 
                   {(() => {
-                    const scannedItems = [...boxItems]
+                    const scannedItems = [...(recheckMode ? verifyItems : boxItems)]
                       .filter(l => (scanCounts[l.sku] || 0) > 0)
+                      .filter(l => !recheckMode || (scanCounts[l.sku] || 0) !== getNeeded(l))
                       .sort((a, b) => (a.sku === lastScannedSku ? -1 : b.sku === lastScannedSku ? 1 : 0));
                     return (
                       <>
-                        {scannedItems.length === 0 ? (
+                        {recheckMode && pendingRecheckItems.length === 0 ? (
+                          <div style={{ padding: '20px 14px', border: '1.5px solid var(--green)', borderRadius: 10, background: '#e8f0d8', textAlign: 'center', fontFamily: 'system-ui', fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>
+                            ✓ ตรวจครบรายการที่ต้องรีเช็คแล้ว
+                          </div>
+                        ) : scannedItems.length === 0 ? (
                           <div style={{ padding: '20px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', textAlign: 'center', fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)' }}>
                             ยิงบาร์โค้ดสินค้าเพื่อเริ่มตรวจสอบ
                           </div>
@@ -1692,7 +1700,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                                     // recheck: โชว์สีได้ — เภสัชรู้อยู่แล้วว่าตัวไหนขาด/เกิน (ตั้งใจให้เห็น)
                                     // ตรวจนับปกติ: ปิดสีไว้ ไม่งั้นปรับเลขจนไฟเขียวได้โดยไม่ต้องนับ
                                     blind={!recheckMode}
-                                    editable={needed > QTY_EDIT_MIN}
+                                    editable={!recheckMode && needed > QTY_EDIT_MIN}
+                                    hideQuantity={recheckMode}
                                     onQtyChange={handleQtyChange}
                                   />
                                 );
