@@ -1676,14 +1676,16 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                     </div>
                   )}
 
-                  {/* recheck mode: แสดงรายการสินค้าที่ต้องรีเช็ค (ขาด/เกิน) ให้เภสัชเห็นก่อนสแกน */}
-                  {recheckMode && isAndroid && pendingRecheckItems.length > 0 && (
+                  {/* recheck mode: รายการที่ต้องรีเช็ค (ขาด/เกินตั้งแต่รอบแรก) — ใช้ verifyItems ซึ่งคำนวณจาก
+                      problemScanCounts จึง "นิ่ง" ไม่หดตามที่สแกน; ถ้าใช้ pendingRecheckItems รายการจะหายทันที
+                      ที่นับตรงเป๊ะ = เฉลยเป้าให้เภสัชโดยไม่ต้องนับของจริง */}
+                  {recheckMode && isAndroid && verifyItems.length > 0 && (
                     <div style={{ marginBottom: 10 }}>
                       <div style={{ fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: '#e67e22', marginBottom: 6 }}>
                         🧪 สินค้าที่ต้องรีเช็ค
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 280, overflowY: 'auto' }}>
-                        {pendingRecheckItems.map(l => (
+                        {verifyItems.map(l => (
                             <div key={l.sku} style={{
                               display: 'flex', alignItems: 'center', gap: 8,
                               padding: '7px 10px', borderRadius: 8,
@@ -1710,15 +1712,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                   {(() => {
                     const scannedItems = [...(recheckMode ? verifyItems : boxItems)]
                       .filter(l => (scanCounts[l.sku] || 0) > 0)
-                      .filter(l => !recheckMode || (scanCounts[l.sku] || 0) !== getNeeded(l))
                       .sort((a, b) => (a.sku === lastScannedSku ? -1 : b.sku === lastScannedSku ? 1 : 0));
                     return (
                       <>
-                        {recheckMode && pendingRecheckItems.length === 0 ? (
-                          <div style={{ padding: '20px 14px', border: '1.5px solid var(--green)', borderRadius: 10, background: '#e8f0d8', textAlign: 'center', fontFamily: 'system-ui', fontSize: 14, fontWeight: 700, color: 'var(--green)' }}>
-                            ✓ ตรวจครบรายการที่ต้องรีเช็คแล้ว
-                          </div>
-                        ) : scannedItems.length === 0 ? (
+                        {scannedItems.length === 0 ? (
                           <div style={{ padding: '20px 14px', border: '1.5px dashed var(--line)', borderRadius: 10, background: 'var(--paper-dark)', textAlign: 'center', fontFamily: 'system-ui', fontSize: 14, color: 'var(--mute)' }}>
                             ยิงบาร์โค้ดสินค้าเพื่อเริ่มตรวจสอบ
                           </div>
@@ -1736,11 +1733,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                                     key={l.sku} l={l} count={count}
                                     over={count > needed} done={count >= needed}
                                     onRemove={handleRemoveScan}
-                                    // recheck: โชว์สีได้ — เภสัชรู้อยู่แล้วว่าตัวไหนขาด/เกิน (ตั้งใจให้เห็น)
-                                    // ตรวจนับปกติ: ปิดสีไว้ ไม่งั้นปรับเลขจนไฟเขียวได้โดยไม่ต้องนับ
-                                    blind={!recheckMode}
+                                    // blind ทุกโหมด: ปิดสีไว้ ไม่งั้นปรับเลข/หยุดยิงตอนไฟเขียวได้โดยไม่ต้องนับของ
+                                    // รีเช็คของเภสัชต้อง blind เท่ากัน — เป็นการนับอิสระรอบสอง ห้ามเฉลยว่าถึงเป้าหรือยัง
+                                    // (โชว์เลขที่ยิงได้ สีกลาง — เป็นจำนวนที่เภสัชนับเอง ไม่ใช่การเฉลยเป้า)
+                                    blind
                                     editable={!recheckMode && !isHighValue(l.sku, unitOf(l))}
-                                    hideQuantity={recheckMode}
                                     highValue={isHighValue(l.sku, unitOf(l))}
                                     onQtyChange={handleQtyChange}
                                   />
