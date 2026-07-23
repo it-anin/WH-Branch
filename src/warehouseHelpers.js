@@ -23,6 +23,18 @@ const numberOrZero = (value) => {
 
 const cleanText = (value) => String(value ?? '').trim();
 
+// Receiving always accepts a recognized barcode. Cost only controls whether the
+// operator may type a quantity after the first scan; it must never force a
+// high-value carton/pack to be broken down and scanned as smaller units.
+export function receiveBarcodePolicy(costMap, sku, unit, threshold = 1000) {
+  const cost = numberOrZero(costMap?.[`${cleanText(sku)}__${cleanText(unit)}`]);
+  return {
+    cost,
+    scanAllowed: true,
+    quantityEditable: cost <= threshold,
+  };
+}
+
 // Deterministic Firestore id: one receive problem per box + SKU. Encoding each
 // segment also prevents a slash in an imported box/SKU from becoming a path.
 export function receiveProblemId(boxId, sku) {

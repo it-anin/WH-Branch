@@ -10,6 +10,7 @@ import {
   buildReceiveDifferences,
   buildReceiveLotExpMap,
   problemTypeLabels,
+  receiveBarcodePolicy,
   receiveProblemRoute,
   resolveReceiveBoxScan,
   upsertReceiveProblemList,
@@ -31,12 +32,13 @@ const statusLabel = {
 // fallback: baseUnit → scannedUnit (หน่วยที่แพ็คสแกน เช่น "กล่อง") → unit (หน่วย picklist) — ลังเก่าไม่มี baseUnit ตกไปตามลำดับ
 const unitOf = (l) => l?.baseUnit || l?.scannedUnit || l?.unit || '';
 
-// การพิมพ์จำนวนในแถว: อนุญาต "ทุกสินค้าปกติ" (ทุน ≤ HIGH_VALUE_THRESHOLD) — พิมพ์จำนวนที่นับได้เลย ไม่ต้องยิงซ้ำทีละชิ้น
-// เฉพาะสินค้ามูลค่าสูง (> HIGH_VALUE_THRESHOLD) เท่านั้นที่ปิดการพิมพ์ → บังคับสแกนทีละชิ้น
-// (แถวยังโผล่ต่อเมื่อยิงบาร์โค้ดครั้งแรกแล้วเท่านั้น + ไม่โชว์ยอดที่ต้องรับ = ยัง blind receiving)
+// ทุกบาร์โค้ดที่อยู่ในลังสแกนรับได้ตาม factor ของหน่วยเดิมเสมอ
+// ราคาทุนของ "บาร์โค้ดที่สาขาสแกนจริง" ใช้ตัดสินเฉพาะสิทธิ์พิมพ์จำนวน:
+// ทุน ≤ HIGH_VALUE_THRESHOLD พิมพ์จำนวนได้, ทุน > HIGH_VALUE_THRESHOLD ต้องสแกนบาร์โค้ดเดิมเพิ่มเอง
+// ห้ามบล็อกบาร์โค้ดหน่วยใหญ่หรือบังคับให้เปลี่ยนไปสแกนหน่วยย่อย
 
 // สินค้ามูลค่าสูง: ทุน "ต่อหน่วยที่รับ/ยิง" (costMap[sku__unit], จาก R05.105) เกินเพดานนี้
-// → บังคับสแกนทีละชิ้น (กันของหาย/นับพลาด). "มากกว่า" = strict > เท่านั้น
+// → ล็อกเฉพาะช่องพิมพ์จำนวน. "มากกว่า" = strict > เท่านั้น
 const HIGH_VALUE_THRESHOLD = 1000;
 
 // หน่วงป้าย "กำลังโหลด" ของแบนเนอร์ปัญหาที่บันทึก — โหลดเสร็จเร็วกว่านี้ (ลังปกติ) จะไม่โชว์เลย
@@ -96,7 +98,7 @@ function compressImage(file, maxW = 800, quality = 0.7) {
 // Android: แถวสินค้าที่สแกนแล้ว ปัดซ้ายเกิน SWIPE_THRESHOLD → ถามยืนยัน → ลบรายการสแกน (เลิกนับ) กรณียิงเกิน/ผิด ให้สแกนใหม่
 // blind = ตรวจนับปกติ: ไม่บอกว่าครบ/ขาด/เกิน (สีกลางล้วน) เห็นสีจริงตอน phase result เท่านั้น
 //         — ถ้าโชว์สีตั้งแต่ตอนนับ พนักงานปรับเลขจนไฟเขียวได้โดยไม่ต้องนับของ = ด่านตรวจไร้ความหมาย
-// editable = แก้จำนวนได้ (ทุกสินค้าปกติ; ปิดเฉพาะของมูลค่าสูงที่บังคับสแกนทีละชิ้น) — แถวโผล่ต่อเมื่อยิงบาร์โค้ดแล้วเท่านั้น
+// editable = แก้จำนวนได้ (ปิดเมื่อเคยยิงบาร์โค้ดที่ทุนเกินเกณฑ์ในรอบตรวจนี้) — แถวโผล่ต่อเมื่อยิงบาร์โค้ดแล้วเท่านั้น
 //            (scannedItems filter count > 0) จึงยังต้องมีของจริงในมือก่อนถึงจะปรับจำนวนได้
 function ScannedItemRow({ l, count, over, done, onRemove, blind = false, editable = false, hideQuantity = false, highValue = false, onQtyChange }) {
   const [dragX, setDragX] = useState(0);
@@ -163,7 +165,7 @@ function ScannedItemRow({ l, count, over, done, onRemove, blind = false, editabl
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>
             {l.sku}
-            {highValue && <span style={{ marginLeft: 6, fontFamily: 'system-ui', fontSize: 10, fontWeight: 700, color: '#b8860b' }}>💎 ทีละชิ้น</span>}
+            {highValue && <span style={{ marginLeft: 6, fontFamily: 'system-ui', fontSize: 10, fontWeight: 700, color: '#b8860b' }}>💎 สแกนได้ · ห้ามกรอกจำนวน</span>}
           </div>
           <div style={{ fontFamily: 'system-ui', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</div>
           <LotExpList rows={l.lotExpRows} compact />
@@ -304,6 +306,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [query, setQuery]             = useState('');
   const [notFound, setNotFound]       = useState(false);
   const [scanCounts, setScanCounts]   = useState({});
+  // SKU ใดเคยสแกนบาร์โค้ดที่ cost > 1,000 ในรอบตรวจนี้ จะล็อกเฉพาะช่องพิมพ์จำนวน
+  // ใช้ sticky lock: ถ้ายิงหน่วยราคาสูงแล้ว ห้ามยิงหน่วยราคาต่ำตามมาเพื่อปลดล็อกและกรอกยอดแทน
+  const [scanQuantityLocks, setScanQuantityLocks] = useState({});
   const [itemScan, setItemScan]       = useState('');
   const [lastScannedSku, setLastScannedSku] = useState(null);
   const [scanError, setScanError]     = useState('');
@@ -465,7 +470,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     playScanFail();
     showToast(message, 'error');
     setConfirmIncomplete(false); setConfirmNext(false); clearProblemEditor(); // ปิด dialog ที่อาจค้าง
-    setScanCounts({}); setQuery(''); setNotFound(false);
+    setScanCounts({}); setScanQuantityLocks({}); setQuery(''); setNotFound(false);
     setItemScan(''); setLastScannedSku(null); setScanError('');
     setVerifyResult(null); setSupervisorCode(''); setRecheckMode(false); setOutcomeHasProblems(false); setOutcomeProblemCount(0);
     setReceiveProblems([]); setProblemsLoadError(false); problemLoadSeqRef.current += 1;
@@ -498,6 +503,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     }));
     setNotFound(false);
     setScanCounts({});
+    setScanQuantityLocks({});
     setItemScan('');
     setLastScannedSku(null);
     setScanError('');
@@ -923,6 +929,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setPendingApprovalBoxId(null);
     if (targetBoxId === foundBox?.id) {
       setScanCounts({});
+      setScanQuantityLocks({});
       setItemScan('');
       setLastScannedSku(null);
       setScanError('');
@@ -946,6 +953,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   function handleRecheck() {
     setPendingApprovalBoxId(null);
     setScanCounts({});
+    setScanQuantityLocks({});
     setItemScan('');
     setLastScannedSku(null);
     setScanError('');
@@ -965,6 +973,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       setBoxes(prev => prev.map(b => b.id === foundBox.id ? { ...b, receivingBy: null } : b));
     }
     setScanCounts({});
+    setScanQuantityLocks({});
     setQuery('');
     setNotFound(false);
     setViewingId(null);
@@ -1006,15 +1015,13 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       }
     }
 
-    // นับเป็นหน่วยฐาน: สแกน 1 กล่อง (factor 24) → +24, สแกน 1 ม้วน (factor 1) → +1 — รับได้ทุก multiple
+    // นับเป็นหน่วยฐาน: สแกน 1 กล่อง (factor 30) → +30, สแกน 1 แผง (factor 1) → +1
+    // บาร์โค้ดทุกหน่วยสแกนผ่านเสมอ ราคาทุนใช้ล็อก "การพิมพ์จำนวน" เท่านั้น
     const scannedUnit = hit?.unit || match.baseUnit || match.scannedUnit || match.unit;
     const factor = factorOf(match.sku, scannedUnit);
-    // สินค้ามูลค่าสูง + ยิงหน่วยกล่อง/แพ็ค (factor>1) → ไม่นับ บังคับให้ยิงหน่วยย่อยทีละชิ้น
-    if (isHighValue(match.sku, scannedUnit) && factor > 1) {
-      playScanFail();
-      setScanError('สินค้ามูลค่าสูง — สแกนทีละชิ้น (หน่วยย่อย)');
-      showToast('⚠ SKU นี้สแกนทีละชิ้น', 'warn');
-      return;
+    const policy = receiveBarcodePolicy(costMap, match.sku, scannedUnit, HIGH_VALUE_THRESHOLD);
+    if (!policy.quantityEditable) {
+      setScanQuantityLocks(prev => prev[match.sku] ? prev : { ...prev, [match.sku]: true });
     }
     const current = scanCounts[match.sku] || 0;
     playScanSuccess();
@@ -1024,17 +1031,24 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   }
 
   // Android: ปัดลบรายการที่สแกนแล้ว (กรณียิงเกิน/ผิด) — เลิกนับ SKU นี้ทั้งหมด ให้สแกนใหม่
-  // แก้จำนวนในแถว (ทุกสินค้าปกติ ยกเว้นของมูลค่าสูง) — ตั้งค่าตรง ไม่บวก factor
+  // แก้จำนวนในแถว (เฉพาะ SKU ที่ยังไม่เคยยิงบาร์โค้ดทุนเกินเกณฑ์) — ตั้งค่าตรง ไม่บวก factor
   // เพราะพนักงานพิมพ์เป็นหน่วยฐานตามที่แถวโชว์อยู่แล้ว (unitOf = baseUnit)
   // ขั้นต่ำ 1: แถวนี้โผล่ได้เพราะยิงบาร์โค้ดแล้ว ถ้าปล่อยเป็น 0 แถวจะหายจาก scannedItems (filter > 0)
   // แล้วพิมพ์ต่อไม่ได้ — จะลบจริงต้องปัดซ้าย (handleRemoveScan)
   function handleQtyChange(sku, val) {
+    if (scanQuantityLocks[sku]) return;
     const n = parseInt(val, 10);
     setScanCounts(prev => ({ ...prev, [sku]: Number.isFinite(n) && n > 0 ? n : 1 }));
   }
 
   function handleRemoveScan(sku) {
     setScanCounts(prev => {
+      const next = { ...prev };
+      delete next[sku];
+      return next;
+    });
+    setScanQuantityLocks(prev => {
+      if (!prev[sku]) return prev;
       const next = { ...prev };
       delete next[sku];
       return next;
@@ -1054,8 +1068,6 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   // resolve บาร์โค้ด→หน่วย + factor (แปลงหน่วยตอนรับเข้า เช่น 1 กล่อง = 24 ม้วน)
   const barcodeIndex     = useMemo(() => buildBarcodeIndex(barcodeMap), [barcodeMap]);
   const factorOf         = (sku, unit) => lookupFactor(factorMap, sku, unit);
-  // สินค้ามูลค่าสูง: ทุนของ "หน่วยที่รับ/ยิง" (costMap[sku__unit]) เกิน HIGH_VALUE_THRESHOLD → ต้องสแกนทีละชิ้น
-  const isHighValue      = (sku, unit) => (costMap[`${sku}__${unit}`] ?? 0) > HIGH_VALUE_THRESHOLD;
   // needed = "หน่วยฐาน" (gotBase จากตอนแพ็ค เช่น 24 ม้วน) — พนักงานสาขาสแกน multiple ไหนก็ได้ ระบบนับรวมเป็นหน่วยฐาน
   // recheck: เภสัชนับใหม่จาก 0 ต้องครบเต็มจำนวนฐานเสมอ; ลังเก่าไม่มี gotBase → fallback qty (นับดิบตามเดิม)
   const getNeeded        = (item) => item.gotBase ?? item.qty ?? item.got ?? 0;
@@ -1737,8 +1749,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                                     // รีเช็คของเภสัชต้อง blind เท่ากัน — เป็นการนับอิสระรอบสอง ห้ามเฉลยว่าถึงเป้าหรือยัง
                                     // (โชว์เลขที่ยิงได้ สีกลาง — เป็นจำนวนที่เภสัชนับเอง ไม่ใช่การเฉลยเป้า)
                                     blind
-                                    editable={!recheckMode && !isHighValue(l.sku, unitOf(l))}
-                                    highValue={isHighValue(l.sku, unitOf(l))}
+                                    editable={!recheckMode && !scanQuantityLocks[l.sku]}
+                                    highValue={!!scanQuantityLocks[l.sku]}
                                     onQtyChange={handleQtyChange}
                                   />
                                 );

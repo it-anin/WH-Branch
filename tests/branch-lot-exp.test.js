@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   buildLotRows,
   buildReceiveLotExpMap,
+  receiveBarcodePolicy,
   toBuddhistExpiry,
 } from '../src/warehouseHelpers.js';
 
@@ -56,4 +57,27 @@ test('expiry conversion remains unchanged for outbound Text export', () => {
   assert.equal(toBuddhistExpiry('31/12/2570'), '31/12/2570');
   assert.equal(toBuddhistExpiry('ไม่ระบุ'), 'ไม่ระบุ');
   assert.equal(toBuddhistExpiry(''), '');
+});
+
+test('receiving accepts expensive carton barcodes but locks manual quantity entry', () => {
+  const costMap = {
+    '100335__กล่อง': 1050,
+    '100445__กล่อง': 335,
+  };
+
+  assert.deepEqual(receiveBarcodePolicy(costMap, '100335', 'กล่อง'), {
+    cost: 1050,
+    scanAllowed: true,
+    quantityEditable: false,
+  });
+  assert.deepEqual(receiveBarcodePolicy(costMap, '100445', 'กล่อง'), {
+    cost: 335,
+    scanAllowed: true,
+    quantityEditable: true,
+  });
+});
+
+test('receiving quantity threshold is strictly greater than 1000', () => {
+  assert.equal(receiveBarcodePolicy({ 'SKU__กล่อง': 1000 }, 'SKU', 'กล่อง').quantityEditable, true);
+  assert.equal(receiveBarcodePolicy({ 'SKU__กล่อง': 1000.01 }, 'SKU', 'กล่อง').quantityEditable, false);
 });
