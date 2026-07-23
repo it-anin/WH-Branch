@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { collection, doc, setDoc, deleteDoc, deleteField, onSnapshot, writeBatch, runTransaction, query, where, documentId, getDocs, addDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, deleteField, onSnapshot, writeBatch, runTransaction, query, where, orderBy, documentId, getDocs, addDoc } from 'firebase/firestore';
 import { db } from './firebase.js';
 import { commitWarehouseBoxItems } from './warehouseFirestore.js';
 // สูตร need + ตัวคูณหน่วยฐาน — ตัวเดียวกับที่ PackScanC ใช้จริง (ใช้ใน __wh.audit เพื่อยืนยันเลขบนจอพนักงาน)
@@ -22,9 +22,11 @@ import {
   HISTORY_RETENTION_DAYS,
   buildTopLevelFieldPatch,
   computeCatalogByPacker,
+  historyCutoff,
   isHistoryExpired,
   isReceiveProblemExpired,
   normalizeReceiveProblem,
+  shouldSubscribeToHistory,
   shouldSubscribeToProgress,
 } from './warehouseHelpers.js';
 import { classifyFirestoreError } from './firestoreErrors.js';
@@ -297,12 +299,7 @@ export default function App() {
     const unsubZone = onSnapshot(doc(db, 'config', 'zoneAssignments'), snap => {
       if (snap.exists()) setZoneAssignments(snap.data().assignments || {});
     }, onErr('zoneAssignments'));
-    const unsubHistory = onSnapshot(collection(db, 'history'), snap => {
-      const data = snap.docs.map(d => ({ ...d.data(), id: d.id }))
-        .sort((a, b) => new Date(b.clearedAt) - new Date(a.clearedAt));
-      setHistory(data);
-    }, onErr('history'));
-    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCostMap(); unsubFactorMap(); unsubLotMap(); unsubNameMap?.(); unsubZone(); unsubHistory(); }; // nameMap เป็น null บน Android → ต้อง ?.
+    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCostMap(); unsubFactorMap(); unsubLotMap(); unsubNameMap?.(); unsubZone(); }; // nameMap เป็น null บน Android → ต้อง ?.
   }, [reportFirestoreError]);
 
   // progress ใช้เฉพาะ Dashboard และ guard ตอนอัป Picklist ของ Desktop คลัง
@@ -337,6 +334,34 @@ export default function App() {
     );
     return unsubscribe;
   }, [progressListenerEnabled, reportFirestoreError]);
+
+  // ประวัติใช้เฉพาะหน้า Box List ของ Desktop คลัง และอ่านเฉพาะช่วง retention จริง 30 วัน
+  const historyListenerEnabled = shouldSubscribeToHistory({
+    isAndroid: isAndroidMode,
+    role: profile?.role,
+    tab,
+  });
+  useEffect(() => {
+    if (!historyListenerEnabled) {
+      setHistory([]);
+      return undefined;
+    }
+
+    const cutoffIso = historyCutoff(new Date(), HISTORY_RETENTION_DAYS).toISOString();
+    const historyQuery = query(
+      collection(db, 'history'),
+      where('clearedAt', '>=', cutoffIso),
+      orderBy('clearedAt', 'desc'),
+    );
+    const unsubscribe = onSnapshot(
+      historyQuery,
+      snap => {
+        setHistory(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+      },
+      err => reportFirestoreError(err, { source: 'history', critical: true }),
+    );
+    return unsubscribe;
+  }, [historyListenerEnabled, reportFirestoreError]);
 
   function setBoxes(updater) {
     const prev = boxesRef.current;

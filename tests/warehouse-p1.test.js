@@ -10,6 +10,7 @@ import {
   computeCatalogByPacker,
   findIncompletePackTarget,
   normalizeExclusiveZoneAssignments,
+  shouldSubscribeToHistory,
   shouldSubscribeToProgress,
 } from '../src/warehouseHelpers.js';
 import { resolvePackPicklistDisplay } from '../src/units.js';
@@ -49,6 +50,13 @@ test('progress listener runs only on warehouse Dashboard and Picklist tabs', () 
   assert.equal(shouldSubscribeToProgress({ role: 'warehouse', tab: 'scan' }), false);
   assert.equal(shouldSubscribeToProgress({ role: 'branch', tab: 'list' }), false);
   assert.equal(shouldSubscribeToProgress({ isAndroid: true, role: 'warehouse', tab: 'flow' }), false);
+});
+
+test('history listener runs only on the warehouse Picklist tab', () => {
+  assert.equal(shouldSubscribeToHistory({ role: 'warehouse', tab: 'list' }), true);
+  assert.equal(shouldSubscribeToHistory({ role: 'warehouse', tab: 'flow' }), false);
+  assert.equal(shouldSubscribeToHistory({ role: 'branch', tab: 'list' }), false);
+  assert.equal(shouldSubscribeToHistory({ isAndroid: true, role: 'warehouse', tab: 'list' }), false);
 });
 
 test('packing selects the next incomplete duplicate SKU+unit row in order', () => {
