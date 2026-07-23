@@ -37,12 +37,14 @@ description: Use when touching the branch receive screen src/screens/BranchRecei
   - **Blind receiving:** แถวจะโผล่ในรายการ**ต่อเมื่อยิงบาร์โค้ดแล้วเท่านั้น** (`scannedItems` filter `count > 0`) — ไม่มีคลิกแถวเพื่อติ๊ก ไม่มีปุ่ม "ติ๊กครบทั้งหมด" และพนักงานไม่เห็น `getNeeded`
 
 ### แก้จำนวนในแถว + ปิดสีตอนนับ (Android) — กันการเดาเลขจนไฟเขียว
-- **`QTY_EDIT_MIN = 10`** (module scope) — SKU ที่ `getNeeded > 10` → แถวมี `<input type="number">` แก้จำนวนได้ แทนการยิงซ้ำทีละชิ้น; ต่ำกว่านั้นยิงเอา
+- **พิมพ์จำนวนได้ทุก SKU ปกติ** — แถวที่สแกนแล้วมี `<input type="number">` เสมอ **ยกเว้นสินค้ามูลค่าสูง** (ดู *สินค้ามูลค่าสูง* ด้านล่าง)
+  - **⚠ `QTY_EDIT_MIN = 10` ถูกลบทิ้งแล้ว** (เดิมพิมพ์ได้เฉพาะ SKU ที่ `getNeeded > 10`) — เกณฑ์เปลี่ยนจาก "จำนวนมาก" เป็น **"ราคาทุน"**: ของถูกพิมพ์ได้หมด ของแพงต้องยิงทีละชิ้น
   - พิมพ์เป็น**หน่วยฐาน**ตรง ๆ (ตรงกับ `unitOf(l)` ที่แถวโชว์) — `handleQtyChange` **set ค่าตรง ไม่บวก factor** (ต่างจาก `handleItemScan`)
   - **ขั้นต่ำ 1 เสมอ** — แถวนี้มีอยู่ได้เพราะยิงบาร์โค้ดแล้ว ถ้าปล่อยเป็น 0 แถวจะหายจาก `scannedItems` แล้วพิมพ์ต่อไม่ได้; จะลบจริงต้องปัดซ้าย (`handleRemoveScan`)
   - `onFocus` → `select()` (พิมพ์ทับเลขเดิมได้บน PDA) · `onTouchStart` → `stopPropagation()` (กันปัดซ้าย-ลบตอนแตะช่อง)
-  - ⚠ ตัวช่องกรอกที่โผล่มา**บอกใบ้ว่า SKU นี้มี >10** (ไม่บอกเลขจริง) — ยอมรับแล้ว
-- **`blind` prop บน `ScannedItemRow`** = `!recheckMode` → ตรวจนับปกติแถวเป็น**สีกลาง** (`var(--paper-dark)` + ตัวเลข `var(--ink)`) เห็นสีแดง/เขียว/เหลืองตอน **phase `result`** เท่านั้น; **recheck mode ยังโชว์สี** (เภสัชต้องรู้ว่าตัวไหนขาด/เกิน — ตั้งใจ)
+  - ✅ **ไม่บอกใบ้จำนวนอีกแล้ว** — เดิมช่องกรอกโผล่เฉพาะ SKU ที่ >10 = ใบ้กลาย ๆ; ตอนนี้โผล่ทุก SKU ปกติ (การมี/ไม่มีช่องบอกแค่ว่า "ของแพงหรือไม่" ซึ่งไม่ใช่ข้อมูลจำนวน)
+- **`blind` prop บน `ScannedItemRow` = `true` เสมอ ทุกโหมด** → แถวเป็น**สีกลาง** (`var(--paper-dark)` + ตัวเลข `var(--ink)`) ตลอดการนับ เห็นสีแดง/เขียว/เหลืองที่ **phase `result`** เท่านั้น
+  - **⚠ เดิมเป็น `blind={!recheckMode}` = "รีเช็คโชว์สีได้ ตั้งใจให้เภสัชเห็น" — ยกเลิกแล้ว ห้ามเอากลับ** เพราะสีบอกทันทีว่ายิงถึงเป้าหรือยัง → เภสัชหยุดยิงตอนไฟเปลี่ยนได้โดยไม่ต้องนับของ = ด่านรีเช็คไร้ความหมาย (ดู *รีเช็คต้อง blind เท่ารอบแรก*)
 - **`requestConfirm` เด้ง dialog ทุกครั้ง** ไม่ว่านับครบหรือไม่ และ dialog **เป็นกลาง** ("ยืนยันรับสินค้า · ตรวจนับครบถ้วนแล้วใช่หรือไม่?") ไม่บอกว่าครบ/เหลือกี่รายการ
   - **⚠ ห้ามเอาข้อมูลความครบกลับเข้า dialog หรือคืนสีตอนนับ** — เดิม dialog เด้งเฉพาะ `!allChecked` + บอก "(เหลืออีก N รายการ)" + กดยกเลิกกลับไปแก้ได้ = **oracle**: ปรับเลข → กดยืนยัน → อ่านว่าเหลือเท่าไหร่ → ยกเลิก → วนจนไม่เด้ง = ได้เลขที่ถูกโดยไม่ต้องนับของ ยิ่งแก้จำนวนในแถวได้ยิ่งง่าย → **การซ่อนสีจะไร้ความหมายทันทีถ้า dialog บอกใบ้**
   - dialog ยังทำหน้าที่เดิมคือกันกดพลาด; ผล `ok`/`over`/`fail` ไปโผล่ที่ phase `result` เหมือนเดิม
@@ -53,15 +55,18 @@ description: Use when touching the branch receive screen src/screens/BranchRecei
 - `hasOver` = มี item ใด item หนึ่งที่ `scanCounts[sku] > item.qty` (สแกนเกิน)
 - reset `scanCounts` เมื่อสแกนลังใหม่ / สแกนลังถัดไป / handleApprove / handleRecheck
 - **ตารางตรวจสอบสินค้า (phase verify):** แสดงคอลัมน์ SKU / ชื่อ / หน่วย / สแกนแล้ว
-  - **`ScannedItemRow` มีชุดสี แดง(ไม่ครบ)/เขียว(ครบ)/เหลือง(เกิน)** (`#fde8e8`/`#c0392b` · `#e8f0d8`/`var(--green)` · `#fff3cd`/`#e67e22`) — **แต่ตอนตรวจนับปกติถูกปิดด้วย `blind` แล้ว** สีจะเห็นเฉพาะ recheck mode + phase `result` (ดู *แก้จำนวนในแถว + ปิดสีตอนนับ* ด้านบน)
-  - **พนักงานสาขายังไม่เห็นจำนวนที่ควรมีในลัง (`needed`)** — เห็นแค่จำนวนที่สแกนไปแล้ว (`×count`) → semi-blind (สีบอกสถานะครบ แต่ไม่บอกว่าต้องกี่ชิ้น)
+  - **`ScannedItemRow` มีชุดสี แดง(ไม่ครบ)/เขียว(ครบ)/เหลือง(เกิน)** (`#fde8e8`/`#c0392b` · `#e8f0d8`/`var(--green)` · `#fff3cd`/`#e67e22`) — **แต่ถูกปิดด้วย `blind` ตลอดการนับทุกโหมด** สีจะเห็นที่ **phase `result`** เท่านั้น
+  - **พนักงานสาขาไม่เห็นจำนวนที่ควรมีในลัง (`needed`) เลย** — เห็นแค่จำนวนที่ตัวเองสแกนไปแล้ว → **blind เต็มรูป** (ไม่ใช่ semi-blind แบบเดิมที่สีบอกสถานะครบ)
 - **ปุ่ม "✓ ยืนยันรับสินค้า" เรียก `requestConfirm`** (ไม่ใช่ `handleConfirm` ตรง) → เด้ง dialog (portal) **เป็นกลาง ทุกครั้ง** — ดู *แก้จำนวนในแถว + ปิดสีตอนนับ* ด้านบนว่าทำไมห้ามให้ dialog บอกความครบ
 - **Phase `result`** (Android — หลังกด ✓ ยืนยันรับสินค้า):
   - `verifyResult` = `'ok'` / `'over'` / `'fail'`
     - `'ok'`: allChecked && !hasOver → `handleConfirm` ตั้ง `receivePending: true` บน box → แสดงกล่อง **"✓ ส่งให้หัวหน้าอนุมัติเอกสารแล้ว"** (ไม่มีปุ่มอนุมัติบน Android — อนุมัติที่ Desktop)
     - `'over'`: allChecked && hasOver → badge **"สินค้าเกินจำนวน"** (ส้ม) + รหัสหัวหน้างาน + **🔄 รีเช็ค** (ไม่ persist)
     - `'fail'`: !allChecked → badge **"สินค้าไม่ถูกต้อง"** (แดง) + รหัสหัวหน้างาน + **🔄 รีเช็ค** (ไม่ persist)
-  - ตาราง result: `count > needed` → row สีเหลือง + วงกลม `!` สีส้ม + แสดง `count +N` (ส่วนเกิน)
+  - ตาราง result 5 คอลัมน์: `✓ | SKU/ชื่อ | หน่วย | ของเข้า | นับได้` — `count > needed` → row สีเหลือง + วงกลม `!` สีส้ม
+  - **⚠ คอลัมน์ `ของเข้า` (= `needed`) โชว์เฉพาะแถวที่นับตรงพอดี** (`const matched = count === needed`) — แถวที่ขาด/เกินแสดง `—`
+    - **ห้ามโชว์ `needed` ของแถวที่ผิด และห้ามคืน delta `+N`** (เดิมมี `{count}+{count - needed}` → ถอดสมการหา `needed` ได้) — ไม่งั้น**เฉลยคำตอบให้รอบรีเช็คฟรี ๆ** พนักงาน/เภสัชกรอกตามเลขที่เห็นได้เลย
+    - แถวที่นับตรงเปิดเผยได้ เพราะพนักงานนับตรงอยู่แล้ว = ไม่ได้รู้อะไรใหม่ · สี/ไอคอน `✓ ✗ !` ยังบอก "ผ่าน/ไม่ผ่าน" ได้ตามเดิม (บอกผล ไม่บอกตัวเลข)
 - **Desktop layout (approval-only):**
   - แผงซ้าย: `approvalBoxes` = boxes ที่ `receivePending`/`problemReported` หรืออยู่ใน `receiveBoxIds` — **grid 2 คอลัมน์** (`repeat(2,1fr)`, คอลัมน์ซ้าย 420px); sortRank: problem(0) > pending(1) > อื่น(2)
   - badge header: chip "N รออนุมัติ" (`pendingCount`) + chip แดง "🔴 N แจ้งปัญหา" (`problemCount`) — เคารพตัวกรองพนักงาน
@@ -105,6 +110,41 @@ description: Use when touching the branch receive screen src/screens/BranchRecei
 
 ---
 
+## สินค้ามูลค่าสูง (ทุน > 1,000฿) — บังคับสแกนทีละชิ้น
+
+- **`HIGH_VALUE_THRESHOLD = 1000`** (module scope) + `isHighValue(sku, unit)` = ``costMap[`${sku}__${unit}`] > 1000``
+  - อ้างอิงราคาทุน **"ต่อหน่วยที่รับ/ยิง" ตรง ๆ ไม่หารด้วย factor** (ผู้ใช้ตัดสินใจ) — ทุนมาจากไฟล์ R05.105 (`config/costMap`)
+  - `costMap` ถูกส่งเข้ามาทาง `screenProps` อยู่แล้ว และ **ไม่ถูก gate ด้วย `isAndroidMode`** → มีบน PDA แน่นอน (ต่างจาก `nameMap` ที่ desktop-only)
+- **guard ใน `handleItemScan`:** `isHighValue(sku, scannedUnit) && factor > 1` (ยิงหน่วยกล่อง/แพ็ค) → **ปฏิเสธ ไม่นับ** + `playScanFail()` + `scanError` + toast `⚠ SKU นี้สแกนทีละชิ้น` (`'warn'`)
+  - เหลือแต่หน่วยย่อย (factor 1) ที่ยิงผ่าน = +1 ต่อครั้ง → **ได้ "ทีละชิ้น" เอง ไม่ต้อง force ตัวเลข**
+- **ปิดช่องพิมพ์จำนวน:** `editable={!recheckMode && !isHighValue(l.sku, unitOf(l))}` — ถ้าปล่อยให้พิมพ์ พนักงานเลี่ยงการนับได้ทันที
+- **ป้าย `💎 ทีละชิ้น`** ข้าง SKU (prop `highValue` บน `ScannedItemRow`) — บอกแค่ "ของแพง" ไม่บอกจำนวน (ยัง blind)
+- **⚠ ข้อจำกัดที่รู้อยู่:** ของแพงที่มี**เฉพาะบาร์โค้ดกล่อง** (ไม่มีบาร์โค้ดหน่วยย่อย) จะยิงรับไม่ได้เลย → ต้องแก้ master data · ถ้า R05.105 ไม่มีแถวของหน่วยนั้น → คืน 0 = **ไม่ flag แบบเงียบ** (false negative)
+
+## รีเช็คต้อง blind เท่ารอบแรก — ห้ามมีสัญญาณ "ครบแล้ว"
+
+โหมด `recheckMode` เคยเฉลยว่ายิงถึงเป้าหรือยัง **4 ชั้น** (แก้หมดแล้ว) — **ห้ามเอากลับมาไม่ว่าด้วยเหตุผล UX ใด**:
+
+| เดิม (oracle) | ตอนนี้ |
+|---|---|
+| แบนเนอร์เขียว `✓ ตรวจครบรายการที่ต้องรีเช็คแล้ว` เมื่อ `pendingRecheckItems.length === 0` | **ลบทิ้ง** → เหลือ empty state กลาง "ยิงบาร์โค้ดสินค้าเพื่อเริ่มตรวจสอบ" |
+| `.filter(l => !recheckMode \|\| count !== getNeeded(l))` → แถวหายตอนนับตรง | **ลบ filter** → แถวที่สแกนแล้วอยู่ครบ |
+| panel รีเช็ค map จาก `pendingRecheckItems` (หดลงเรื่อย ๆ) | map จาก **`verifyItems`** (นิ่ง) |
+| `blind={!recheckMode}` → รีเช็คเห็นสีแดง/เหลือง | **`blind`** (true เสมอ) |
+
+- **`hideQuantity` ถูกถอดออก** → รีเช็คโชว์เลขที่ยิงได้ **สีกลาง** (เป็นจำนวนที่เภสัชนับเอง ไม่ใช่การเฉลยเป้า — ผู้ใช้เลือก)
+- **`editable` ยัง `false` ในโหมด recheck** → เภสัชพิมพ์เลขเองไม่ได้ ต้องยิงจริงเท่านั้น
+- **`pendingRecheckItems` ยังต้องคงไว้** — ใช้ที่ `resultItems` (หน้าผลลัพธ์ของรอบรีเช็ค) เท่านั้น อย่าลบทิ้งตอน refactor
+- เภสัชรู้ผลได้ที่ **phase `result` หลังกดยืนยัน** เท่านั้น (และหน้านั้นก็ซ่อน `ของเข้า` ของแถวที่ผิดอยู่แล้ว)
+
+## ป้าย "⚠ ปัญหาที่บันทึก · กำลังโหลด…" — debounce กันวูบ
+
+- `loadProblemsForBox` ยิง Firestore **ทุกครั้งที่สแกนลัง** (เช็คว่ามี draft ปัญหาค้างไหม); เดิมผูกแบนเนอร์กับ `problemsLoading` ตรง ๆ → ป้าย**วูบขึ้น-ลงทุกลัง**แม้ลังไม่มี draft
+- แยกเป็น 2 flag:
+  - **`problemsLoading`** (ทันที) — คุม `disabled` ปุ่มยืนยัน + guard ใน `requestConfirm` (**ห้ามเปลี่ยนไปใช้ตัวหน่วง** ไม่งั้นกดยืนยันได้ก่อนโหลดเสร็จ)
+  - **`problemsLoadingSlow`** (หน่วง `LOADING_LABEL_DELAY_MS = 350` ผ่าน `problemsLoadTimerRef`) — คุม**แบนเนอร์อย่างเดียว**
+- เคลียร์ timer ที่ `.finally`, `resetToScan`, และ `useEffect` unmount · `problemLoadSeqRef` guard กัน timer ของรอบเก่ายิงข้ามลัง
+
 ## Problem Report Flow (แจ้งปัญหาลัง) — ข้าม 3 หน้าจอ
 - **2 ทางเข้า (`problemType`):**
   - **`'incomplete'`:** สแกนสินค้าไม่ครบ/เกิน แล้วกด **"✓ ยืนยันรับสินค้า"** → `handleConfirm` (result ≠ ok) persist เป็นปัญหา → Android แสดง "✓ ส่งให้หัวหน้ารีเช็คสินค้าแล้ว"; ปุ่ม card desktop = **"🔁 รีเช็คสินค้า"** (ส้ม) — *ไม่มีรหัสหัวหน้างาน/recheck บน Android แล้ว*
@@ -129,14 +169,17 @@ description: Use when touching the branch receive screen src/screens/BranchRecei
 
 ### State + Derived
 - **`recheckMode`** (useState): true เมื่อ**พนักงานคนไหนก็ได้**สแกนซ้ำลัง `problemType='incomplete'` → reset เป็น false ใน `handleScanNext` / `handleApprove` / `handleRecheck`
-- **`verifyItems`** (derived): filter boxItems ให้เหลือเฉพาะ SKU ที่ `problemScanCounts[sku] < qty` (เฉพาะที่ไม่ครบในรอบแรก) — `allChecked` / `doneCount` / `scannedSkuCount` ใช้ `verifyItems` แทน `boxItems` ใน recheck mode
-- **`getDeficit(item)`** (derived — สำคัญ): ใน recheck mode เภสัชต้องสแกน**เฉพาะส่วนที่ขาด** (`needed − problemScanCounts[sku]`) ไม่ใช่ qty เต็ม เช่น เบิก 10 รอบแรกได้ 7 → deficit=3 → เภสัชสแกน 3 ก็ครบ. `fullyChecked` = `scanCounts[sku] >= getDeficit(item)`, `hasOver` (handleConfirm) เทียบกับ `getDeficit` ด้วย. normal mode: `getDeficit = needed` (พฤติกรรมเดิม)
+- **`verifyItems`** (derived): filter boxItems ให้เหลือเฉพาะ SKU ที่ `problemScanCounts[sku] !== getNeeded(l)` = **ทั้งขาดและเกิน**ในรอบแรก (ไม่ใช่แค่ "ไม่ครบ") — `allChecked` / `scannedSkuCount` ใช้ `verifyItems` แทน `boxItems` ใน recheck mode
+  - คำนวณจาก `foundBox.problemScanCounts` (ค่ารอบแรก) → **นิ่ง ไม่ขึ้นกับ `scanCounts` ปัจจุบัน** จึงเป็นลิสต์ "ต้องรีเช็ค" ที่ไม่หดตอนยิง (ต่างจาก `pendingRecheckItems`)
+- **⚠ ไม่มี `getDeficit` ในโค้ด** (เอกสารเก่าเคยเขียนว่ามี — เข้าใจผิด) — **recheck นับใหม่จาก 0 และต้องครบ `getNeeded` เต็มจำนวนหน่วยฐานเสมอ** ไม่ใช่แค่ส่วนที่ขาด
+  - `fullyChecked = (scanCounts[sku] || 0) >= getNeeded(item)` เหมือน normal mode เป๊ะ · เจตนาคือ**เทของทั้ง SKU ออกมานับใหม่หมด** ไม่ใช่นับเฉพาะส่วนที่หาย (นับเฉพาะส่วนขาดต้องรู้ก่อนว่าขาดเท่าไร = เฉลยเป้า)
 
 ### Flow
 - **⚠ ลำดับ guard ใน `handleScan` (สำคัญ):** เช็ค `problemReported && !problemResolved` (→ pharmacist recheck / block คนอื่น) **ก่อน** `receivePending` — กัน edge case ที่ลังมีทั้ง `receivePending` และ `problemReported` พร้อมกัน (Firestore race) แล้วเภสัชโดนบล็อกที่ receivePending ก่อนถึง pharmacist exception
 1. **handleScan:** เจอลัง `problemReported && !problemResolved && problemType='incomplete'` (**ไม่เช็ค `role` แล้ว** — พนักงานคนไหนก็ได้; เดิมต้อง `role === 'pharmacist'`) → `setRecheckMode(true)` + `startReceive(box)` + toast `🔁 รีเช็คลัง {id}` (success). `damaged` ยังตกไปบล็อก `รอเภสัชตรวจสอบ`
-2. **handleItemScan:** ใน recheck mode ถ้าสแกน SKU ที่ `problemScanCounts[sku] >= needed` (ครบในรอบแรก) → reject + `scanError = "SKU นี้สแกนครบแล้วในรอบแรก"` (กันสแกนนอก verifyItems)
-   - **Android แสดงรายการของที่ต้องรีเช็คก่อนสแกน:** panel "🧪 สินค้าที่ต้องรีเช็ค ({doneCount}/{verifyItems.length} SKU)" — แต่ละแถวโชว์ชื่อ/SKU + `{scanCounts}/{getDeficit} {unit}` (สแกนแล้ว/ต้องสแกน) เขียวเมื่อครบ — กันเภสัชไม่รู้ว่าตัวไหนขาดเท่าไหร่
+2. **handleItemScan:** ใน recheck mode ถ้าสแกน SKU ที่ `problemScanCounts[sku] === getNeeded(match)` (**ตรงเป๊ะ**ในรอบแรก) → reject + `scanError = "SKU นี้ถูกต้องแล้วในรอบแรก — ตรวจซ้ำเฉพาะที่ขาด/เกิน"` (กันสแกนนอก verifyItems; SKU ที่รอบแรก**เกิน** ยังสแกนซ้ำได้)
+   - **Android แสดงรายการของที่ต้องรีเช็คก่อนสแกน:** panel "🧪 สินค้าที่ต้องรีเช็ค" — โชว์ชื่อ/SKU/หน่วย + ไอคอน `○` เท่านั้น **ไม่มีจำนวน ไม่เปลี่ยนเป็น ✓ ไม่มีสีเขียวตอนครบ**
+     - **⚠ ต้อง map จาก `verifyItems`** (นิ่ง — คำนวณจาก `problemScanCounts` รอบแรก) · **ห้ามใช้ `pendingRecheckItems`** ซึ่งกรองด้วย `scanCounts` ปัจจุบัน → รายการจะ**หายทันทีที่ยิงตรงเป๊ะ = เฉลยเป้า**
 3. **handleConfirm branch (recheck × role) — 4 ทาง:**
    - **recheck + ok (พนักงานคนไหนก็ได้):** `problemResolved=true`, `problemResolvedBy/At`, `receivePending=true` → รออนุมัติเอกสาร (= แก้ scan พลาดสำเร็จ ไม่ต้องรอเภสัช)
    - **recheck + fail/over + `role==='pharmacist'`:** keep `problemReported=true`, **`problemReviewed=true`** (auto — Outbound badge ขึ้นทันที), `problemNote = auto-generated` ลิสต์ SKU ที่ขาด/เกินพร้อมชื่อ + จำนวน, `problemConfirmedBy/At=pharmacist`, merge `problemScanCounts` รอบใหม่; toast `⚠ เภสัชยืนยันสินค้า{kindLabel} · แจ้งคลังสินค้าแล้ว` (error)
