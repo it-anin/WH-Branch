@@ -25,6 +25,7 @@ import {
   isHistoryExpired,
   isReceiveProblemExpired,
   normalizeReceiveProblem,
+  shouldSubscribeToProgress,
 } from './warehouseHelpers.js';
 import { classifyFirestoreError } from './firestoreErrors.js';
 
@@ -117,6 +118,7 @@ export default function App() {
   const [receiveBoxIds, _setReceiveBoxIds] = useState([]);
   const [pendingApprovalBoxId, setPendingApprovalBoxId] = useState(null);
   const [scanProgress, setScanProgress] = useState({});
+  const [progressLoaded, setProgressLoaded] = useState(false);
 
   const boxesRef = useRef([]);
   const itemsByBoxRef = useRef({});
@@ -248,13 +250,6 @@ export default function App() {
         setBarcodeMapMeta(null);
       }
     }, onErr('barcodeMap'));
-    // progress ใช้เฉพาะ Dashboard/Desktop และ guard ตอนอัป Picklist
-    // Android ทุกเครื่องไม่ต้อง subscribe มิฉะนั้นทุก scan ของพนักงานหนึ่งคนจะคิด read ซ้ำทุก PDA
-    const unsubProgress = isAndroidMode ? null : onSnapshot(collection(db, 'progress'), snap => {
-      const data = {};
-      snap.docs.forEach(d => { data[d.id] = d.data().items || []; });
-      setScanProgress(data);
-    }, onErr('progress'));
     const unsubCostMap = onSnapshot(doc(db, 'config', 'costMap'), snap => {
       if (snap.exists()) {
         const entries = snap.data().entries || [];
@@ -307,8 +302,41 @@ export default function App() {
         .sort((a, b) => new Date(b.clearedAt) - new Date(a.clearedAt));
       setHistory(data);
     }, onErr('history'));
-    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubProgress?.(); unsubCostMap(); unsubFactorMap(); unsubLotMap(); unsubNameMap?.(); unsubZone(); unsubHistory(); }; // progress/nameMap เป็น null บน Android → ต้อง ?.
+    return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubCostMap(); unsubFactorMap(); unsubLotMap(); unsubNameMap?.(); unsubZone(); unsubHistory(); }; // nameMap เป็น null บน Android → ต้อง ?.
   }, [reportFirestoreError]);
+
+  // progress ใช้เฉพาะ Dashboard และ guard ตอนอัป Picklist ของ Desktop คลัง
+  // เปลี่ยน flow ↔ list ไม่สร้าง listener ใหม่เพราะ enabled ยังคง true; tab อื่น unsubscribe และล้าง state ทันที
+  const progressListenerEnabled = shouldSubscribeToProgress({
+    isAndroid: isAndroidMode,
+    role: profile?.role,
+    tab,
+  });
+  useEffect(() => {
+    if (!progressListenerEnabled) {
+      setScanProgress({});
+      setProgressLoaded(false);
+      return undefined;
+    }
+
+    setProgressLoaded(false);
+    const unsubscribe = onSnapshot(
+      collection(db, 'progress'),
+      { includeMetadataChanges: true },
+      snap => {
+        const data = {};
+        snap.docs.forEach(d => { data[d.id] = d.data().items || []; });
+        setScanProgress(data);
+        // Cache อาจว่าง/เก่า ห้ามใช้ปลด guard การอัป Picklistจนกว่า server จะยืนยัน
+        if (!snap.metadata.fromCache) setProgressLoaded(true);
+      },
+      err => {
+        setProgressLoaded(false);
+        reportFirestoreError(err, { source: 'progress', critical: false });
+      },
+    );
+    return unsubscribe;
+  }, [progressListenerEnabled, reportFirestoreError]);
 
   function setBoxes(updater) {
     const prev = boxesRef.current;
@@ -1163,7 +1191,16 @@ export default function App() {
             </div>
             <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <ImportCatalog catalog={catalog} meta={catalogMeta} onImport={(items, meta, opts) => {
+                <ImportCatalog
+                  catalog={catalog}
+                  meta={catalogMeta}
+                  locked={!progressLoaded}
+                  lockedHint="กำลังตรวจสอบลังที่แพ็คอยู่จาก Firestore"
+                  onImport={(items, meta, opts) => {
+                  if (!progressLoaded) {
+                    showToast('กำลังตรวจสอบลังที่แพ็คอยู่ กรุณารอสักครู่', 'warn');
+                    return false;
+                  }
                   if (catalogImporting) {
                     showToast('กำลังบันทึก Picklist รอบก่อน กรุณารอให้เสร็จก่อน', 'warn');
                     return false;

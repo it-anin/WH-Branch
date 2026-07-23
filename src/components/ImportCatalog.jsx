@@ -87,7 +87,7 @@ function extractBranch(filename) {
   return m ? m[1].toUpperCase() : null;
 }
 
-export default function ImportCatalog({ catalog, meta, onImport }) {
+export default function ImportCatalog({ catalog, meta, onImport, locked = false, lockedHint = '' }) {
   const fileRef = useRef(null);
   const urgentRef = useRef(null);
   const [branch, setBranch] = useState(null);
@@ -102,7 +102,7 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
   function readItems(e, cb) {
     const file = e.target.files[0];
     e.target.value = '';
-    if (!file) return;
+    if (!file || locked) return;
     const isCsv = /\.csv$/i.test(file.name);
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -233,7 +233,7 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
   return (
     <div className="row" style={{ gap: 8, alignItems: 'center' }}>
       <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleFile} />
-      <button className={`btn sm${displayFileDate ? ' primary' : ''}`} style={{ minWidth: 240 }} disabled={importing} onClick={() => fileRef.current?.click()}>
+      <button className={`btn sm${displayFileDate ? ' primary' : ''}`} style={{ minWidth: 240 }} disabled={importing || locked} onClick={() => fileRef.current?.click()}>
         {'1 · '}
         {importing
           ? 'กำลังบันทึก Picklist…'
@@ -258,9 +258,14 @@ export default function ImportCatalog({ catalog, meta, onImport }) {
       {/* ปุ่มเบิกด่วน — อยู่นอกลำดับบังคับ 1-4 (ไม่มีเลขนำหน้า, ไม่ล็อก) เพราะเป็นงานแทรกกลางวัน
           chip นับด้วย isUrgentItem → อัปไฟล์เดิมซ้ำแล้วเลขต้องไม่โต = เห็นได้ทันทีว่าแทนที่ ไม่ได้บวกทับ */}
       <input ref={urgentRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleUrgentFile} />
-      <button className={`btn sm${urgentCount > 0 ? ' primary' : ''}`} style={{ minWidth: 240 }} disabled={importing} onClick={() => urgentRef.current?.click()}>
+      <button className={`btn sm${urgentCount > 0 ? ' primary' : ''}`} style={{ minWidth: 240 }} disabled={importing || locked} onClick={() => urgentRef.current?.click()}>
         📌 อัปโหลดไฟล์ Picklist เบิกด่วน
       </button>
+      {locked && (
+        <span className="chip" style={{ fontFamily: 'system-ui', fontSize: 13 }}>
+          🔒 {lockedHint || 'กำลังตรวจสอบลังที่แพ็คอยู่'}
+        </span>
+      )}
       {urgentCount > 0 && (
         <span className="chip warn" style={{ fontFamily: 'system-ui', fontSize: 13 }}>
           📌 เบิกด่วน: {urgentCount} รายการ

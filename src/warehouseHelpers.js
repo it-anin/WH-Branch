@@ -2,6 +2,14 @@ import { lookupFactor, picklistRunKey, zoneOfItem } from './units.js';
 
 export const HISTORY_RETENTION_DAYS = 30;
 
+export function shouldSubscribeToProgress({ isAndroid = false, role = null, tab = null } = {}) {
+  return !isAndroid && role === 'warehouse' && (tab === 'flow' || tab === 'list');
+}
+
+export function shouldSubscribeToHistory({ isAndroid = false, role = null, tab = null } = {}) {
+  return !isAndroid && role === 'warehouse' && tab === 'list';
+}
+
 export const RECEIVE_PROBLEM_TYPE_OPTIONS = [
   { value: 'damaged', label: 'ชำรุด' },
   { value: 'lot_exp_mismatch', label: 'LOT/EXP ไม่ตรง' },
