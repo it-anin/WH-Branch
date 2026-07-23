@@ -12,9 +12,35 @@ import {
   normalizeExclusiveZoneAssignments,
 } from '../src/warehouseHelpers.js';
 import { resolvePackPicklistDisplay } from '../src/units.js';
+import { classifyFirestoreError } from '../src/firestoreErrors.js';
 
 const matchesBarcode = (item, barcode) =>
   String(item.barcode || '').split(',').map(value => value.trim()).includes(barcode);
+
+test('Firestore errors use distinct operator messages for quota, permission, auth and network', () => {
+  const quota = classifyFirestoreError({ code: 'resource-exhausted' }, { source: 'boxes-write' });
+  const permission = classifyFirestoreError({ code: 'permission-denied' }, { source: 'boxes' });
+  const auth = classifyFirestoreError({ code: 'unauthenticated' }, { source: 'login' });
+  const network = classifyFirestoreError({ code: 'unavailable' }, { source: 'boxItems-write' });
+
+  assert.equal(quota.title, 'Firestore เกินโควต้ารายวัน');
+  assert.equal(quota.blocking, true);
+  assert.equal(permission.title, 'ไม่มีสิทธิ์ใช้งาน Firestore');
+  assert.equal(auth.title, 'การเข้าสู่ระบบ Firestore หมดอายุ');
+  assert.equal(network.tone, 'warn');
+  assert.equal(network.blocking, false);
+});
+
+test('progress failure is visible but never classified as a blocking packing error', () => {
+  const alert = classifyFirestoreError(
+    { code: 'resource-exhausted' },
+    { source: 'progress', critical: false },
+  );
+
+  assert.equal(alert.title, 'Dashboard อัปเดตความคืบหน้าไม่ได้');
+  assert.equal(alert.tone, 'warn');
+  assert.equal(alert.blocking, false);
+});
 
 test('packing selects the next incomplete duplicate SKU+unit row in order', () => {
   const catalog = Array.from({ length: 3 }, () => ({ sku: 'SKU-1', unit: 'ชิ้น', barcode: '8850001' }));

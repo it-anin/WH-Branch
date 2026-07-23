@@ -26,6 +26,7 @@ import {
   isReceiveProblemExpired,
   normalizeReceiveProblem,
 } from './warehouseHelpers.js';
+import { classifyFirestoreError } from './firestoreErrors.js';
 
 import BoxList from './screens/BoxList.jsx';
 import PackScanC from './screens/PackScanC.jsx';
@@ -37,6 +38,7 @@ import AndroidApp from './screens/AndroidApp.jsx';
 import Login from './screens/Login.jsx';
 import { resolveProfile } from './branches.js';
 import Toast from './components/Toast.jsx';
+import FirestoreStatusBanner from './components/FirestoreStatusBanner.jsx';
 import ImportCatalog from './components/ImportCatalog.jsx';
 import ImportBarcodeMap from './components/ImportBarcodeMap.jsx';
 import ImportCostMap from './components/ImportCostMap.jsx';
@@ -110,6 +112,7 @@ export default function App() {
     catch { return []; }
   });
   const [toasts, setToasts] = useState([]);
+  const [firestoreAlert, setFirestoreAlert] = useState(null);
   const toastTimers = useRef([]);
   const [receiveBoxIds, _setReceiveBoxIds] = useState([]);
   const [pendingApprovalBoxId, setPendingApprovalBoxId] = useState(null);
@@ -119,6 +122,13 @@ export default function App() {
   const itemsByBoxRef = useRef({});
   const receiveBoxIdsRef = useRef([]);
   const progressWriteRef = useRef(new Map());
+
+  const reportFirestoreError = useCallback((error, context = {}) => {
+    const alert = classifyFirestoreError(error, context);
+    console.error(`Firestore [${alert.source}]:`, alert.code, error?.message || '');
+    setFirestoreAlert(alert);
+    return alert;
+  }, []);
 
   useEffect(() => { localStorage.setItem('wh_tab', tab); }, [tab]);
   // Desktop: ถ้า tab ปัจจุบันไม่อยู่ในสิทธิ์ของ role ที่ login (เช่นสาขาค้างที่ tab คลังจาก wh_tab เดิม) → เด้งไป tab แรกที่เห็นได้
@@ -188,7 +198,7 @@ export default function App() {
   // Firestore real-time listeners
   useEffect(() => {
     const onErr = (label) => (err) => {
-      console.error(`Firestore [${label}]:`, err.code, err.message);
+      reportFirestoreError(err, { source: label, critical: label !== 'progress' });
     };
     const unsubBoxes = onSnapshot(collection(db, 'boxes'), { includeMetadataChanges: true }, snap => {
       const data = snap.docs.map(d => d.data())
@@ -298,7 +308,7 @@ export default function App() {
       setHistory(data);
     }, onErr('history'));
     return () => { unsubBoxes(); unsubItems(); unsubReceive(); unsubCatalog(); unsubBarcodeMap(); unsubProgress?.(); unsubCostMap(); unsubFactorMap(); unsubLotMap(); unsubNameMap?.(); unsubZone(); unsubHistory(); }; // progress/nameMap เป็น null บน Android → ต้อง ?.
-  }, []);
+  }, [reportFirestoreError]);
 
   function setBoxes(updater) {
     const prev = boxesRef.current;
@@ -328,7 +338,7 @@ export default function App() {
         .forEach(b => { batch.delete(doc(db, 'boxes', b.id)); changes++; });
     if (changes > 0) {
       batch.commit().catch(err => {
-        console.error('setBoxes commit failed:', err.code, err.message);
+        reportFirestoreError(err, { source: 'boxes-write', critical: true });
         showToast('⚠ บันทึกลังไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
       });
     }
@@ -340,12 +350,20 @@ export default function App() {
     itemsByBoxRef.current = next;
     _setItemsByBox(next);
     Object.entries(next).forEach(([boxId, items]) => {
-      if (prev[boxId] !== items) setDoc(doc(db, 'boxItems', boxId), { items });
+      if (prev[boxId] !== items) {
+        setDoc(doc(db, 'boxItems', boxId), { items })
+          .catch(err => reportFirestoreError(err, { source: 'boxItems-write', critical: true }));
+      }
     });
   }
 
   async function saveWarehouseBoxItems(boxId, expectedItems, items, summaryPatch) {
-    await commitWarehouseBoxItems(db, { boxId, expectedItems, items, summaryPatch });
+    try {
+      await commitWarehouseBoxItems(db, { boxId, expectedItems, items, summaryPatch });
+    } catch (err) {
+      reportFirestoreError(err, { source: 'outbound-save', critical: true });
+      throw err;
+    }
 
     itemsByBoxRef.current = { ...itemsByBoxRef.current, [boxId]: items };
     _setItemsByBox(itemsByBoxRef.current);
@@ -355,10 +373,16 @@ export default function App() {
 
   async function loadReceiveProblems(boxId) {
     if (!boxId) return [];
-    const snap = await getDocs(query(
-      collection(db, 'receiveProblems'),
-      where('boxId', '==', boxId),
-    ));
+    let snap;
+    try {
+      snap = await getDocs(query(
+        collection(db, 'receiveProblems'),
+        where('boxId', '==', boxId),
+      ));
+    } catch (err) {
+      reportFirestoreError(err, { source: 'receiveProblems-read', critical: true });
+      throw err;
+    }
     return snap.docs
       .map(problemDoc => ({ ...problemDoc.data(), id: problemDoc.id }))
       .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -369,13 +393,23 @@ export default function App() {
     if (!normalized.boxId || !normalized.sku || normalized.types.length === 0) {
       throw new Error('invalid-receive-problem');
     }
-    await setDoc(doc(db, 'receiveProblems', normalized.id), normalized, { merge: true });
+    try {
+      await setDoc(doc(db, 'receiveProblems', normalized.id), normalized, { merge: true });
+    } catch (err) {
+      reportFirestoreError(err, { source: 'receiveProblems-write', critical: true });
+      throw err;
+    }
     return normalized;
   }
 
   async function deleteReceiveProblem(problemId) {
     if (!problemId) return;
-    await deleteDoc(doc(db, 'receiveProblems', problemId));
+    try {
+      await deleteDoc(doc(db, 'receiveProblems', problemId));
+    } catch (err) {
+      reportFirestoreError(err, { source: 'receiveProblems-delete', critical: true });
+      throw err;
+    }
   }
 
   // Write the box outcome and every item problem atomically. The transaction
@@ -389,29 +423,35 @@ export default function App() {
       ...(problemStatus === 'resolved' ? { resolvedAt: now } : {}),
     }, now));
     const boxRef = doc(db, 'boxes', boxId);
-    await runTransaction(db, async transaction => {
-      const boxSnapshot = await transaction.get(boxRef);
-      if (!boxSnapshot.exists()) {
-        const error = new Error('receive-box-missing');
-        error.code = 'receive-box-missing';
-        throw error;
-      }
-      const current = boxSnapshot.data();
-      if (expectedReceivingCode && (current.status === 'received' || current.receivePending)) {
-        const error = new Error('receive-box-already-finished');
-        error.code = 'receive-box-already-finished';
-        throw error;
-      }
-      if (expectedReceivingCode && current.receivingBy?.code && current.receivingBy.code !== expectedReceivingCode) {
-        const error = new Error('receive-lock-lost');
-        error.code = 'receive-lock-lost';
-        throw error;
-      }
-      transaction.set(boxRef, boxPatch, { merge: true });
-      savedProblems.forEach(problem => {
-        transaction.set(doc(db, 'receiveProblems', problem.id), problem, { merge: true });
+    try {
+      await runTransaction(db, async transaction => {
+        const boxSnapshot = await transaction.get(boxRef);
+        if (!boxSnapshot.exists()) {
+          const error = new Error('receive-box-missing');
+          error.code = 'receive-box-missing';
+          throw error;
+        }
+        const current = boxSnapshot.data();
+        if (expectedReceivingCode && (current.status === 'received' || current.receivePending)) {
+          const error = new Error('receive-box-already-finished');
+          error.code = 'receive-box-already-finished';
+          throw error;
+        }
+        if (expectedReceivingCode && current.receivingBy?.code && current.receivingBy.code !== expectedReceivingCode) {
+          const error = new Error('receive-lock-lost');
+          error.code = 'receive-lock-lost';
+          throw error;
+        }
+        transaction.set(boxRef, boxPatch, { merge: true });
+        savedProblems.forEach(problem => {
+          transaction.set(doc(db, 'receiveProblems', problem.id), problem, { merge: true });
+        });
       });
-    });
+    } catch (err) {
+      if (String(err?.code || '').startsWith('receive-')) throw err;
+      reportFirestoreError(err, { source: 'receive-confirm', critical: true });
+      throw err;
+    }
 
     boxesRef.current = boxesRef.current.map(box => box.id === boxId ? { ...box, ...boxPatch } : box);
     _setBoxes(boxesRef.current);
@@ -430,7 +470,7 @@ export default function App() {
     const operation = progress.length > 0
       ? setDoc(doc(db, 'progress', boxId), { items: progress })
       : deleteDoc(doc(db, 'progress', boxId));
-    operation.catch(err => console.error('progress write failed:', err.code, err.message));
+    operation.catch(err => reportFirestoreError(err, { source: 'progress', critical: false }));
   }
 
   function handleScanProgress(boxId, items) {
@@ -488,7 +528,7 @@ export default function App() {
       kind: (info.gotBase ?? 0) > 0 ? 'short' : 'out', // สแกนไปบ้างแล้ว = ของไม่พอ / ยังไม่สแกน = ของหมด
       packer: packer || null,
       at: Date.now(),
-    }).catch(err => console.error('dismissal write failed:', err.code));
+    }).catch(err => reportFirestoreError(err, { source: 'dismissals', critical: false }));
   }
 
   function setReceiveBoxIds(updater) {
@@ -496,7 +536,8 @@ export default function App() {
     const next = typeof updater === 'function' ? updater(prev) : updater;
     receiveBoxIdsRef.current = next;
     _setReceiveBoxIds(next);
-    setDoc(doc(db, 'config', 'receive'), { ids: next });
+    setDoc(doc(db, 'config', 'receive'), { ids: next })
+      .catch(err => reportFirestoreError(err, { source: 'receive-state', critical: true }));
   }
 
   const showToast = useCallback((message, type = 'default') => {
@@ -535,13 +576,18 @@ export default function App() {
     const time = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
     const counterRef = doc(db, 'config', 'boxCounter');
     let newId;
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(counterRef);
-      const data = snap.exists() ? snap.data() : {};
-      const next = (data[todayKey] || 0) + 1;
-      tx.set(counterRef, { ...data, [todayKey]: next });
-      newId = `${todayPrefix}${String(next).padStart(4, '0')}`;
-    });
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(counterRef);
+        const data = snap.exists() ? snap.data() : {};
+        const next = (data[todayKey] || 0) + 1;
+        tx.set(counterRef, { ...data, [todayKey]: next });
+        newId = `${todayPrefix}${String(next).padStart(4, '0')}`;
+      });
+    } catch (err) {
+      reportFirestoreError(err, { source: 'open-box', critical: true });
+      throw err;
+    }
     // สาขาของลัง = สาขาของ "รายการที่พนักงานคนนี้ถือ" (resolveBoxBranch ใน units.js — เทสต์ตรงได้)
     // รองรับเบิกด่วนคนละสาขา: คนแพ็คด่วน (tick 📌เบิกด่วน อย่างเดียว) รายการ stamp สาขาเดียว → ลังได้สาขานั้น
     // พนักงานปกติไม่มี item.branch → fallback catalogMeta.branch = เส้นทางเดิม byte-identical
@@ -567,7 +613,7 @@ export default function App() {
     try {
       problemSnap = await getDocs(collection(db, 'receiveProblems'));
     } catch (err) {
-      console.error('clearBoxes problem cleanup failed:', err.code, err.message);
+      reportFirestoreError(err, { source: 'clear-day-read', critical: true });
       showToast('⚠ ตรวจสอบข้อมูลปัญหาก่อนเริ่มวันถัดไปไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
       return;
     }
@@ -594,7 +640,7 @@ export default function App() {
     try {
       await batch.commit();
     } catch (err) {
-      console.error('clearBoxes failed:', err.code, err.message);
+      reportFirestoreError(err, { source: 'clear-day-write', critical: true });
       showToast('⚠ เริ่มวันถัดไปไม่สำเร็จ ลองใหม่อีกครั้ง', 'error');
       return;
     }
@@ -621,7 +667,7 @@ export default function App() {
       await deleteDoc(doc(db, 'history', historyId));
       showToast('ลบประวัติแล้ว ✓', 'success');
     } catch (err) {
-      console.error('deleteHistoryEntry failed:', err.code, err.message);
+      reportFirestoreError(err, { source: 'history-delete', critical: true });
       setHistory(prev => prev.some(entry => entry.id === historyId)
         ? prev
         : [...prev, removed].sort((a, b) => new Date(b.clearedAt) - new Date(a.clearedAt)));
@@ -713,7 +759,7 @@ export default function App() {
       setLotMapMeta(null);
       showToast('ล้าง Firestore ทั้งหมดแล้ว ✓');
     } catch (err) {
-      console.error('clearFirestore failed:', err);
+      reportFirestoreError(err, { source: 'firestore-reset', critical: true });
       showToast('⚠ ลบข้อมูลล้มเหลว: ' + err.code);
     }
   }
@@ -924,13 +970,13 @@ export default function App() {
     setBarcodeMap(map);
     const mapEntries = Object.entries(map).map(([key, barcodes]) => ({ key, barcodes }));
     setDoc(doc(db, 'config', 'barcodeMap'), { entries: mapEntries, ...(meta ? { _meta: meta } : {}) })
-      .catch(err => console.error('barcodeMap write failed:', err.code));
+      .catch(err => reportFirestoreError(err, { source: 'barcodeMap-write', critical: true }));
     // ตัวคูณหน่วยฐาน (ColH) มากับไฟล์เดียวกัน — sync เป็น config/factorMap (array format กัน index limit เหมือน costMap)
     if (importedFactorMap && Object.keys(importedFactorMap).length > 0) {
       setFactorMap(importedFactorMap);
       const factorEntries = Object.entries(importedFactorMap).map(([key, factor]) => ({ key, factor }));
       setDoc(doc(db, 'config', 'factorMap'), { entries: factorEntries })
-        .catch(err => console.error('factorMap write failed:', err.code));
+        .catch(err => reportFirestoreError(err, { source: 'factorMap-write', critical: true }));
     }
     // ชื่อสินค้า (ColF) มากับไฟล์เดียวกัน — sync แบบ sharded (chunk logic แยกของตัวเอง ไม่แตะ path ของ lotMap)
     // เขียนเฉพาะเมื่อมีข้อมูลจริง — ไฟล์ผิดฟอร์แมตจะได้ไม่ล้าง nameMap เดิมทิ้ง
@@ -950,15 +996,16 @@ export default function App() {
         nb.set(doc(db, 'config', i === 0 ? 'nameMap' : `nameMap_${i}`), { entries: chunkEntries });
       });
       for (let i = Math.max(chunks.length, 1); i < NAMEMAP_MAX_CHUNKS; i++) nb.delete(doc(db, 'config', `nameMap_${i}`)); // ลบ chunk เก่าที่เกินรอบนี้ (no-op ถ้าไม่มี)
-      nb.commit().catch(err => console.error('nameMap write failed:', err.code));
+      nb.commit().catch(err => reportFirestoreError(err, { source: 'nameMap-write', critical: true }));
     }
     const updated = applyBarcodeMap(catalog, map);
     const matched = updated.filter(it => it.barcode).length; // จำนวนรายการเบิกที่ได้ barcode หลัง merge
     setCatalog(updated);
-    setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(catalogMeta ? { _meta: catalogMeta } : {}) });
+    setDoc(doc(db, 'config', 'catalog'), { items: updated, ...(catalogMeta ? { _meta: catalogMeta } : {}) })
+      .catch(err => reportFirestoreError(err, { source: 'catalog-write', critical: true }));
     const result = computeCatalogByPacker(updated, zoneAssignments, PACKERS);
     setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result, ...(catalogMeta ? { _meta: catalogMeta } : {}) })
-      .catch(err => { console.error('Firestore catalogByPacker write failed:', err.code, err.message); showToast('⚠ Firestore error: ' + err.code, 'error'); });
+      .catch(err => reportFirestoreError(err, { source: 'catalogByPacker-write', critical: true }));
     showToast(`Barcode map: ${matched} รายการ matched ✓`);
   }
 
@@ -966,7 +1013,7 @@ export default function App() {
     setCostMap(map);
     const entries = Object.entries(map).map(([key, cost]) => ({ key, cost }));
     setDoc(doc(db, 'config', 'costMap'), { entries, ...(meta ? { _meta: meta } : {}) })
-      .catch(err => console.error('costMap write failed:', err.code));
+      .catch(err => reportFirestoreError(err, { source: 'costMap-write', critical: true }));
     showToast(`Cost map: ${entries.length} รายการ ✓`);
   }
 
@@ -993,7 +1040,7 @@ export default function App() {
     return batch.commit()
       .then(() => showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓ (${chunks.length} doc)`, 'success'))
       .catch(err => {
-        console.error('lotMap write failed:', err.code);
+        reportFirestoreError(err, { source: 'lotMap-write', critical: true });
         showToast('⚠ Firestore error: ' + err.code, 'error');
         throw err;
       });
@@ -1001,9 +1048,11 @@ export default function App() {
 
   function handleZoneAssign(assignments) {
     setZoneAssignments(assignments);
-    setDoc(doc(db, 'config', 'zoneAssignments'), { assignments });
+    setDoc(doc(db, 'config', 'zoneAssignments'), { assignments })
+      .catch(err => reportFirestoreError(err, { source: 'zoneAssignments-write', critical: true }));
     const result = computeCatalogByPacker(catalog, assignments, PACKERS);
-    setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result, ...(catalogMeta ? { _meta: catalogMeta } : {}) });
+    setDoc(doc(db, 'config', 'catalogByPacker'), { assignments: result, ...(catalogMeta ? { _meta: catalogMeta } : {}) })
+      .catch(err => reportFirestoreError(err, { source: 'catalogByPacker-write', critical: true }));
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
@@ -1014,7 +1063,8 @@ export default function App() {
   if (!profile) {
     return (
       <>
-        <Login onLogin={setProfile} showToast={showToast} />
+        <Login onLogin={setProfile} showToast={showToast} reportFirestoreError={reportFirestoreError} />
+        <FirestoreStatusBanner alert={firestoreAlert} onDismiss={() => setFirestoreAlert(null)} />
         <Toast toasts={toasts} />
       </>
     );
@@ -1034,6 +1084,7 @@ export default function App() {
           onScanProgress={handleScanProgress}
           catalogMeta={catalogMeta}
         />
+        <FirestoreStatusBanner alert={firestoreAlert} onDismiss={() => setFirestoreAlert(null)} />
         <Toast toasts={toasts} />
       </>
     );
@@ -1180,7 +1231,7 @@ export default function App() {
                     .catch(err => {
                       setCatalog(previousCatalog);
                       setCatalogMeta(previousMeta);
-                      console.error('Firestore Picklist import failed:', err.code, err.message);
+                      reportFirestoreError(err, { source: 'picklist-import', critical: true });
                       showToast('⚠ บันทึก Picklist ไม่สำเร็จ: ' + err.code, 'error');
                       return false;
                     })
@@ -1354,6 +1405,7 @@ export default function App() {
           onClose={() => setShowPicklistView(false)}
         />
       )}
+      <FirestoreStatusBanner alert={firestoreAlert} onDismiss={() => setFirestoreAlert(null)} />
       <Toast toasts={toasts} />
     </>
   );

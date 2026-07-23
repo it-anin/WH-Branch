@@ -18,9 +18,9 @@ const cardBtn = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
 };
 
-export default function Login({ onLogin, showToast }) {
+export default function Login({ onLogin, showToast, reportFirestoreError }) {
   // Android: หน้า code-only (พิมพ์รหัสสาขา → เข้าเลย ไม่มี picker) — Desktop ยังใช้ flow เดิมด้านล่าง
-  if (isAndroidMode) return <AndroidLogin onLogin={onLogin} showToast={showToast} />;
+  if (isAndroidMode) return <AndroidLogin onLogin={onLogin} showToast={showToast} reportFirestoreError={reportFirestoreError} />;
 
   const [picked, setPicked] = useState(null); // โปรไฟล์ที่เลือก (รอกรอกรหัส)
   const [password, setPassword] = useState('');
@@ -40,6 +40,7 @@ export default function Login({ onLogin, showToast }) {
         setPassword('');
       }
     } catch (err) {
+      reportFirestoreError?.(err, { source: 'login', critical: true });
       showToast?.('⚠ เชื่อมต่อไม่ได้: ' + (err.code || err.message), 'error');
     } finally {
       setChecking(false);
@@ -106,7 +107,7 @@ export default function Login({ onLogin, showToast }) {
 // ── Android: login ด้วย "รหัสสาขา" ช่องเดียว (ไม่มี picker) ──
 // พิมพ์รหัส → เทียบกับ config/auth.passwords → หา code ที่รหัสตรง → resolveProfile → เข้าเลย (AndroidApp ให้เลือกพนักงานต่อ)
 // รหัสตัวเดียวกันกับที่ Desktop ใช้ (รหัสผ่านรายที่ทำงาน) — ต่างแค่ Android ไม่ต้องเลือกที่ทำงานก่อน รหัสระบุสาขาให้เอง
-function AndroidLogin({ onLogin, showToast }) {
+function AndroidLogin({ onLogin, showToast, reportFirestoreError }) {
   const [code, setCode] = useState('');
   const [checking, setChecking] = useState(false);
 
@@ -128,6 +129,7 @@ function AndroidLogin({ onLogin, showToast }) {
         setCode('');
       }
     } catch (err) {
+      reportFirestoreError?.(err, { source: 'login', critical: true });
       showToast?.('⚠ เชื่อมต่อไม่ได้: ' + (err.code || err.message), 'error');
     } finally {
       setChecking(false);
