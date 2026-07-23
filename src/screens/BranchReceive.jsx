@@ -31,10 +31,13 @@ const statusLabel = {
 // fallback: baseUnit → scannedUnit (หน่วยที่แพ็คสแกน เช่น "กล่อง") → unit (หน่วย picklist) — ลังเก่าไม่มี baseUnit ตกไปตามลำดับ
 const unitOf = (l) => l?.baseUnit || l?.scannedUnit || l?.unit || '';
 
-// ของที่ต้องนับเกินจำนวนนี้ (หน่วยฐาน) → ให้แก้จำนวนในแถวได้ แทนการยิงซ้ำทีละชิ้น
-// ต่ำกว่านี้ยิงเอาเร็วกว่าและคุมความถูกต้องได้ดีกว่า
-// ⚠ ตัวช่องกรอกที่โผล่มาก็บอกใบ้กลาย ๆ ว่า "SKU นี้มีมากกว่า 10" (แต่ไม่บอกเลขจริง) — ยอมรับไว้แล้ว
-const QTY_EDIT_MIN = 10;
+// การพิมพ์จำนวนในแถว: อนุญาต "ทุกสินค้าปกติ" (ทุน ≤ HIGH_VALUE_THRESHOLD) — พิมพ์จำนวนที่นับได้เลย ไม่ต้องยิงซ้ำทีละชิ้น
+// เฉพาะสินค้ามูลค่าสูง (> HIGH_VALUE_THRESHOLD) เท่านั้นที่ปิดการพิมพ์ → บังคับสแกนทีละชิ้น
+// (แถวยังโผล่ต่อเมื่อยิงบาร์โค้ดครั้งแรกแล้วเท่านั้น + ไม่โชว์ยอดที่ต้องรับ = ยัง blind receiving)
+
+// สินค้ามูลค่าสูง: ทุน "ต่อหน่วยที่รับ/ยิง" (costMap[sku__unit], จาก R05.105) เกินเพดานนี้
+// → บังคับสแกนทีละชิ้น (กันของหาย/นับพลาด). "มากกว่า" = strict > เท่านั้น
+const HIGH_VALUE_THRESHOLD = 1000;
 
 // LOT/EXP ที่คลังแพ็คส่งมา — แสดงแบบ read-only และไม่แสดง qty ของแต่ละ LOT
 // เพื่อให้พนักงานเทียบฉลากสินค้าได้โดยไม่ทำลาย blind receiving
@@ -89,9 +92,9 @@ function compressImage(file, maxW = 800, quality = 0.7) {
 // Android: แถวสินค้าที่สแกนแล้ว ปัดซ้ายเกิน SWIPE_THRESHOLD → ถามยืนยัน → ลบรายการสแกน (เลิกนับ) กรณียิงเกิน/ผิด ให้สแกนใหม่
 // blind = ตรวจนับปกติ: ไม่บอกว่าครบ/ขาด/เกิน (สีกลางล้วน) เห็นสีจริงตอน phase result เท่านั้น
 //         — ถ้าโชว์สีตั้งแต่ตอนนับ พนักงานปรับเลขจนไฟเขียวได้โดยไม่ต้องนับของ = ด่านตรวจไร้ความหมาย
-// editable = แก้จำนวนได้ (เฉพาะ SKU ที่ของเยอะ ดู QTY_EDIT_MIN) — แถวโผล่ต่อเมื่อยิงบาร์โค้ดแล้วเท่านั้น
+// editable = แก้จำนวนได้ (ทุกสินค้าปกติ; ปิดเฉพาะของมูลค่าสูงที่บังคับสแกนทีละชิ้น) — แถวโผล่ต่อเมื่อยิงบาร์โค้ดแล้วเท่านั้น
 //            (scannedItems filter count > 0) จึงยังต้องมีของจริงในมือก่อนถึงจะปรับจำนวนได้
-function ScannedItemRow({ l, count, over, done, onRemove, blind = false, editable = false, hideQuantity = false, onQtyChange }) {
+function ScannedItemRow({ l, count, over, done, onRemove, blind = false, editable = false, hideQuantity = false, highValue = false, onQtyChange }) {
   const [dragX, setDragX] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const dragRef = useRef({ x: 0, dragging: false });
@@ -154,7 +157,10 @@ function ScannedItemRow({ l, count, over, done, onRemove, blind = false, editabl
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{l.sku}</div>
+          <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>
+            {l.sku}
+            {highValue && <span style={{ marginLeft: 6, fontFamily: 'system-ui', fontSize: 10, fontWeight: 700, color: '#b8860b' }}>💎 ทีละชิ้น</span>}
+          </div>
           <div style={{ fontFamily: 'system-ui', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</div>
           <LotExpList rows={l.lotExpRows} compact />
         </div>
@@ -284,7 +290,7 @@ function BoxCard({ box, isActive, isViewing, isPendingApproval, onClick }) {
   );
 }
 
-export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null, barcodeMap = {}, factorMap = {}, lotMap = {}, receiveDataReady = true, receiveDataLoadError = null, loadReceiveProblems = async () => [], upsertReceiveProblem = async problem => problem, deleteReceiveProblem = async () => {}, commitReceiveOutcome = null }) {
+export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, receiveBoxIds, setReceiveBoxIds, pendingApprovalBoxId, setPendingApprovalBoxId, branchStaff: branchStaffProp, setBranchStaff: setBranchStaffProp, isAndroid = false, branch = null, barcodeMap = {}, factorMap = {}, lotMap = {}, costMap = {}, receiveDataReady = true, receiveDataLoadError = null, loadReceiveProblems = async () => [], upsertReceiveProblem = async problem => problem, deleteReceiveProblem = async () => {}, commitReceiveOutcome = null }) {
   const [internalBranchStaff, setInternalBranchStaff] = useState(null);
   const isControlled = branchStaffProp !== undefined;
   const branchStaff = isControlled ? branchStaffProp : internalBranchStaff;
@@ -982,6 +988,13 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     // นับเป็นหน่วยฐาน: สแกน 1 กล่อง (factor 24) → +24, สแกน 1 ม้วน (factor 1) → +1 — รับได้ทุก multiple
     const scannedUnit = hit?.unit || match.baseUnit || match.scannedUnit || match.unit;
     const factor = factorOf(match.sku, scannedUnit);
+    // สินค้ามูลค่าสูง + ยิงหน่วยกล่อง/แพ็ค (factor>1) → ไม่นับ บังคับให้ยิงหน่วยย่อยทีละชิ้น
+    if (isHighValue(match.sku, scannedUnit) && factor > 1) {
+      playScanFail();
+      setScanError('สินค้ามูลค่าสูง — สแกนทีละชิ้น (หน่วยย่อย)');
+      showToast('⚠ SKU นี้สแกนทีละชิ้น', 'warn');
+      return;
+    }
     const current = scanCounts[match.sku] || 0;
     playScanSuccess();
     setScanError('');
@@ -990,7 +1003,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   }
 
   // Android: ปัดลบรายการที่สแกนแล้ว (กรณียิงเกิน/ผิด) — เลิกนับ SKU นี้ทั้งหมด ให้สแกนใหม่
-  // แก้จำนวนในแถว (เฉพาะ SKU ที่ needed > QTY_EDIT_MIN) — ตั้งค่าตรง ไม่บวก factor
+  // แก้จำนวนในแถว (ทุกสินค้าปกติ ยกเว้นของมูลค่าสูง) — ตั้งค่าตรง ไม่บวก factor
   // เพราะพนักงานพิมพ์เป็นหน่วยฐานตามที่แถวโชว์อยู่แล้ว (unitOf = baseUnit)
   // ขั้นต่ำ 1: แถวนี้โผล่ได้เพราะยิงบาร์โค้ดแล้ว ถ้าปล่อยเป็น 0 แถวจะหายจาก scannedItems (filter > 0)
   // แล้วพิมพ์ต่อไม่ได้ — จะลบจริงต้องปัดซ้าย (handleRemoveScan)
@@ -1020,6 +1033,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   // resolve บาร์โค้ด→หน่วย + factor (แปลงหน่วยตอนรับเข้า เช่น 1 กล่อง = 24 ม้วน)
   const barcodeIndex     = useMemo(() => buildBarcodeIndex(barcodeMap), [barcodeMap]);
   const factorOf         = (sku, unit) => lookupFactor(factorMap, sku, unit);
+  // สินค้ามูลค่าสูง: ทุนของ "หน่วยที่รับ/ยิง" (costMap[sku__unit]) เกิน HIGH_VALUE_THRESHOLD → ต้องสแกนทีละชิ้น
+  const isHighValue      = (sku, unit) => (costMap[`${sku}__${unit}`] ?? 0) > HIGH_VALUE_THRESHOLD;
   // needed = "หน่วยฐาน" (gotBase จากตอนแพ็ค เช่น 24 ม้วน) — พนักงานสาขาสแกน multiple ไหนก็ได้ ระบบนับรวมเป็นหน่วยฐาน
   // recheck: เภสัชนับใหม่จาก 0 ต้องครบเต็มจำนวนฐานเสมอ; ลังเก่าไม่มี gotBase → fallback qty (นับดิบตามเดิม)
   const getNeeded        = (item) => item.gotBase ?? item.qty ?? item.got ?? 0;
@@ -1700,8 +1715,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                                     // recheck: โชว์สีได้ — เภสัชรู้อยู่แล้วว่าตัวไหนขาด/เกิน (ตั้งใจให้เห็น)
                                     // ตรวจนับปกติ: ปิดสีไว้ ไม่งั้นปรับเลขจนไฟเขียวได้โดยไม่ต้องนับ
                                     blind={!recheckMode}
-                                    editable={!recheckMode && needed > QTY_EDIT_MIN}
+                                    editable={!recheckMode && !isHighValue(l.sku, unitOf(l))}
                                     hideQuantity={recheckMode}
+                                    highValue={isHighValue(l.sku, unitOf(l))}
                                     onQtyChange={handleQtyChange}
                                   />
                                 );
