@@ -18,6 +18,19 @@ export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
 export const auth = getAuth(app);
 
 // Sign in anonymously on app load — required for Firestore rules (request.auth != null)
-signInAnonymously(auth).catch(() => {});
+// เก็บ promise ร่วมกันเพื่อให้ action ที่ต้องเขียน Firestore รอ auth ได้จริง และไม่ยิง sign-in ซ้ำ
+// หากรอบแรกพลาดให้ล้าง promise เพื่อให้ผู้ใช้กดใหม่แล้ว retry ได้
+let authReadyPromise = null;
+export function ensureAuthReady() {
+  if (auth.currentUser) return Promise.resolve(auth.currentUser);
+  if (!authReadyPromise) {
+    authReadyPromise = signInAnonymously(auth)
+      .then(credential => credential.user)
+      .finally(() => { authReadyPromise = null; });
+  }
+  return authReadyPromise;
+}
+
+ensureAuthReady().catch(() => {});
 
 export const onAuthReady = (cb) => onAuthStateChanged(auth, (user) => { if (user) cb(user); });

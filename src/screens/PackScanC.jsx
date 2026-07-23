@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { generatePOS, matchBarcode } from '../data.js';
 import { playScanSuccess, playScanFail, playOutOfStock, playShortSupply } from '../sound.js';
+import { ensureAuthReady } from '../firebase.js';
 // ตัวคูณหน่วยฐาน + สูตร need มาจาก units.js ที่เดียว (เดิมไฟล์นี้ประกาศซ้ำเองแล้วต้องแก้ 2 ที่ให้ตรงกัน)
 // buildPackItems = สูตรเดียวกับที่ __wh.audit ใช้ตรวจสอบ → เลขบนจอพนักงานกับผลตรวจสอบตรงกันเสมอ
 import {
@@ -378,6 +379,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false); // Android: toggle ค้นหา
   const [showHistory, setShowHistory] = useState(false);
+  const [isOpening, setIsOpening] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [confirmOver, setConfirmOver] = useState(null); // { match, factor, scannedBarcode, scannedUnit } — สแกนเกินจำนวน รอยืนยัน
@@ -727,14 +729,25 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
 
   // Android: กด "เปิดลัง" ก่อนเริ่มสแกนเสมอ — createdAt (ตั้งใน createNewBox) = เวลาเริ่ม KPI ของลังนี้
   async function handleOpenBox() {
+    if (isOpening) return;
+    setIsOpening(true);
     try {
+      // Android WebView อาจ render หน้าพร้อมกดก่อน anonymous auth คืนผล
+      // transaction สร้างเลขลังต้องรอ request.auth ให้พร้อม ไม่เช่นนั้นปุ่มดูเหมือนไม่ทำงาน
+      await ensureAuthReady();
       await createNewBox();
       showToast('เปิดลังแล้ว ✓', 'success');
     } catch (err) {
-      // createNewBox = Firestore transaction (config/boxCounter) ต้องออนไลน์ + auth พร้อม
-      // ถ้าล้ม (เน็ตหลุด/auth ยังไม่พร้อม/permission) เดิมเงียบสนิท พนักงานนึกว่าปุ่มเสีย → แจ้งให้รู้ + กดใหม่ได้
-      console.error('handleOpenBox failed:', err?.code || err?.message || err);
-      showToast('⚠ เปิดลังไม่สำเร็จ · ตรวจอินเทอร์เน็ตแล้วลองใหม่', 'error');
+      const code = err?.code || 'unknown';
+      console.error('handleOpenBox failed:', code, err?.message || err);
+      const reason = code === 'permission-denied'
+        ? 'ไม่มีสิทธิ์สร้างลัง'
+        : code === 'unavailable' || code === 'auth/network-request-failed'
+          ? 'อินเทอร์เน็ตไม่พร้อม'
+          : `ระบบขัดข้อง (${code})`;
+      showToast(`⚠ เปิดลังไม่สำเร็จ · ${reason}`, 'error');
+    } finally {
+      setIsOpening(false);
     }
   }
 
@@ -971,7 +984,8 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
                 className="btn primary lg"
                 style={{ width: '100%', fontSize: 17, padding: '14px', marginBottom: 6 }}
                 onClick={handleOpenBox}
-              >▶ เปิดลัง</button>
+                disabled={isOpening}
+              >{isOpening ? 'กำลังเปิดลัง…' : '▶ เปิดลัง'}</button>
             ) : (
               <div className="row" style={{ marginBottom: 6, gap: 8 }}>
                 <input
