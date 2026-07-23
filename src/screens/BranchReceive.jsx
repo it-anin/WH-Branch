@@ -1492,6 +1492,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                       const count  = scanCounts[l.sku] || 0;
                       const over   = count > needed;
                       const done   = count >= needed;
+                      // นับตรงพอดีเท่านั้นจึงเปิดเผย needed ได้ (พนักงานนับตรงอยู่แล้ว = ไม่ได้รู้อะไรใหม่)
+                      // แถวที่ขาด/เกินต้องไม่เฉลยจำนวนที่ถูกต้อง — ไม่งั้นตอนเภสัชรีเช็คกรอกตามเลขที่เห็นได้เลย
+                      const matched = count === needed;
                       const rowBg  = over ? '#fff3cd' : done ? '#e8f0d8' : '#fde8e8';
                       const dotBg  = over ? '#e67e22' : done ? 'var(--green)' : '#c0392b';
                       const dotIcon = over ? '!' : done ? '✓' : '✗';
@@ -1516,12 +1519,12 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                           <td style={{ fontFamily: 'system-ui', fontSize: isAndroid ? 12 : undefined }}>{unitOf(l)}</td>
                           {!recheckMode && (
                             <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: isAndroid ? 14 : 18, fontWeight: 700, color: 'var(--mute)' }}>
-                              {needed}
+                              {matched ? needed : '—'}
                             </td>
                           )}
                           {!recheckMode && (
                             <td style={{ textAlign: 'center', fontFamily: 'system-ui', fontSize: isAndroid ? 16 : 22, fontWeight: 700, color: countColor }}>
-                              {count}{over && <span style={{ fontSize: isAndroid ? 10 : 13, marginLeft: 2 }}>+{count - needed}</span>}
+                              {count}
                             </td>
                           )}
                         </tr>
