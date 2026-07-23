@@ -1,19 +1,8 @@
-const TONES = {
-  error: {
-    background: '#8f1d14',
-    border: '#5f110b',
-    color: '#fff',
-  },
-  warn: {
-    background: '#fff0d8',
-    border: '#c66a00',
-    color: '#6b3600',
-  },
-};
+import { FIRESTORE_ALERT_COLORS } from '../firestoreErrors.js';
 
 export default function FirestoreStatusBanner({ alert, onDismiss }) {
   if (!alert) return null;
-  const tone = TONES[alert.tone] || TONES.error;
+  const tone = FIRESTORE_ALERT_COLORS[alert.tone] || FIRESTORE_ALERT_COLORS.error;
 
   return (
     <div
@@ -68,4 +57,3 @@ export default function FirestoreStatusBanner({ alert, onDismiss }) {
     </div>
   );
 }
-

@@ -21,6 +21,19 @@ const ERROR_COPY = {
   },
 };
 
+export const FIRESTORE_ALERT_COLORS = Object.freeze({
+  error: {
+    background: '#8f1d14',
+    border: '#5f110b',
+    color: '#fff',
+  },
+  warn: {
+    background: '#fff0d8',
+    border: '#c66a00',
+    color: '#6b3600',
+  },
+});
+
 export function normalizeFirestoreErrorCode(error) {
   const raw = String(error?.code || error?.message || 'unknown').trim().toLowerCase();
   const code = raw.replace(/^firestore\//, '');
@@ -54,4 +67,3 @@ export function classifyFirestoreError(error, {
     detectedAt: Date.now(),
   };
 }
-

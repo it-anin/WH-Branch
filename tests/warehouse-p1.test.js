@@ -14,7 +14,7 @@ import {
   shouldSubscribeToProgress,
 } from '../src/warehouseHelpers.js';
 import { resolvePackPicklistDisplay } from '../src/units.js';
-import { classifyFirestoreError } from '../src/firestoreErrors.js';
+import { classifyFirestoreError, FIRESTORE_ALERT_COLORS } from '../src/firestoreErrors.js';
 
 const matchesBarcode = (item, barcode) =>
   String(item.barcode || '').split(',').map(value => value.trim()).includes(barcode);
@@ -42,6 +42,11 @@ test('progress failure is visible but never classified as a blocking packing err
   assert.equal(alert.title, 'Dashboard อัปเดตความคืบหน้าไม่ได้');
   assert.equal(alert.tone, 'warn');
   assert.equal(alert.blocking, false);
+});
+
+test('Firestore banner tones map critical errors to red and warnings to orange', () => {
+  assert.equal(FIRESTORE_ALERT_COLORS.error.background, '#8f1d14');
+  assert.equal(FIRESTORE_ALERT_COLORS.warn.border, '#c66a00');
 });
 
 test('progress listener runs only on warehouse Dashboard and Picklist tabs', () => {
