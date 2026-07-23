@@ -5,7 +5,7 @@
 
 อัปเดตล่าสุด: 23 กรกฎาคม 2026
 โปรเจกต์: WH-Branch
-สถานะปัจจุบัน: แก้ Phase 1 ใน `src/App.jsx` แล้ว ให้ตรวจ `git log` และสถานะ deployment ก่อนทำงานต่อ
+สถานะปัจจุบัน: ทำ Phase 1, ระบบแจ้ง Firestore error กลาง, จำกัด `progress` และ `history` listener แล้ว ให้เก็บ Usage หลังใช้งานจริงก่อนแตะ `boxes`/`boxItems`
 
 ## 1. สรุปเหตุการณ์และข้อวินิจฉัย
 
@@ -83,12 +83,18 @@ Firebase Console แสดงข้อความ `Your project has exceeded no
 - [x] cleanup timer เมื่อ App unmount
 - [x] ไม่เปลี่ยน listener ของ `boxes` และ `boxItems` ใน Phase 1 เพื่อไม่ให้กระทบลังที่รอสาขารับเข้า
 - [x] `npm.cmd run build` ผ่าน
-- [x] `npm.cmd test` ผ่าน 43 tests
+- [x] `npm.cmd test` ผ่าน 49 tests
 - [x] `git diff --check` ผ่าน
+- [x] เพิ่ม banner กลางสำหรับ `resource-exhausted`, `permission-denied`, `unauthenticated` และ `unavailable`
+- [x] ความล้มเหลวของ `progress` แสดง warning แบบ non-blocking ไม่ขวางการเปิด/ปิดลัง
+- [x] Desktop subscribe `progress` เฉพาะ Dashboard และหน้ารายการเบิกสินค้า
+- [x] หน้าอัป Picklist รอ server snapshot ของ `progress` ก่อนปลดล็อก
+- [x] subscribe `history` เฉพาะ Desktop คลังในหน้ารายการเบิกสินค้า
+- [x] query `history` เฉพาะช่วง retention 30 วัน
 
 สถานะ Git ณ วันที่เขียนเอกสาร:
 
-- Phase 1 ถูกเตรียมรวมในชุดแก้ลดโควต้า Firestore แล้ว
+- Phase 1 และ listener scope ถูก commit/push แยกเป็นรอบแล้ว
 - ครั้งถัดไปต้องตรวจ `git log`, `git status` และ Firebase deployment เพื่อยืนยันว่าสภาพแวดล้อมที่กำลังตรวจมีโค้ดชุดนี้แล้ว
 - Repository มีไฟล์ untracked ของผู้ใช้อยู่หลายไฟล์ ห้าม stage ทั้งหมดด้วย `git add .`
 - ก่อน commit ต้องตรวจและ stage เฉพาะ hunk ที่เกี่ยวกับโควต้า
@@ -97,18 +103,18 @@ Firebase Console แสดงข้อความ `Your project has exceeded no
 
 ### P0 — ป้องกันระบบหยุดแบบไม่มีคำอธิบาย
 
-- [ ] สร้าง error handler กลางสำหรับ Firestore
-- [ ] ตรวจ error code `resource-exhausted`, `permission-denied`, `unavailable` และ `unauthenticated`
-- [ ] เมื่อเป็น `resource-exhausted` แสดง banner/toast ภาษาไทยที่ทุกหน้ามองเห็น เช่น:
+- [x] สร้าง error handler กลางสำหรับ Firestore
+- [x] ตรวจ error code `resource-exhausted`, `permission-denied`, `unavailable` และ `unauthenticated`
+- [x] เมื่อเป็น `resource-exhausted` แสดง banner ภาษาไทยที่ทุกหน้ามองเห็น เช่น:
 
   ```text
   Firestore ใช้งานเกินโควต้ารายวัน ระบบบันทึกข้อมูลชั่วคราวไม่ได้
   กรุณาหยุดสแกนและติดต่อผู้ดูแลระบบ ห้ามสแกนซ้ำจนกว่าระบบกลับมาปกติ
   ```
 
-- [ ] แยกข้อความ auth/permission ออกจาก quota เพื่อไม่ให้วินิจฉัยผิด
-- [ ] ห้าม retry แบบ loop เมื่อเป็น `resource-exhausted`
-- [ ] ทุก action สำคัญต้องดัก error และแจ้งผู้ใช้ ได้แก่ เปิดลัง, สแกน, ปิดลัง, อนุมัติ, ส่งออก และรับเข้าสาขา
+- [x] แยกข้อความ auth/permission ออกจาก quota เพื่อไม่ให้วินิจฉัยผิด
+- [x] ห้าม retry แบบ loop เมื่อเป็น `resource-exhausted`
+- [x] เชื่อม error กลางกับ listeners และ write หลัก ได้แก่ เปิดลัง, ลัง/สินค้า, Outbound, รับเข้าสาขา และการนำเข้าข้อมูล
 - [ ] ตรวจว่าการเขียนสำเร็จก่อนแสดงข้อความ “สำเร็จ” ในจุดที่ข้อมูลสูญหายได้
 
 เหตุผล: งานนี้ไม่ได้ลด Reads โดยตรง แต่ป้องกันพนักงานทำงานต่อบนข้อมูลที่ยังไม่ถูกบันทึก
@@ -117,21 +123,21 @@ Firebase Console แสดงข้อความ `Your project has exceeded no
 
 ทำทีละส่วนและ deploy แยกรอบ เพื่อระบุผลจากกราฟได้
 
-#### P1.1 จำกัด `progress` บน Desktop
+#### P1.1 จำกัด `progress` บน Desktop — ทำแล้ว
 
-- [ ] subscribe `progress` เฉพาะหน้าที่ต้องใช้จริง เช่น Dashboard
-- [ ] ตรวจ guard ของการอัป Picklist ซึ่งยังใช้ `scanProgress`
-- [ ] ถ้า guard ต้องทำงานนอก Dashboard ให้เปลี่ยนเป็น one-shot query หรือเก็บสถานะ active packing แบบเบากว่า
-- [ ] unsubscribe ทันทีเมื่อออกจากหน้าที่ใช้
+- [x] subscribe `progress` เฉพาะ Dashboard และหน้ารายการเบิกสินค้า
+- [x] guard การอัป Picklist รอ server snapshot ก่อนอนุญาตให้อัปไฟล์
+- [x] Android และ Desktop tab อื่นไม่ subscribe
+- [x] unsubscribe และล้าง progress state ทันทีเมื่อออกจากหน้าที่ใช้
 
 เป้าหมาย: Desktop ที่เปิดค้างหน้าอื่นต้องไม่รับ read ทุกครั้งที่พนักงานสแกน
 
-#### P1.2 จำกัด `history`
+#### P1.2 จำกัด `history` — ทำแล้ว
 
-- [ ] subscribe `history` เฉพาะเมื่อเปิดหน้าประวัติ
-- [ ] ใช้ `orderBy('clearedAt', 'desc')` ร่วมกับ `limit(...)`
-- [ ] เก็บเฉพาะช่วงที่ UI แสดงจริง เช่น 7 วันล่าสุด
-- [ ] สร้าง Firestore index หาก Console แจ้งว่าจำเป็น
+- [x] subscribe `history` เฉพาะ Desktop คลังเมื่อเปิดหน้ารายการเบิกสินค้า
+- [x] ใช้ `where('clearedAt', '>=', cutoff)` และ `orderBy('clearedAt', 'desc')`
+- [x] เก็บเฉพาะช่วง retention จริง 30 วัน
+- [x] Query ใช้ field เดียว ไม่ต้องเพิ่ม composite index
 
 #### P1.3 จำกัด `boxes`
 
@@ -313,11 +319,10 @@ git status --short
 
 ## 9. สรุปลำดับทำงานครั้งถัดไป
 
-1. ตรวจว่า Phase 1 ถูก deploy แล้ว และบันทึก Reads/Writes หลังใช้งานจริง
-2. เพิ่มระบบแจ้งเตือน `resource-exhausted` และ error สำคัญ
-3. จำกัด Desktop `progress` listener ตามหน้าจอ
-4. จำกัด `history` listener และจำนวนเอกสาร
-5. ออกแบบ query `boxes` ตาม role/branch/status โดยรักษาลังข้ามวัน
-6. โหลด `boxItems` เฉพาะลังที่อยู่ใน scope
-7. วาง retention/archive อย่างปลอดภัย
-8. วัดผล 3–7 วัน และพิจารณา Blaze เฉพาะเมื่อปรับ query แล้วยังไม่พอ
+1. บันทึก Reads/Writes หลังใช้งานจริงอย่างน้อย 3 วันทำงาน
+2. ตรวจ success toast ของ write สำคัญว่ายืนยันหลัง Firestore สำเร็จจริง
+3. ถ้า Reads ไม่เกิน 35,000/วัน ให้คง `boxes`/`boxItems` listener ไว้เพื่อลดความเสี่ยง
+4. ถ้า Reads ยังสูง ให้ออกแบบ query `boxes` ตาม role/branch/status โดยรักษาลังข้ามวัน
+5. หลังได้ scope ของ `boxes` แล้ว ค่อยโหลด `boxItems` เฉพาะลังที่อยู่ใน scope
+6. วาง retention/archive อย่างปลอดภัย
+7. พิจารณา Blaze เฉพาะเมื่อปรับ query แล้วยังไม่มี headroom เพียงพอ
