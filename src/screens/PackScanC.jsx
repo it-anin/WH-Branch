@@ -727,8 +727,15 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
 
   // Android: กด "เปิดลัง" ก่อนเริ่มสแกนเสมอ — createdAt (ตั้งใน createNewBox) = เวลาเริ่ม KPI ของลังนี้
   async function handleOpenBox() {
-    await createNewBox();
-    showToast('เปิดลังแล้ว ✓', 'success');
+    try {
+      await createNewBox();
+      showToast('เปิดลังแล้ว ✓', 'success');
+    } catch (err) {
+      // createNewBox = Firestore transaction (config/boxCounter) ต้องออนไลน์ + auth พร้อม
+      // ถ้าล้ม (เน็ตหลุด/auth ยังไม่พร้อม/permission) เดิมเงียบสนิท พนักงานนึกว่าปุ่มเสีย → แจ้งให้รู้ + กดใหม่ได้
+      console.error('handleOpenBox failed:', err?.code || err?.message || err);
+      showToast('⚠ เปิดลังไม่สำเร็จ · ตรวจอินเทอร์เน็ตแล้วลองใหม่', 'error');
+    }
   }
 
   function handleCloseBox() {
