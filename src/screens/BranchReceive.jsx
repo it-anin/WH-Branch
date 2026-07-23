@@ -39,6 +39,10 @@ const unitOf = (l) => l?.baseUnit || l?.scannedUnit || l?.unit || '';
 // → บังคับสแกนทีละชิ้น (กันของหาย/นับพลาด). "มากกว่า" = strict > เท่านั้น
 const HIGH_VALUE_THRESHOLD = 1000;
 
+// หน่วงป้าย "กำลังโหลด" ของแบนเนอร์ปัญหาที่บันทึก — โหลดเสร็จเร็วกว่านี้ (ลังปกติ) จะไม่โชว์เลย
+// กันป้ายวูบขึ้น-ลงทุกครั้งที่สแกนลัง · ปุ่มยืนยันยัง disable ทันทีด้วย problemsLoading (ไม่รอ)
+const LOADING_LABEL_DELAY_MS = 350;
+
 // LOT/EXP ที่คลังแพ็คส่งมา — แสดงแบบ read-only และไม่แสดง qty ของแต่ละ LOT
 // เพื่อให้พนักงานเทียบฉลากสินค้าได้โดยไม่ทำลาย blind receiving
 function LotExpList({ rows = [], compact = false }) {
@@ -317,6 +321,8 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [problemDraftNote, setProblemDraftNote] = useState('');
   const [receiveProblems, setReceiveProblems] = useState([]);
   const [problemsLoading, setProblemsLoading] = useState(false);
+  // แยกจาก problemsLoading: true เฉพาะเมื่อโหลดช้ากว่า LOADING_LABEL_DELAY_MS — ใช้คุม "ป้ายกำลังโหลด" เท่านั้น
+  const [problemsLoadingSlow, setProblemsLoadingSlow] = useState(false);
   const [problemsLoadError, setProblemsLoadError] = useState(false);
   const [problemSaving, setProblemSaving] = useState(false);
   const [problemDeletingId, setProblemDeletingId] = useState(null);
@@ -334,6 +340,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const staffMenuRef = useRef(null);
   const pendingBoxScanRef = useRef('');
   const problemLoadSeqRef = useRef(0);
+  const problemsLoadTimerRef = useRef(null);
   const imageLoadSeqRef = useRef(0);
 
   // ลังที่เครื่องนี้กำลังตรวจ = local state (ตั้งตอน startReceive) — ไม่ดึงจาก receiveBoxIds ที่ sync ข้ามเครื่องผ่าน Firestore
@@ -426,6 +433,12 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setProblemsLoading(true);
     setProblemsLoadError(false);
     setReceiveProblems([]);
+    // ป้าย "กำลังโหลด" ขึ้นเฉพาะตอนโหลดช้า — ลังปกติที่โหลดเสร็จเร็วจะไม่เห็นวูบ
+    clearTimeout(problemsLoadTimerRef.current);
+    setProblemsLoadingSlow(false);
+    problemsLoadTimerRef.current = setTimeout(() => {
+      if (problemLoadSeqRef.current === seq) setProblemsLoadingSlow(true);
+    }, LOADING_LABEL_DELAY_MS);
     loadReceiveProblems(boxId)
       .then(problems => {
         if (problemLoadSeqRef.current !== seq) return;
@@ -438,7 +451,11 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
         showToast('⚠ โหลดปัญหาที่บันทึกไว้ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ต', 'error');
       })
       .finally(() => {
-        if (problemLoadSeqRef.current === seq) setProblemsLoading(false);
+        if (problemLoadSeqRef.current === seq) {
+          clearTimeout(problemsLoadTimerRef.current);
+          setProblemsLoading(false);
+          setProblemsLoadingSlow(false);
+        }
       });
   }
 
@@ -452,8 +469,12 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     setItemScan(''); setLastScannedSku(null); setScanError('');
     setVerifyResult(null); setSupervisorCode(''); setRecheckMode(false); setOutcomeHasProblems(false); setOutcomeProblemCount(0);
     setReceiveProblems([]); setProblemsLoadError(false); problemLoadSeqRef.current += 1;
+    clearTimeout(problemsLoadTimerRef.current); setProblemsLoadingSlow(false);
     setViewingId(null); setScannedBoxId(null); setPhase('scan');
   }
+
+  // เคลียร์ timer ป้าย "กำลังโหลด" ตอน unmount — กัน setState หลังคอมโพเนนต์ถูกถอด
+  useEffect(() => () => clearTimeout(problemsLoadTimerRef.current), []);
 
   // ถูก "ตรวจแทน" ขณะนับ (receivingBy เปลี่ยนเป็นคนอื่นผ่าน Firestore sync) → เด้งออกจากหน้านับทันที
   // ไม่งั้นจอเครื่องนี้ค้าง verify ได้นานไม่จำกัด แล้วกดยืนยัน/แจ้งปัญหาทับสถานะที่คนใหม่กำลังทำ
@@ -1755,10 +1776,10 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                     );
                   })()}
 
-                  {(problemsLoading || problemsLoadError || activeReceiveProblems.length > 0) && (
+                  {(problemsLoadingSlow || problemsLoadError || activeReceiveProblems.length > 0) && (
                     <div style={{ marginTop: 12, padding: '10px 12px', border: '1.5px solid #e67e22', borderRadius: 10, background: '#fff8f0' }}>
                       <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 800, color: '#b86000', marginBottom: 7 }}>
-                        ⚠ ปัญหาที่บันทึก {problemsLoading ? '· กำลังโหลด…' : problemsLoadError ? '· โหลดไม่สำเร็จ' : `(${activeReceiveProblems.length})`}
+                        ⚠ ปัญหาที่บันทึก {problemsLoadingSlow ? '· กำลังโหลด…' : problemsLoadError ? '· โหลดไม่สำเร็จ' : `(${activeReceiveProblems.length})`}
                       </div>
                       {problemsLoadError && (
                         <button className="btn sm" style={{ marginBottom: 7, borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => loadProblemsForBox(foundBox?.id)}>ลองโหลดใหม่</button>
