@@ -13,7 +13,7 @@ import {
   resolvePackPicklistDisplay,
   withBoxPicklistRunFields,
 } from '../units.js';
-import { findIncompletePackTarget } from '../warehouseHelpers.js';
+import { calculateLotUsage, findIncompletePackTarget } from '../warehouseHelpers.js';
 
 const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
@@ -443,28 +443,12 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
 
   // คำนวณยอด LOT ที่ถูกใช้ไปแล้ว (key = sku__lot, หน่วยฐาน) จากทุกลังที่ปิด + ลังปัจจุบัน
   // คูณ factor ของหน่วยที่สแกนจริง — สแกนบาร์โค้ดโหล 1 ครั้งหักสต็อก LOT เท่า factor (เช่น 12) ไม่ใช่ 1
-  function calcLotUsage() {
-    const usage = {};
-    boxes.forEach(b => {
-      if (!(b.status === 'closed' || b.status === 'exported' || b.status === 'received')) return;
-      (itemsByBox[b.id] || []).forEach(it => {
-        if (it.lot) {
-          const key = `${it.sku}__${it.lot}`;
-          // คูณ factor เฉพาะลังใหม่ที่มี scannedUnit — ลังเก่า (it.unit = หน่วย picklist, ไม่มี scannedUnit) ใช้ factor=1 ตามพฤติกรรมเดิม กัน overcount
-          const f = it.scannedUnit ? factorOf(it.sku, it.scannedUnit) : 1;
-          usage[key] = (usage[key] || 0) + (it.qty ?? it.got ?? 0) * f;
-        }
-      });
-    });
-    items.forEach(it => {
-      if (it.lot && it.got > 0) {
-        const key = `${it.sku}__${it.lot}`;
-        const f = it.scannedUnit ? factorOf(it.sku, it.scannedUnit) : 1;
-        usage[key] = (usage[key] || 0) + it.got * f;
-      }
-    });
-    return usage;
-  }
+  const calcLotUsage = () => calculateLotUsage({
+    boxes,
+    itemsByBox,
+    currentItems: items,
+    factorMap,
+  });
 
   // คืน LOT ที่ยังเหลือสต็อก > 0 — qty ใน lotMap เป็นหน่วยฐานแล้ว (แปลงตั้งแต่ import ดู ImportLotMap), usage ก็หน่วยฐาน
   // exp ติดมาจากไฟล์ LOT+EXP (ลอตเก่า/ไฟล์ R01.119 เดิมไม่มี → '')

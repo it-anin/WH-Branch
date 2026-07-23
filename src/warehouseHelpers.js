@@ -269,6 +269,200 @@ function fallbackLotEntry(item, qty) {
   };
 }
 
+// Outbound edit mode must edit the same per-(LOT + unit) representation that
+// packing/export/receiving use. Temporary ids live only in React state and are
+// stripped again by finalizePackedItemEdits before Firestore is updated.
+export function preparePackedItemsForEdit(items = []) {
+  return (items || []).map((item, itemIndex) => {
+    const itemEditId = `${item?.picklistRowId || item?.catalogRowId || `${item?.sku || 'item'}__${item?.unit || ''}`}__${itemIndex}`;
+    const currentQty = Math.max(0, numberOrZero(item?.qty ?? item?.got));
+    const sourceLots = Array.isArray(item?.scannedLots) && item.scannedLots.length > 0
+      ? item.scannedLots
+      : [fallbackLotEntry(item || {}, currentQty)];
+
+    const editableLots = sourceLots.map((entry, lotIndex) => {
+      const lot = cleanText(entry?.lot);
+      return {
+        ...entry,
+        lot,
+        qty: Math.max(0, numberOrZero(entry?.qty)),
+        exp: cleanText(entry?.exp),
+        scannedBarcode: cleanText(entry?.scannedBarcode),
+        // Do not fall back to item.unit here. For legacy boxes without
+        // scannedUnit the established convention is factor=1.
+        unit: cleanText(entry?.unit) || cleanText(item?.scannedUnit),
+        __editLotId: `${itemEditId}__lot__${lotIndex}`,
+      };
+    });
+
+    return {
+      ...item,
+      __editItemId: itemEditId,
+      __editOriginal: {
+        editableLots: editableLots.map(normalizeEditLot),
+        scannedLots: Array.isArray(item?.scannedLots)
+          ? item.scannedLots.map(entry => ({ ...entry }))
+          : item?.scannedLots,
+        qty: item?.qty,
+        got: item?.got,
+        gotBase: item?.gotBase,
+        lot: item?.lot,
+        exp: item?.exp,
+        scannedBarcode: item?.scannedBarcode,
+        scannedUnit: item?.scannedUnit,
+      },
+      scannedLots: editableLots,
+    };
+  });
+}
+
+export function resolveWarehouseScanParent(items = [], sku = '', scannedUnit = '') {
+  const skuParents = (items || [])
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item?.sku === sku);
+  if (skuParents.length === 0) return { index: -1, ambiguous: false };
+  if (skuParents.length === 1) return { index: skuParents[0].index, ambiguous: false };
+
+  const unitParents = skuParents.filter(({ item }) =>
+    item?.unit === scannedUnit
+    || (item?.scannedLots || []).some(entry => (entry?.unit || item?.scannedUnit || '') === scannedUnit)
+  );
+  return unitParents.length === 1
+    ? { index: unitParents[0].index, ambiguous: false }
+    : { index: -1, ambiguous: true };
+}
+
+function normalizeEditLot(entry) {
+  const { __editLotId, ...persisted } = entry || {};
+  return {
+    ...persisted,
+    lot: cleanText(entry?.lot),
+    qty: Math.max(0, Math.trunc(numberOrZero(entry?.qty))),
+    exp: cleanText(entry?.exp),
+    scannedBarcode: cleanText(entry?.scannedBarcode),
+    unit: cleanText(entry?.unit),
+  };
+}
+
+// Rebuild each original boxItem from its editable LOT rows. Duplicate
+// (LOT + unit) rows are merged to keep the same canonical shape as PackScanC.
+export function finalizePackedItemEdits(items = [], factorMap = {}) {
+  return (items || []).flatMap(item => {
+    const { __editItemId, __editOriginal, ...persistedItem } = item || {};
+    const normalizedRows = (item?.scannedLots || []).map(normalizeEditLot);
+
+    // A no-op save must be byte-for-byte safe for both modern and legacy
+    // items. In particular, do not turn a legacy null/absent scannedLots into
+    // a new array or recalculate it with today's factor map.
+    if (__editOriginal
+      && JSON.stringify(normalizedRows) === JSON.stringify(__editOriginal.editableLots)) {
+      return [{
+        ...persistedItem,
+        qty: __editOriginal.qty,
+        got: __editOriginal.got,
+        gotBase: __editOriginal.gotBase,
+        scannedLots: __editOriginal.scannedLots,
+        lot: __editOriginal.lot,
+        exp: __editOriginal.exp,
+        scannedBarcode: __editOriginal.scannedBarcode,
+        scannedUnit: __editOriginal.scannedUnit,
+      }];
+    }
+
+    const byLotUnit = new Map();
+
+    normalizedRows
+      .filter(entry => entry.qty > 0)
+      .forEach(entry => {
+        const key = `${entry.lot}\u0000${entry.unit}`;
+        const previous = byLotUnit.get(key);
+        if (previous?.exp && entry.exp && previous.exp !== entry.exp) {
+          const error = new Error(`LOT ${entry.lot || 'ไม่ระบุ'} หน่วย ${entry.unit || 'ไม่ระบุ'} มี EXP ไม่ตรงกัน`);
+          error.code = 'conflicting-lot-exp';
+          throw error;
+        }
+        const merged = previous
+          ? {
+              ...previous,
+              ...entry,
+              qty: previous.qty + entry.qty,
+              exp: entry.exp || previous.exp,
+              scannedBarcode: entry.scannedBarcode || previous.scannedBarcode,
+            }
+          : entry;
+        // The later duplicate row remains the LIFO entry.
+        if (previous) byLotUnit.delete(key);
+        byLotUnit.set(key, merged);
+      });
+
+    const scannedLots = [...byLotUnit.values()];
+    if (scannedLots.length === 0) return [];
+
+    const qty = scannedLots.reduce((sum, entry) => sum + entry.qty, 0);
+    const calculatedBase = scannedLots.reduce(
+      (sum, entry) => sum + entry.qty * lotFactor(factorMap, persistedItem, entry),
+      0,
+    );
+    const unitTotals = rows => {
+      const totals = new Map();
+      rows.filter(entry => entry.qty > 0).forEach(entry => {
+        totals.set(entry.unit, (totals.get(entry.unit) || 0) + entry.qty);
+      });
+      return JSON.stringify([...totals.entries()].sort(([a], [b]) => a.localeCompare(b)));
+    };
+    const originalGotBase = Number(__editOriginal?.gotBase);
+    const hasOriginalGotBase = __editOriginal?.gotBase !== null
+      && __editOriginal?.gotBase !== ''
+      && Number.isFinite(originalGotBase);
+    const gotBase = __editOriginal
+      && hasOriginalGotBase
+      && unitTotals(normalizedRows) === unitTotals(__editOriginal.editableLots || [])
+      ? originalGotBase
+      : calculatedBase;
+    const latest = scannedLots[scannedLots.length - 1];
+
+    return [{
+      ...persistedItem,
+      qty,
+      got: qty,
+      gotBase,
+      scannedLots,
+      lot: latest.lot,
+      exp: latest.exp,
+      scannedBarcode: latest.scannedBarcode,
+      scannedUnit: latest.unit,
+    }];
+  });
+}
+
+// Used by packing to reserve LOT stock from every closed box plus the current
+// open box. Multi-LOT items must be counted entry-by-entry; using item.lot with
+// the parent total assigns the whole quantity to only the latest LOT.
+export function calculateLotUsage({ boxes = [], itemsByBox = {}, currentItems = [], factorMap = {} } = {}) {
+  const usage = {};
+  const addItem = item => {
+    const qty = Math.max(0, numberOrZero(item?.qty ?? item?.got));
+    const entries = Array.isArray(item?.scannedLots) && item.scannedLots.length > 0
+      ? item.scannedLots
+      : (item?.lot ? [fallbackLotEntry(item, qty)] : []);
+
+    entries.forEach(entry => {
+      const lot = cleanText(entry?.lot);
+      const entryQty = Math.max(0, numberOrZero(entry?.qty));
+      if (!lot || entryQty <= 0) return;
+      const key = `${item?.sku || ''}__${lot}`;
+      usage[key] = (usage[key] || 0) + entryQty * lotFactor(factorMap, item, entry);
+    });
+  };
+
+  (boxes || []).forEach(box => {
+    if (!['closed', 'exported', 'received'].includes(box?.status)) return;
+    (itemsByBox?.[box.id] || []).forEach(addItem);
+  });
+  (currentItems || []).forEach(addItem);
+  return usage;
+}
+
 // Adjust only the clicked row. scannedLots is treated as a stack: the latest
 // lot/unit entry is the one changed by +/- and all counters are recomputed from
 // that breakdown.

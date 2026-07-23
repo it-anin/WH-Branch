@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { collection, doc, setDoc, deleteDoc, deleteField, onSnapshot, writeBatch, runTransaction, query, where, documentId, getDocs, addDoc } from 'firebase/firestore';
 import { db } from './firebase.js';
+import { commitWarehouseBoxItems } from './warehouseFirestore.js';
 // สูตร need + ตัวคูณหน่วยฐาน — ตัวเดียวกับที่ PackScanC ใช้จริง (ใช้ใน __wh.audit เพื่อยืนยันเลขบนจอพนักงาน)
 import {
   boxPicklistRunFields,
@@ -330,6 +331,15 @@ export default function App() {
     Object.entries(next).forEach(([boxId, items]) => {
       if (prev[boxId] !== items) setDoc(doc(db, 'boxItems', boxId), { items });
     });
+  }
+
+  async function saveWarehouseBoxItems(boxId, expectedItems, items, summaryPatch) {
+    await commitWarehouseBoxItems(db, { boxId, expectedItems, items, summaryPatch });
+
+    itemsByBoxRef.current = { ...itemsByBoxRef.current, [boxId]: items };
+    _setItemsByBox(itemsByBoxRef.current);
+    boxesRef.current = boxesRef.current.map(box => box.id === boxId ? { ...box, ...summaryPatch } : box);
+    _setBoxes(boxesRef.current);
   }
 
   async function loadReceiveProblems(boxId) {
@@ -946,7 +956,7 @@ export default function App() {
   }
 
   const receiveDataLoadError = receiveDataLoadErrors.boxes || receiveDataLoadErrors.boxItems;
-  const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearFirestore, deleteBox, loadReceiveProblems, upsertReceiveProblem, deleteReceiveProblem, commitReceiveOutcome, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, saveWarehouseBoxItems, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearFirestore, deleteBox, loadReceiveProblems, upsertReceiveProblem, deleteReceiveProblem, commitReceiveOutcome, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   // Gate: ยังไม่ login → แสดงหน้า Login (ทั้ง Android + Desktop)
   if (!profile) {

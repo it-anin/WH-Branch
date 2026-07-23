@@ -1,10 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import SketchyBarcode from '../components/SketchyBarcode.jsx';
 import { fixItemName, lookupFactor } from '../units.js';
 import { branchLabel } from '../branches.js';
-import { adjustPackedItem, buildLotRows, problemTypeLabels, toBuddhistExpiry } from '../warehouseHelpers.js';
+import {
+  adjustPackedItem,
+  buildLotRows,
+  finalizePackedItemEdits,
+  preparePackedItemsForEdit,
+  problemTypeLabels,
+  resolveWarehouseScanParent,
+  toBuddhistExpiry,
+} from '../warehouseHelpers.js';
 
 // reverse-lookup barcode → unit สำหรับ SKU นั้น (ใช้ใน edit mode เพื่ออัปเดต unit อัตโนมัติเมื่อสแกน barcode)
 function lookupUnitByBarcode(barcodeMap, sku, barcode) {
@@ -121,7 +129,7 @@ function StickerLabel({ box }) {
   );
 }
 
-export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, triggerDownload, deleteBox, loadReceiveProblems = async () => [], commitReceiveOutcome = null, costMap = {}, lotMap = {}, barcodeMap = {}, nameMap = {}, factorMap = {}, catalog = [] }) {
+export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, itemsByBox, setItemsByBox, saveWarehouseBoxItems = null, triggerDownload, deleteBox, loadReceiveProblems = async () => [], commitReceiveOutcome = null, costMap = {}, lotMap = {}, barcodeMap = {}, nameMap = {}, factorMap = {}, catalog = [] }) {
   const closedBoxes = boxes.filter(b => b.status === 'closed' || b.status === 'exported' || b.status === 'received');
 
   const [selectedId, setSelectedId] = useState(() => {
@@ -149,6 +157,10 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const [receiveProblemsLoading, setReceiveProblemsLoading] = useState(false);
   const [receiveProblemsError, setReceiveProblemsError] = useState(false);
   const [problemResolving, setProblemResolving] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const nextEditRowIdRef = useRef(0);
+  const editSourceItemsRef = useRef([]);
+  const editSavingRef = useRef(false);
 
   // อนุมัติแล้ว = exported/received, รออนุมัติ = closed (ยังไม่ส่ง POS)
   const isApproved = (b) => b.status === 'exported' || b.status === 'received';
@@ -192,7 +204,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
 
   const activeBox = boxes.find(b => b.id === selectedId) || null;
   // heal ชื่อที่เป็นเลข SKU (แถวเก่าจาก lookupByScan เดิม) ด้วย nameMap ตั้งแต่จุด derive — ตาราง/edit/Excel ได้ชื่อครบโดยไม่ต้องแตะข้อมูล
-  const boxItems = (selectedId ? (itemsByBox?.[selectedId] || []) : []).map(l => fixItemName(l, nameMap));
+  const rawBoxItems = selectedId ? (itemsByBox?.[selectedId] || []) : [];
+  const boxItems = rawBoxItems.map(l => fixItemName(l, nameMap));
   const submittedReceiveProblems = receiveProblemsBoxId === selectedId
     ? receiveProblems.filter(problem => problem.status === 'submitted')
     : [];
@@ -367,9 +380,22 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     showToast(`ส่งออก ${dataRows.length} รายการ ✓`, 'success');
   }
 
-  function jumpToBox(boxId) {
-    setDocNumber('');
+  function selectBox(boxId) {
+    if (editSavingRef.current) {
+      showToast('กำลังบันทึก กรุณารอสักครู่', 'warn');
+      return false;
+    }
+    if (editMode && boxId !== selectedId) {
+      showToast('⚠ กรุณาบันทึกหรือยกเลิกการแก้ไขก่อนเปลี่ยนลัง', 'error');
+      return false;
+    }
     setSelectedId(boxId);
+    return true;
+  }
+
+  function jumpToBox(boxId) {
+    if (!selectBox(boxId)) return;
+    setDocNumber('');
     setActiveBoxId(boxId);
     setGlobalSearch('');
   }
@@ -398,6 +424,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   // reset state เมื่อเปลี่ยนลัง
   useEffect(() => {
     setEditMode(false); setEditItems([]); setAddScan(''); setAddScanErr(''); setProblemEditing(false);
+    setEditSaving(false);
+    editSavingRef.current = false;
+    editSourceItemsRef.current = [];
     setBoxNote(boxes.find(b => b.id === selectedId)?.note || '');
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -441,9 +470,35 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   }
 
   function startEdit() {
-    setEditItems(boxItems.map(it => ({ ...it })));
+    setEditItems(preparePackedItemsForEdit(boxItems));
+    editSourceItemsRef.current = rawBoxItems;
     setAddScan(''); setAddScanErr('');
     setEditMode(true);
+  }
+
+  function updateEditLot(itemIndex, lotIndex, patch) {
+    setEditItems(prev => prev.map((item, index) => {
+      if (index !== itemIndex) return item;
+      return {
+        ...item,
+        scannedLots: (item.scannedLots || []).map((entry, entryIndex) =>
+          entryIndex === lotIndex ? { ...entry, ...patch } : entry
+        ),
+      };
+    }));
+  }
+
+  function removeEditLot(itemIndex, lotIndex) {
+    setEditItems(prev => prev.flatMap((item, index) => {
+      if (index !== itemIndex) return [item];
+      const scannedLots = (item.scannedLots || []).filter((_, entryIndex) => entryIndex !== lotIndex);
+      return scannedLots.length > 0 ? [{ ...item, scannedLots }] : [];
+    }));
+  }
+
+  function newEditRowId(prefix) {
+    nextEditRowIdRef.current += 1;
+    return `${prefix}__new__${nextEditRowIdRef.current}`;
   }
 
   function handleAddByScan(e) {
@@ -457,69 +512,116 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     }
     setAddScanErr('');
     setAddScan('');
-    const existIdx = editItems.findIndex(it => it.sku === found.sku && (it.unit || '') === (found.unit || ''));
-    if (existIdx >= 0) {
-      // SKU+unit มีอยู่แล้ว → เพิ่ม qty +1
-      setEditItems(prev => prev.map((x, i) =>
-        i === existIdx ? { ...x, qty: (x.qty ?? x.got ?? 0) + 1, got: (x.got ?? 0) + 1 } : x
-      ));
-      showToast(`${found.name} +1 ชิ้น`, 'success');
-    } else {
-      // SKU ใหม่ → เพิ่มแถว
-      setEditItems(prev => [...prev, {
-        sku: found.sku, name: found.name, unit: found.unit,
-        barcode: val, scannedBarcode: val,
-        scannedUnit: found.unit, // หน่วยของบาร์โค้ดที่ยิง — handleSaveEdit ใช้คิด gotBase (ไม่มี = ถูกคิดเป็น factor 1)
-        qty: 1, got: 1, lot: '', exp: '', location: found.location,
-        scannedLots: null,
-      }]);
-      showToast(`เพิ่ม ${found.name} ✓`, 'success');
+    const parentMatch = resolveWarehouseScanParent(editItems, found.sku, found.unit || '');
+    if (parentMatch.ambiguous) {
+      setAddScanErr(`⚠ SKU ${found.sku} มีหลายแถว กรุณาแก้จำนวนใน LOT ที่ต้องการโดยตรง`);
+      return;
     }
+
+    if (parentMatch.index >= 0) {
+      const index = parentMatch.index;
+      setEditItems(prev => prev.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const lots = item.scannedLots || [];
+        const blankIndex = lots.findIndex(entry =>
+          !entry.lot && (entry.unit || item.scannedUnit || '') === (found.unit || '')
+        );
+        if (blankIndex >= 0) {
+          const updated = {
+            ...lots[blankIndex],
+            qty: (lots[blankIndex].qty || 0) + 1,
+            scannedBarcode: val,
+            unit: found.unit || '',
+          };
+          return {
+            ...item,
+            scannedLots: [...lots.filter((_, lotIndex) => lotIndex !== blankIndex), updated],
+          };
+        }
+        return {
+          ...item,
+          scannedLots: [...lots, {
+            lot: '', exp: '', qty: 1, scannedBarcode: val, unit: found.unit || '',
+            __editLotId: newEditRowId(item.__editItemId || found.sku),
+          }],
+        };
+      }));
+      showToast(`${found.name} +1 · กรุณาตรวจ LOT`, 'success');
+      return;
+    }
+
+    // SKU ใหม่ → สร้าง breakdown ตั้งแต่แรก ไม่ใช้ scannedLots=null
+    const itemEditId = newEditRowId(`${found.sku}__item`);
+    setEditItems(prev => [...prev, {
+      sku: found.sku, name: found.name, unit: found.unit,
+      barcode: val, scannedBarcode: val,
+      scannedUnit: found.unit,
+      qty: 1, got: 1, gotBase: lookupFactor(factorMap, found.sku, found.unit || ''),
+      lot: '', exp: '', location: found.location,
+      __editItemId: itemEditId,
+      scannedLots: [{
+        lot: '', exp: '', qty: 1, scannedBarcode: val, unit: found.unit || '',
+        __editLotId: newEditRowId(itemEditId),
+      }],
+    }]);
+    showToast(`เพิ่ม ${found.name} ✓`, 'success');
   }
 
-  // แถวที่ "สแกนปนหน่วย" — scannedLots มี unit มากกว่า 1 แบบ (เช่น picklist โหล: สแกน 1 โหล + 12 ชิ้น)
-  // qty ของแถวแบบนี้ = จำนวนครั้งที่สแกนรวมทุกหน่วย (13) ไม่ใช่จำนวนของหน่วยเดียว → qty × factor ใช้ไม่ได้
-  const distinctScanUnits = (it) => new Set((it.scannedLots || []).map(e => e.unit).filter(Boolean)).size;
+  async function handleSaveEdit() {
+    if (!selectedId || editSavingRef.current) return false;
+    if (!activeBox || !['closed', 'exported'].includes(activeBox.status)) {
+      showToast('⚠ สถานะลังเปลี่ยนแล้ว ไม่สามารถบันทึกการแก้ไขได้', 'error');
+      return false;
+    }
 
-  // ⚠ qty ของแถว = "จำนวนครั้งที่สแกน" (doClose เก็บ qty: it.got) → ต้องคูณด้วย factor ของ **หน่วยบาร์โค้ดที่ยิงจริง**
-  // (scannedUnit) ไม่ใช่ it.unit ซึ่งเป็น "หน่วย Picklist" — คนละเรื่องกัน และมักไม่มีบาร์โค้ดด้วยซ้ำ
-  // เช่น picklist "3ลัง" แต่พนักงานยิงบาร์โค้ด "ลัง" 60 ครั้ง → 60 × factor(ลัง)=10 = 600 ✅
-  //                                          ถ้าใช้ it.unit → 60 × factor(3ลัง)=30 = 1800 ❌ ผิด 3 เท่า
-  // ลังเก่าที่ไม่มี scannedUnit → factor 1 (ตรงกับ convention ที่ PackScanC ใช้: `it.scannedUnit ? factorOf(...) : 1`)
-  const countedBase = (it) => (it.qty ?? it.got ?? 0) * (it.scannedUnit ? lookupFactor(factorMap, it.sku, it.scannedUnit) : 1);
-
-  function handleSaveEdit() {
-    if (!selectedId) return;
-    // clear scannedLots — view mode ใช้ buildLotRows() ซึ่งจะอ่าน qty จาก scannedLots[].qty ก่อน (ไม่ใช่ l.qty)
-    // การล้าง scannedLots ทำให้ view mode ใช้ fallback path (l.qty / l.lot / l.exp) ที่ผู้ใช้เพิ่งแก้ไขไว้
-    //
-    // ⚠ ต้องคำนวณ gotBase ใหม่ด้วย — ฝั่งสาขาอ่าน getNeeded = gotBase ?? qty ?? got (เอา gotBase ก่อนเสมอ)
-    // ไม่อัปเดต = แก้จำนวนที่นี่แล้วสาขายังเห็นเลขเดิม (บั๊กเดิม แก้ลังมีปัญหาไปก็ไม่ถึงสาขา)
-    // คำนวณจาก countedBase (qty × factor ของ "หน่วยบาร์โค้ดที่ยิงจริง") → แถวที่ไม่ได้แก้จะได้ค่าเดิมเป๊ะ
-    // ⚠ ระบบ "เดาแทนคนไม่ได้" ว่าในลังมีของเท่าไหร่ — ถ้าจำนวนที่สแกนไว้ผิด ต้องมีคนนับของจริงแล้วแก้ qty
-    //   (ยิงบาร์โค้ดหน่วยที่นับในช่อง Barcode ของแถว แล้วพิมพ์จำนวน) การกดแก้ไข→อนุมัติเฉย ๆ ไม่เปลี่ยนอะไร
-    const mixed = editItems.filter(it => (it.qty ?? it.got ?? 0) > 0 && distinctScanUnits(it) > 1);
-    const newItems = editItems
-      .filter(it => (it.qty ?? it.got ?? 0) > 0)
-      .map(it => ({
-        ...it,
-        // ปนหน่วย → คงค่าเดิม (qty รวมหลายหน่วย คำนวณใหม่จะได้ค่าผิด) แล้วเตือนให้คนตรวจเอง
-        gotBase: distinctScanUnits(it) > 1 ? it.gotBase : countedBase(it),
-        scannedLots: null,
-      }));
-    if (mixed.length > 0) {
-      showToast(`⚠ ${mixed.length} รายการสแกนปนหน่วย — ไม่ได้คำนวณหน่วยฐานใหม่ ตรวจสอบเอง`, 'warn');
+    let newItems;
+    try {
+      newItems = finalizePackedItemEdits(editItems, factorMap);
+    } catch (err) {
+      if (err?.code === 'conflicting-lot-exp') {
+        showToast(`⚠ ${err.message} · กรุณาแก้ให้ตรงกันก่อนบันทึก`, 'error');
+      } else {
+        console.error('finalize packed item edits failed:', err);
+        showToast('⚠ ตรวจสอบรายการแก้ไขไม่สำเร็จ กรุณาลองใหม่', 'error');
+      }
+      return false;
     }
     const newTotalQty = newItems.reduce((s, it) => s + (it.qty ?? it.got ?? 0), 0);
     const newSkuCount = newItems.length;
-    setItemsByBox(prev => ({ ...prev, [selectedId]: newItems }));
-    setBoxes(prev => prev.map(b =>
-      b.id === selectedId ? { ...b, totalQty: newTotalQty, skuCount: newSkuCount } : b
-    ));
+    const summaryPatch = { totalQty: newTotalQty, skuCount: newSkuCount };
+    editSavingRef.current = true;
+    setEditSaving(true);
+    try {
+      if (saveWarehouseBoxItems) {
+        await saveWarehouseBoxItems(selectedId, editSourceItemsRef.current, newItems, summaryPatch);
+      } else {
+        setItemsByBox(prev => ({ ...prev, [selectedId]: newItems }));
+        setBoxes(prev => prev.map(b => b.id === selectedId ? { ...b, ...summaryPatch } : b));
+      }
+    } catch (err) {
+      if (err?.code === 'warehouse-edit-conflict') {
+        showToast('⚠ รายการลังถูกแก้จากอีกเครื่อง กรุณาปิดแล้วเปิดแก้ไขใหม่', 'error');
+      } else if (err?.code === 'warehouse-box-not-editable' || err?.code === 'warehouse-box-missing') {
+        showToast('⚠ สถานะลังเปลี่ยนแล้ว ไม่สามารถบันทึกการแก้ไขได้', 'error');
+      } else {
+        console.error('save warehouse box items failed:', err?.code || err?.message || err);
+        showToast('⚠ บันทึกการแก้ไขไม่สำเร็จ กรุณาลองใหม่', 'error');
+      }
+      return false;
+    } finally {
+      editSavingRef.current = false;
+      setEditSaving(false);
+    }
     setEditMode(false);
     setEditItems([]);
+    editSourceItemsRef.current = [];
     showToast('บันทึกการแก้ไขแล้ว ✓', 'success');
+    return true;
   }
+
+  const editLotRows = editItems.flatMap((item, itemIndex) =>
+    (item.scannedLots || []).map((entry, lotIndex) => ({ item, entry, itemIndex, lotIndex }))
+  );
 
   return (
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: 480 }}>
@@ -650,7 +752,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
             return (
               <button
                 key={b.id}
-                onClick={() => { setSelectedId(b.id); setGlobalSearch(''); }}
+                onClick={() => { if (selectBox(b.id)) setGlobalSearch(''); }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
                   padding: '12px 8px', gap: 5, minWidth: 0,
@@ -884,8 +986,8 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 <div className="row" style={{ gap: 8 }}>
                   {editMode ? (
                     <>
-                      <button className="btn sm" onClick={() => { setEditMode(false); setEditItems([]); setProblemEditing(false); }}>✕ ยกเลิก</button>
-                      <button className="btn sm primary" onClick={() => { handleSaveEdit(); setProblemEditing(false); }}>{problemEditing ? '✓ บันทึกการแก้ไข' : '✓ อนุมัติ'}</button>
+                      <button className="btn sm" disabled={editSaving} onClick={() => { setEditMode(false); setEditItems([]); setProblemEditing(false); editSourceItemsRef.current = []; }}>✕ ยกเลิก</button>
+                      <button className="btn sm primary" disabled={editSaving} onClick={async () => { if (await handleSaveEdit()) setProblemEditing(false); }}>{editSaving ? 'กำลังบันทึก…' : problemEditing ? '✓ บันทึกการแก้ไข' : '✓ อนุมัติ'}</button>
                     </>
                   ) : (
                     <>
@@ -905,7 +1007,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               </div>
 
               {editMode ? (
-                /* ── Edit mode: กรอกแก้ไข qty / LOT / Exp ต่อ item ── */
+                /* ── Edit mode: หนึ่งแถวต่อ LOT + หน่วย ── */
                 <>
                 <div style={{ marginBottom: 8 }}>
                   <div className="row" style={{ gap: 8 }}>
@@ -934,40 +1036,35 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                       </tr>
                     </thead>
                     <tbody>
-                      {editItems.map((it, idx) => (
-                        <tr key={`edit-${it.sku}-${idx}`} style={{ background: idx % 2 === 0 ? 'white' : '#fafaf8' }}>
+                      {editLotRows.map(({ item: it, entry, itemIndex, lotIndex }, rowIndex) => (
+                        <tr key={entry.__editLotId || `${it.__editItemId}__lot__${lotIndex}`} style={{ background: rowIndex % 2 === 0 ? 'white' : '#fafaf8' }}>
                           <td>
                             <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>{it.sku}</div>
                             <div style={{ fontFamily: 'system-ui', fontSize: 13 }}>{it.name}</div>
+                            {(it.scannedLots || []).length > 1 && (
+                              <div className="mono" style={{ fontSize: 9, color: 'var(--accent)' }}>LOT {lotIndex + 1}/{it.scannedLots.length}</div>
+                            )}
                           </td>
                           <td style={{ padding: '4px 6px' }}>
                             <input
                               className="input mono"
                               style={{ width: '100%', padding: '3px 6px', fontSize: 11 }}
-                              value={it.scannedBarcode || it.barcode || ''}
+                              value={entry.scannedBarcode || ''}
                               placeholder="สแกน / พิมพ์ barcode"
-                              onChange={e => setEditItems(prev => prev.map((x, i) =>
-                                i === idx ? { ...x, scannedBarcode: e.target.value } : x
-                              ))}
+                              onChange={e => updateEditLot(itemIndex, lotIndex, { scannedBarcode: e.target.value })}
                               onKeyDown={e => {
                                 if (e.key !== 'Enter') return;
                                 const bc = e.target.value.trim();
                                 if (!bc) return;
                                 const unit = lookupUnitByBarcode(barcodeMap, it.sku, bc);
-                                // ต้องอัปเดต scannedUnit ด้วย — handleSaveEdit คิด gotBase จาก "หน่วยบาร์โค้ดที่ยิงจริง"
-                                // ถ้าเซ็ตแค่ unit จะเหลือ scannedUnit ค้างจากตอนแพ็ค → จำนวนที่สาขาเห็นผิด
-                                setEditItems(prev => prev.map((x, i) =>
-                                  i === idx ? { ...x, scannedBarcode: bc, ...(unit ? { unit, scannedUnit: unit } : {}) } : x
-                                ));
+                                updateEditLot(itemIndex, lotIndex, { scannedBarcode: bc, ...(unit ? { unit } : {}) });
                                 if (unit) showToast(`หน่วย → ${unit}`, 'success');
                                 else showToast('ไม่พบ barcode ใน R05.106 — barcode บันทึกไว้แต่หน่วยไม่เปลี่ยน');
                               }}
                             />
                           </td>
                           <td style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>
-                            {/* หน่วยที่ยิงจริง (scannedUnit) ไม่ใช่หน่วย Picklist (it.unit) — 3ลัง ไม่มีบาร์โค้ด พนักงานยิง ลัง
-                                ให้ตรงกับ barcode/จำนวนในแถว + ตาราง view + ไฟล์ Text/Excel + หน้ารับสินค้า (ทั้งหมดใช้ scannedUnit) */}
-                            {it.scannedUnit || it.unit}
+                            {entry.unit || it.scannedUnit || it.unit}
                           </td>
                           <td style={{ textAlign: 'center', padding: '4px 6px' }}>
                             <input
@@ -975,10 +1072,10 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                               min={0}
                               className="input"
                               style={{ width: 60, textAlign: 'center', padding: '3px 6px', fontSize: 15, fontWeight: 700 }}
-                              value={it.qty ?? it.got ?? 0}
+                              value={entry.qty ?? 0}
                               onChange={e => {
                                 const v = Math.max(0, parseInt(e.target.value) || 0);
-                                setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, qty: v, got: v } : x));
+                                updateEditLot(itemIndex, lotIndex, { qty: v });
                               }}
                             />
                           </td>
@@ -986,25 +1083,25 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                             <input
                               className="input"
                               style={{ width: '100%', padding: '3px 6px', fontSize: 12 }}
-                              value={it.lot || ''}
+                              value={entry.lot || ''}
                               placeholder="LOT"
-                              onChange={e => setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, lot: e.target.value } : x))}
+                              onChange={e => updateEditLot(itemIndex, lotIndex, { lot: e.target.value })}
                             />
                           </td>
                           <td style={{ padding: '4px 6px' }}>
                             <input
                               className="input"
                               style={{ width: '100%', padding: '3px 6px', fontSize: 12 }}
-                              value={it.exp || ''}
+                              value={entry.exp || ''}
                               placeholder="DD/MM/YYYY"
-                              onChange={e => setEditItems(prev => prev.map((x, i) => i === idx ? { ...x, exp: e.target.value } : x))}
+                              onChange={e => updateEditLot(itemIndex, lotIndex, { exp: e.target.value })}
                             />
                           </td>
                           <td style={{ padding: '4px' }}>
                             <button
                               style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: 16, padding: '2px 4px' }}
-                              title="ลบแถวนี้"
-                              onClick={() => setEditItems(prev => prev.filter((_, i) => i !== idx))}
+                              title="ลบ LOT แถวนี้"
+                              onClick={() => removeEditLot(itemIndex, lotIndex)}
                             >×</button>
                           </td>
                         </tr>

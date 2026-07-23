@@ -134,7 +134,10 @@ export const resolveProfile = (code) => ...             // code → profile obje
 ### Login โปรไฟล์รายที่ทำงาน (A1 เบา) — `src/screens/Login.jsx`
 - **เป้าหมาย:** แยกมุมมองต่อที่ทำงาน (โดยเฉพาะ Desktop รับสินค้าที่เดิมเห็นทุกสาขาปนกัน) — **A1 = แยกมุมมองเท่านั้น ไม่แตะ Firestore rules/data model** (ข้อมูลยัง global โหลดหมด กรองที่ UI)
 - **โปรไฟล์ = รายที่ทำงาน** (`PROFILES = [WAREHOUSE, ...BRANCHES]` ใน branches.js) — แต่ละอันมี `role`: `warehouse` / `branch`; login แล้ว**ยังเลือกพนักงานต่อ** (track `packer`/`receivedBy` เหมือนเดิม)
-- **flow:** App.jsx gate `if (!profile) return <Login>` (ก่อน `isAndroidMode`) → Login เลือกที่ทำงาน + กรอกรหัส → เทียบ `config/auth.passwords` (getDoc ครั้งเดียว) → `setProfile` + `localStorage['wh_profile']` → `logout()` ล้าง + กลับ Login
+- **flow:** App.jsx gate `if (!profile) return <Login>` (ก่อน `isAndroidMode`) → เทียบ `config/auth.passwords` (getDoc ครั้งเดียว) → `setProfile` + `localStorage['wh_profile']` → `logout()` ล้าง + กลับ Login
+  - **Login มี 2 โหมด (gate ด้วย `isAndroidMode` module-scope ใน Login.jsx):**
+    - **Desktop** = flow เดิม 2 ขั้น: เลือกที่ทำงานจาก picker (`PROFILES`) → กรอกรหัสผ่านของที่ทำงานนั้น → เทียบ `passwords[picked.code]`
+    - **Android** (`<AndroidLogin>`) = **ช่องเดียว: พิมพ์ "รหัสสาขา" (= รหัสผ่านเดิม) ไม่มี picker** → หา `Object.keys(passwords).find(c => passwords[c] === typed)` (first match, รหัสควรไม่ซ้ำข้ามที่ทำงาน) → `resolveProfile(matchedCode)` → เข้าเลย · **รหัสระบุที่ทำงานให้เอง** (พิมพ์รหัส WAREHOUSE = เข้าโหมดแพ็ค, รหัสสาขา = โหมดรับ) → AndroidApp ให้เลือกพนักงานต่อเหมือนเดิม · ปลอดภัยกว่า Desktop นิดเพราะไม่โชว์รายชื่อที่ทำงาน (ต้องรู้รหัส + รหัส self-identify)
 - **Desktop role-based tabs** (`ROLE_TABS` module-scope ใน App.jsx): `warehouse` → `[flow, list, scan, closed]` · `branch` → `[receive]` เท่านั้น — filter `TABS` + useEffect เด้ง tab ให้ตรง role ถ้า `wh_tab` เดิมไม่อยู่ในสิทธิ์; topbar โชว์ชื่อโปรไฟล์ + ปุ่ม "ออกจากระบบ"
 - **Desktop รับสินค้า scope:** `<BranchReceive branch={profile.role==='branch' ? profile.code : null} />` → สาขาเห็นเฉพาะตัวเอง (reuse `matchBranch`, ดู *กรองลังตามสาขา* ด้านล่าง), **คลัง (null) เห็นทุกสาขา**
 - **⚠ ต้องตั้ง `config/auth.passwords` ใน Firebase console ก่อน deploy** ไม่งั้น login ไม่ผ่าน; ทุกคน login ใหม่หลัง deploy (ไม่มี `wh_profile` เดิม)

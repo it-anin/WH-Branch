@@ -22,6 +22,7 @@ import {
   normalizeReceiveProblem,
 } from '../src/warehouseHelpers.js';
 import { buildPackItems } from '../src/units.js';
+import { commitWarehouseBoxItems } from '../src/warehouseFirestore.js';
 
 const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
 const run = Boolean(emulatorHost);
@@ -64,6 +65,62 @@ test('two Firestore clients preserve different top-level box fields', { skip: !r
     assert.deepEqual(saved.receivingBy, { code: 'SSS-01', name: 'สาขา' });
   } finally {
     await deleteDoc(firstRef).catch(() => {});
+    await Promise.all([closeClient(first), closeClient(second)]);
+  }
+});
+
+test('warehouse item edit is atomic and rejects stale or received-box writers', { skip: !run }, async () => {
+  const first = makeClient(`warehouse-edit-first-${Date.now()}`);
+  const second = makeClient(`warehouse-edit-second-${Date.now()}`);
+  const id = `WAREHOUSE-EDIT-${Date.now()}`;
+  const boxRef = doc(first.db, 'boxes', id);
+  const itemsRef = doc(first.db, 'boxItems', id);
+  const expectedItems = [{
+    sku: 'SKU-A', qty: 1, got: 1, gotBase: 1,
+    scannedLots: [{ lot: 'SEED', qty: 1, unit: 'ชิ้น' }],
+  }];
+  const firstItems = [{
+    sku: 'SKU-A', qty: 2, got: 2, gotBase: 2,
+    scannedLots: [{ lot: 'LOT-A', qty: 2, unit: 'ชิ้น' }],
+  }];
+  const secondItems = [{
+    sku: 'SKU-A', qty: 3, got: 3, gotBase: 3,
+    scannedLots: [{ lot: 'LOT-B', qty: 3, unit: 'ชิ้น' }],
+  }];
+
+  try {
+    await setDoc(boxRef, { id, status: 'exported', totalQty: 1, skuCount: 1 });
+    await setDoc(itemsRef, { items: expectedItems });
+
+    const results = await Promise.allSettled([
+      commitWarehouseBoxItems(first.db, {
+        boxId: id, expectedItems, items: firstItems, summaryPatch: { totalQty: 2, skuCount: 1 },
+      }),
+      commitWarehouseBoxItems(second.db, {
+        boxId: id, expectedItems, items: secondItems, summaryPatch: { totalQty: 3, skuCount: 1 },
+      }),
+    ]);
+    assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+    const rejected = results.find(result => result.status === 'rejected');
+    assert.equal(rejected.reason.code, 'warehouse-edit-conflict');
+
+    const [savedBox, savedItems] = await Promise.all([getDoc(boxRef), getDoc(itemsRef)]);
+    const winnerItems = savedItems.data().items;
+    assert.equal(savedBox.data().totalQty, winnerItems[0].qty, 'box summary and items commit together');
+    assert.ok(['LOT-A', 'LOT-B'].includes(winnerItems[0].scannedLots[0].lot));
+
+    await setDoc(boxRef, { status: 'received' }, { merge: true });
+    await assert.rejects(
+      commitWarehouseBoxItems(first.db, {
+        boxId: id,
+        expectedItems: winnerItems,
+        items: firstItems,
+        summaryPatch: { totalQty: 2, skuCount: 1 },
+      }),
+      error => error?.code === 'warehouse-box-not-editable',
+    );
+  } finally {
+    await Promise.all([deleteDoc(boxRef).catch(() => {}), deleteDoc(itemsRef).catch(() => {})]);
     await Promise.all([closeClient(first), closeClient(second)]);
   }
 });
