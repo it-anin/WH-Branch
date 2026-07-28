@@ -10,7 +10,9 @@ import {
   finalizePackedItemEdits,
   preparePackedItemsForEdit,
   problemTypeLabels,
+  receiveProblemSkuFromId,
   resolveWarehouseScanParent,
+  selectWarehouseReceiveProblems,
   toBuddhistExpiry,
 } from '../warehouseHelpers.js';
 
@@ -206,15 +208,19 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   // heal ชื่อที่เป็นเลข SKU (แถวเก่าจาก lookupByScan เดิม) ด้วย nameMap ตั้งแต่จุด derive — ตาราง/edit/Excel ได้ชื่อครบโดยไม่ต้องแตะข้อมูล
   const rawBoxItems = selectedId ? (itemsByBox?.[selectedId] || []) : [];
   const boxItems = rawBoxItems.map(l => fixItemName(l, nameMap));
-  const submittedReceiveProblems = receiveProblemsBoxId === selectedId
-    ? receiveProblems.filter(problem => problem.status === 'submitted')
+  const loadedReceiveProblems = receiveProblemsBoxId === selectedId ? receiveProblems : [];
+  const warehouseProblemState = selectWarehouseReceiveProblems(activeBox, loadedReceiveProblems);
+  const warehouseReceiveProblems = receiveProblemsBoxId === selectedId
+    ? warehouseProblemState.problems
     : [];
   const expectsReceiveProblems = activeBox?.problemType === 'item'
     || activeBox?.problemType === 'mixed'
     || (activeBox?.problemIds || []).length > 0;
-  const expectedReceiveProblemCount = activeBox?.problemCount || activeBox?.problemIds?.length || 0;
+  const expectedReceiveProblemCount = warehouseProblemState.expectedCount;
+  const missingReceiveProblemLabels = warehouseProblemState.missingIds
+    .map(problemId => receiveProblemSkuFromId(problemId) || problemId);
   const receiveProblemsMissing = expectsReceiveProblems
-    && (receiveProblemsBoxId !== selectedId || expectedReceiveProblemCount > submittedReceiveProblems.length)
+    && (receiveProblemsBoxId !== selectedId || !warehouseProblemState.complete)
     && !receiveProblemsLoading
     && !receiveProblemsError;
 
@@ -332,7 +338,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
     setProblemResolving(true);
     try {
       if (commitReceiveOutcome) {
-        const saved = await commitReceiveOutcome(activeBox.id, patch, submittedReceiveProblems, 'resolved');
+        const saved = await commitReceiveOutcome(activeBox.id, patch, warehouseReceiveProblems, 'resolved');
         setReceiveProblems(saved);
         setReceiveProblemsBoxId(activeBox.id);
       } else {
@@ -458,7 +464,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       })
       .finally(() => { if (!cancelled) setReceiveProblemsLoading(false); });
     return () => { cancelled = true; };
-  }, [selectedId, activeBox?.problemType, activeBox?.problemCount]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedId, activeBox?.problemType, activeBox?.problemCount, activeBox?.problemIds?.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // บันทึก Note ต่อลัง → box.note (sync Firestore) → โชว์บนสติกเกอร์ (StickerLabel อ่าน box.note)
   function saveBoxNote() {
@@ -868,18 +874,28 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
               )}
             </div>
 
-            {(receiveProblemsLoading || receiveProblemsError || receiveProblemsMissing || submittedReceiveProblems.length > 0) && (
+            {(receiveProblemsLoading || receiveProblemsError || receiveProblemsMissing || warehouseReceiveProblems.length > 0) && (
               <div style={{ marginBottom: 14 }}>
                 <div style={{ fontFamily: 'JetBrains Mono', fontSize: 14, color: 'var(--red)', fontWeight: 700, marginBottom: 7 }}>
-                  ปัญหารายสินค้า {receiveProblemsLoading ? '· กำลังโหลด…' : receiveProblemsError ? '· โหลดไม่สำเร็จ กรุณาเลือกลังใหม่เพื่อลองอีกครั้ง' : `(${submittedReceiveProblems.length})`}
+                  ปัญหารายสินค้า {receiveProblemsLoading ? '· กำลังโหลด…' : receiveProblemsError ? '· โหลดไม่สำเร็จ กรุณาเลือกลังใหม่เพื่อลองอีกครั้ง' : `(${warehouseReceiveProblems.length})`}
                 </div>
                 {receiveProblemsMissing && (
                   <div style={{ marginBottom: 8, padding: '8px 10px', border: '1.5px solid var(--red)', borderRadius: 8, background: '#fde8e8', color: 'var(--red)', fontFamily: 'system-ui', fontSize: 13, fontWeight: 700 }}>
-                    ⚠ พบรายละเอียดปัญหาไม่ครบ ({submittedReceiveProblems.length}/{expectedReceiveProblemCount}) จึงยังอนุมัติไม่ได้
+                    <div>⚠ พบรายละเอียดปัญหาไม่ครบ ({warehouseReceiveProblems.length}/{expectedReceiveProblemCount}) จึงยังอนุมัติไม่ได้</div>
+                    {missingReceiveProblemLabels.length > 0 && (
+                      <div style={{ marginTop: 3, fontSize: 12 }}>
+                        ยังไม่พบหรือยังไม่ได้ส่ง: {missingReceiveProblemLabels.join(', ')}
+                      </div>
+                    )}
+                    {missingReceiveProblemLabels.length === 0 && warehouseProblemState.missingCount > 0 && (
+                      <div style={{ marginTop: 3, fontSize: 12 }}>
+                        ยังขาดรายละเอียดอีก {warehouseProblemState.missingCount} รายการ
+                      </div>
+                    )}
                   </div>
                 )}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10 }}>
-                  {submittedReceiveProblems.map(problem => (
+                  {warehouseReceiveProblems.map(problem => (
                     <div key={problem.id} style={{ border: '1.5px solid var(--red)', borderRadius: 10, padding: 12, background: '#fff8f8', minWidth: 0 }}>
                       <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{problem.sku}</div>
                       <div style={{ fontFamily: 'system-ui', fontSize: 15, fontWeight: 800 }}>{problem.name || problem.sku}</div>

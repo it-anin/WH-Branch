@@ -9,8 +9,11 @@ import {
   aggregateReceiveItems,
   buildReceiveDifferences,
   buildReceiveLotExpMap,
+  isReceiveVerificationComplete,
+  notifyWarehouseReceiveProblems,
   problemTypeLabels,
   receiveBarcodePolicy,
+  receiveProblemBoxAction,
   receiveProblemRoute,
   resolveReceiveBoxScan,
   upsertReceiveProblemList,
@@ -331,6 +334,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   const [problemsLoadError, setProblemsLoadError] = useState(false);
   const [problemSaving, setProblemSaving] = useState(false);
   const [problemDeletingId, setProblemDeletingId] = useState(null);
+  const [problemNotifying, setProblemNotifying] = useState(false);
   const [confirmSubmitting, setConfirmSubmitting] = useState(false);
   const [outcomeHasProblems, setOutcomeHasProblems] = useState(false);
   const [outcomeProblemCount, setOutcomeProblemCount] = useState(0);
@@ -580,17 +584,22 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
       showToast(`⚠ ${boxLabel}รับเข้าสาขาแล้ว`, 'error');
       return;
     }
-    // recheck ต้องเช็คก่อน receivePending — ป้องกันกรณีที่ลังมีทั้ง receivePending=true และ problemReported=true
-    // พร้อมกัน (edge case / Firestore race) ซึ่งจะทำให้โดนบล็อกก่อนถึง recheck exception
-    if (box.problemReported && !box.problemResolved) {
-      // พนักงานสาขาคนไหนก็ recheck ลังที่สแกนพลาด (incomplete) ได้ — สแกนใหม่ให้ตรง (เดิมจำกัดเฉพาะเภสัช);
-      // ลัง damaged (มีรูป/ปัญหาจริง) ยังตกไปบล็อกด้านล่าง → รอเภสัช/คลังจัดการ
-      if (box.problemType === 'incomplete') {
-        setRecheckMode(true);
-        startReceive(box);
-        showToast(`🔁 รีเช็คลัง ${box.id}`, 'success');
-        return;
-      }
+    // ตรวจสถานะปัญหาก่อน receivePending เพื่อกัน edge case ที่ field ค้างพร้อมกัน:
+    // - แจ้งคลังแล้ว: ห้าม Android เปิด recheck เก่า ระหว่างคลังกำลังแก้
+    // - ยังไม่แจ้ง + incomplete: เปิด recheck ตามปกติ
+    const problemAction = receiveProblemBoxAction(box);
+    if (problemAction === 'wait_warehouse') {
+      playScanFail();
+      showToast(`⚠ ${boxLabel}แจ้งคลังสินค้าแล้ว · รอคลังแก้ไขและอนุมัติ`, 'error');
+      return;
+    }
+    if (problemAction === 'recheck') {
+      setRecheckMode(true);
+      startReceive(box);
+      showToast(`🔁 รีเช็คลัง ${box.id}`, 'success');
+      return;
+    }
+    if (problemAction === 'wait_resolution') {
       playScanFail();
       showToast(`⚠ ${boxLabel}แจ้งปัญหาแล้ว · รอการแก้ไข`, 'error');
       return;
@@ -750,11 +759,33 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     }
   }
 
-  function saveProblemNote() {
-    if (!viewingId) return;
-    // บันทึกรายละเอียด + ส่งต่อให้ Outbound แก้ไข (problemReviewed = gate ให้ badge ขึ้นที่ Outbound)
-    setBoxes(prev => prev.map(b => b.id === viewingId ? { ...b, problemNote, problemReviewed: true } : b));
-    showToast('บันทึกแล้ว ✓ · ส่งให้ Outbound แก้ไขสินค้า', 'success');
+  async function saveProblemNote() {
+    if (!viewingId || problemNotifying) return;
+    const targetBox = boxes.find(box => box.id === viewingId);
+    if (!targetBox) return;
+
+    setProblemNotifying(true);
+    try {
+      const { savedProblems } = await notifyWarehouseReceiveProblems({
+        box: targetBox,
+        problemNote,
+        loadReceiveProblems,
+        commitReceiveOutcome,
+      });
+      setReceiveProblems(savedProblems || []);
+      showToast('บันทึกแล้ว ✓ · ส่งให้ Outbound แก้ไขสินค้า', 'success');
+    } catch (err) {
+      console.error('notify warehouse receive problems failed:', err.code || err.message);
+      if (err.code === 'receive-problems-incomplete') {
+        const found = err.problemState?.problems?.length || 0;
+        const expected = err.problemState?.expectedCount || targetBox.problemCount || 0;
+        showToast(`⚠ ส่งให้คลังไม่ได้ · รายละเอียดปัญหาไม่ครบ (${found}/${expected})`, 'error');
+      } else {
+        showToast('⚠ แจ้งคลังสินค้าไม่สำเร็จ · กรุณาลองใหม่', 'error');
+      }
+    } finally {
+      setProblemNotifying(false);
+    }
   }
 
   // กดยืนยันรับ — ถ้าสแกนไม่ครบทุกรายการ เด้ง dialog ยืนยันก่อน (กันกดพลาดทั้งที่ยังสแกนไม่เสร็จ); ครบแล้ว → ยืนยันเลย
@@ -1071,7 +1102,6 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
   // needed = "หน่วยฐาน" (gotBase จากตอนแพ็ค เช่น 24 ม้วน) — พนักงานสาขาสแกน multiple ไหนก็ได้ ระบบนับรวมเป็นหน่วยฐาน
   // recheck: เภสัชนับใหม่จาก 0 ต้องครบเต็มจำนวนฐานเสมอ; ลังเก่าไม่มี gotBase → fallback qty (นับดิบตามเดิม)
   const getNeeded        = (item) => item.gotBase ?? item.qty ?? item.got ?? 0;
-  const fullyChecked     = (item) => (scanCounts[item.sku] || 0) >= getNeeded(item);
   // recheck: ตรวจเฉพาะ SKU ที่รอบแรกสแกนไม่ตรงจำนวน (ขาดหรือเกิน — count ≠ needed หน่วยฐาน) — normal: ทุก SKU ในลัง
   const verifyItems      = (recheckMode && foundBox?.problemScanCounts)
     ? boxItems.filter(l => (foundBox.problemScanCounts[l.sku] || 0) !== getNeeded(l))
@@ -1083,9 +1113,9 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
     : [];
   // หน้าผลรีเช็คแสดงเฉพาะรายการที่ยังนับไม่ตรงเท่านั้น; รายการที่ครบแล้วไม่ต้องย้อนมาให้สับสน
   const resultItems      = recheckMode ? pendingRecheckItems : boxItems;
-  const allChecked       = verifyItems.length > 0 && verifyItems.every(fullyChecked);
+  const recheckHasNoTargets = recheckMode && verifyItems.length === 0;
+  const allChecked       = isReceiveVerificationComplete({ recheckMode, verifyItems, scanCounts });
   const problemTargetItem = problemTargetSku ? boxItems.find(item => item.sku === problemTargetSku) : null;
-  const scannedSkuCount  = verifyItems.filter(l => (scanCounts[l.sku] || 0) >= 1).length;
 
   return (
     <div className="frame" style={{ padding: 0, position: 'relative', minHeight: isAndroid ? 0 : 560 }}>
@@ -1396,16 +1426,16 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                   return (
                     <button
                       className="btn"
-                      onClick={notified ? undefined : saveProblemNote}
-                      disabled={notified}
+                      onClick={notified || problemNotifying ? undefined : saveProblemNote}
+                      disabled={notified || problemNotifying}
                       style={{
-                        borderColor: notified ? 'var(--line)' : 'var(--accent)',
-                        color: notified ? 'var(--mute)' : 'var(--accent)',
-                        background: notified ? 'var(--paper-dark)' : 'white',
-                        cursor: notified ? 'not-allowed' : 'pointer',
-                        opacity: notified ? 0.7 : 1,
+                        borderColor: notified || problemNotifying ? 'var(--line)' : 'var(--accent)',
+                        color: notified || problemNotifying ? 'var(--mute)' : 'var(--accent)',
+                        background: notified || problemNotifying ? 'var(--paper-dark)' : 'white',
+                        cursor: notified || problemNotifying ? 'not-allowed' : 'pointer',
+                        opacity: notified || problemNotifying ? 0.7 : 1,
                       }}
-                    >{notified ? '✓ แจ้งคลังสินค้าแล้ว' : '📦 แจ้งคลังสินค้า'}</button>
+                    >{notified ? '✓ แจ้งคลังสินค้าแล้ว' : problemNotifying ? 'กำลังแจ้งคลัง…' : '📦 แจ้งคลังสินค้า'}</button>
                   );
                 })()}
               </div>
@@ -1663,7 +1693,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                     <div className="spacer" />
                   </div>
 
-                  {!isReceived && (
+                  {!isReceived && !recheckHasNoTargets && (
                     <div style={{ marginBottom: 12 }}>
                       <div className="row" style={{ gap: 10 }}>
                         <input
@@ -1685,6 +1715,12 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                           ✓ {boxItems.find(l => l.sku === lastScannedSku)?.name} — ติ๊กแล้ว
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {recheckHasNoTargets && (
+                    <div style={{ marginBottom: 12, padding: '12px 14px', border: '1.5px solid var(--green)', borderRadius: 10, background: '#e8f0d8', color: 'var(--green)', fontFamily: 'system-ui', fontSize: 14, fontWeight: 700 }}>
+                      ✓ ไม่เหลือ SKU ที่ต้องนับซ้ำตามข้อมูลล่าสุด · กดยืนยันผลรีเช็คเพื่อดำเนินการต่อ
                     </div>
                   )}
 
@@ -1721,7 +1757,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                     </div>
                   )}
 
-                  {(() => {
+                  {!recheckHasNoTargets && (() => {
                     const scannedItems = [...(recheckMode ? verifyItems : boxItems)]
                       .filter(l => (scanCounts[l.sku] || 0) > 0)
                       .sort((a, b) => (a.sku === lastScannedSku ? -1 : b.sku === lastScannedSku ? 1 : 0));
@@ -1837,7 +1873,7 @@ export default function BranchReceive({ boxes, setBoxes, itemsByBox, showToast, 
                       <div className="row" style={{ marginTop: 14, gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <button className="btn lg" disabled={!lastScannedSku || problemSaving} style={{ borderColor: 'var(--red)', color: 'var(--red)', opacity: lastScannedSku ? 1 : 0.55 }} onClick={() => openProblemEditor()}>⚠ แจ้งปัญหาสินค้านี้</button>
                         <button className="btn primary lg" disabled={confirmSubmitting || problemsLoading || problemsLoadError || problemSaving} onClick={requestConfirm}>
-                          {confirmSubmitting ? 'กำลังยืนยัน…' : '✓ ยืนยันรับสินค้า'}
+                          {confirmSubmitting ? 'กำลังยืนยัน…' : recheckMode ? '✓ ยืนยันผลรีเช็ค' : '✓ ยืนยันรับสินค้า'}
                         </button>
                       </div>
                     </>

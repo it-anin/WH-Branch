@@ -95,6 +95,120 @@ export function problemTypeLabels(types) {
   return (types || []).map(type => labels[type] || type);
 }
 
+// Outbound normally receives only submitted problems. Older boxes can already
+// have problemReviewed=true while their documents are still pending_recheck
+// because the old "แจ้งคลังสินค้า" action updated only the box. In that exact
+// reviewed state, pending_recheck is safe to treat as warehouse work.
+export function selectWarehouseReceiveProblems(box, problems = []) {
+  const boxId = cleanText(box?.id);
+  const expectedIds = [...new Set((box?.problemIds || []).map(cleanText).filter(Boolean))];
+  const acceptedStatuses = box?.problemReviewed
+    ? new Set(['submitted', 'pending_recheck'])
+    : new Set(['submitted']);
+  const acceptedById = new Map();
+
+  (problems || []).forEach(problem => {
+    const id = cleanText(problem?.id);
+    if (!id || cleanText(problem?.boxId) !== boxId || !acceptedStatuses.has(problem?.status)) return;
+    acceptedById.set(id, problem);
+  });
+
+  const selected = expectedIds.length > 0
+    ? expectedIds.map(id => acceptedById.get(id)).filter(Boolean)
+    : [...acceptedById.values()];
+  const expectedCount = expectedIds.length > 0
+    ? expectedIds.length
+    : Math.max(0, Math.trunc(numberOrZero(box?.problemCount)));
+  const missingIds = expectedIds.filter(id => !acceptedById.has(id));
+  const missingCount = Math.max(0, expectedCount - selected.length);
+
+  return {
+    problems: selected,
+    expectedIds,
+    expectedCount,
+    missingIds,
+    missingCount,
+    complete: missingIds.length === 0 && missingCount === 0,
+  };
+}
+
+export function receiveProblemSkuFromId(problemId) {
+  const value = cleanText(problemId);
+  const separator = value.indexOf('__');
+  if (separator < 0) return '';
+  try {
+    return decodeURIComponent(value.slice(separator + 2));
+  } catch {
+    return value.slice(separator + 2);
+  }
+}
+
+// Keeps loading, validation and the atomic box/problem status transition in
+// one reusable operation. Errors deliberately propagate so the UI never shows
+// a false success and can leave the action enabled for a retry.
+export async function notifyWarehouseReceiveProblems({
+  box,
+  problemNote = '',
+  loadReceiveProblems,
+  commitReceiveOutcome,
+}) {
+  if (!box?.id) {
+    const error = new Error('receive-box-missing');
+    error.code = 'receive-box-missing';
+    throw error;
+  }
+  if (typeof loadReceiveProblems !== 'function' || typeof commitReceiveOutcome !== 'function') {
+    const error = new Error('receive-problem-workflow-unavailable');
+    error.code = 'receive-problem-workflow-unavailable';
+    throw error;
+  }
+
+  const loadedProblems = await loadReceiveProblems(box.id);
+  // Clicking "แจ้งคลังสินค้า" is the explicit review action, so legacy
+  // pending_recheck documents are eligible to be promoted in this operation.
+  const problemState = selectWarehouseReceiveProblems(
+    { ...box, problemReviewed: true },
+    loadedProblems,
+  );
+  if (!problemState.complete) {
+    const error = new Error('receive-problems-incomplete');
+    error.code = 'receive-problems-incomplete';
+    error.problemState = problemState;
+    throw error;
+  }
+
+  const patch = { problemNote, problemReviewed: true };
+  const savedProblems = await commitReceiveOutcome(
+    box.id,
+    patch,
+    problemState.problems,
+    'submitted',
+  );
+  return { patch, savedProblems, problemState };
+}
+
+export function receiveProblemBoxAction(box) {
+  if (!box?.problemReported || box?.problemResolved) return 'continue';
+  // Once the branch explicitly sends the problem to the warehouse, Android
+  // must not reopen the old count recheck while the warehouse is editing it.
+  if (box?.problemReviewed) return 'wait_warehouse';
+  if (box?.problemType === 'incomplete') return 'recheck';
+  return 'wait_resolution';
+}
+
+export function isReceiveVerificationComplete({
+  recheckMode = false,
+  verifyItems = [],
+  scanCounts = {},
+} = {}) {
+  // Warehouse edits can make every original count difference disappear. That
+  // is a valid zero-target recheck, not a state that should remain stuck at 0/0.
+  if (recheckMode && verifyItems.length === 0) return true;
+  return verifyItems.length > 0 && verifyItems.every(item =>
+    numberOrZero(scanCounts?.[item?.sku]) >= expectedBaseQty(item)
+  );
+}
+
 export function receiveProblemRoute({ result, recheckMode = false, isPharmacist = false, hasProblems = false }) {
   if (result === 'ok') {
     return hasProblems

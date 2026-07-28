@@ -2,11 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  isReceiveVerificationComplete,
   isReceiveProblemExpired,
+  notifyWarehouseReceiveProblems,
   normalizeReceiveProblem,
   problemTypeLabels,
+  receiveProblemBoxAction,
   receiveProblemId,
   receiveProblemRoute,
+  receiveProblemSkuFromId,
+  selectWarehouseReceiveProblems,
   upsertReceiveProblemList,
 } from '../src/warehouseHelpers.js';
 
@@ -67,6 +72,183 @@ test('receiving routes item drafts through count and recheck outcomes', () => {
   assert.deepEqual(receiveProblemRoute({ result: 'fail', recheckMode: true, isPharmacist: true, hasProblems: false }), {
     action: 'submit_problem', problemStatus: null, problemType: 'incomplete',
   });
+});
+
+test('reviewed problems wait for warehouse instead of reopening Android recheck', () => {
+  assert.equal(receiveProblemBoxAction({
+    problemReported: true,
+    problemResolved: false,
+    problemReviewed: true,
+    problemType: 'incomplete',
+  }), 'wait_warehouse');
+  assert.equal(receiveProblemBoxAction({
+    problemReported: true,
+    problemResolved: false,
+    problemReviewed: false,
+    problemType: 'incomplete',
+  }), 'recheck');
+  assert.equal(receiveProblemBoxAction({
+    problemReported: true,
+    problemResolved: true,
+    problemReviewed: true,
+    problemType: 'incomplete',
+  }), 'continue');
+});
+
+test('zero-target recheck completes after the latest warehouse data removes every count difference', () => {
+  assert.equal(isReceiveVerificationComplete({
+    recheckMode: true,
+    verifyItems: [],
+    scanCounts: {},
+  }), true);
+  assert.equal(isReceiveVerificationComplete({
+    recheckMode: false,
+    verifyItems: [],
+    scanCounts: {},
+  }), false);
+  assert.equal(isReceiveVerificationComplete({
+    recheckMode: true,
+    verifyItems: [{ sku: 'SKU-1', gotBase: 2 }],
+    scanCounts: { 'SKU-1': 1 },
+  }), false);
+  assert.equal(isReceiveVerificationComplete({
+    recheckMode: true,
+    verifyItems: [{ sku: 'SKU-1', gotBase: 2 }],
+    scanCounts: { 'SKU-1': 2 },
+  }), true);
+});
+
+test('warehouse accepts reviewed legacy pending problems but not unreviewed or draft problems', () => {
+  const first = normalizeReceiveProblem({
+    boxId: 'BX-LEGACY', sku: 'SKU_1', types: ['damaged'], status: 'pending_recheck',
+  }, 1000);
+  const second = normalizeReceiveProblem({
+    boxId: 'BX-LEGACY', sku: 'SKU-2', types: ['wrong_item'], status: 'submitted',
+  }, 1000);
+  const draft = normalizeReceiveProblem({
+    boxId: 'BX-LEGACY', sku: 'SKU-3', types: ['other'], status: 'draft',
+  }, 1000);
+  const box = {
+    id: 'BX-LEGACY',
+    problemIds: [first.id, second.id, draft.id],
+    problemCount: 3,
+  };
+
+  const unreviewed = selectWarehouseReceiveProblems(box, [first, second, draft]);
+  assert.deepEqual(unreviewed.problems.map(problem => problem.id), [second.id]);
+  assert.deepEqual(unreviewed.missingIds, [first.id, draft.id]);
+  assert.equal(unreviewed.complete, false);
+
+  const reviewed = selectWarehouseReceiveProblems(
+    { ...box, problemReviewed: true },
+    [first, second, draft],
+  );
+  assert.deepEqual(reviewed.problems.map(problem => problem.id), [first.id, second.id]);
+  assert.deepEqual(reviewed.missingIds, [draft.id]);
+  assert.equal(reviewed.complete, false);
+  assert.equal(receiveProblemSkuFromId(first.id), 'SKU_1');
+});
+
+test('warehouse completeness follows exact problem ids instead of unrelated document count', () => {
+  const expectedFirst = normalizeReceiveProblem({
+    boxId: 'BX-EXACT', sku: 'SKU-1', types: ['damaged'], status: 'submitted',
+  }, 1000);
+  const expectedMissing = normalizeReceiveProblem({
+    boxId: 'BX-EXACT', sku: 'SKU-2', types: ['wrong_item'], status: 'submitted',
+  }, 1000);
+  const unrelated = normalizeReceiveProblem({
+    boxId: 'BX-EXACT', sku: 'SKU-X', types: ['other'], status: 'submitted',
+  }, 1000);
+  const state = selectWarehouseReceiveProblems({
+    id: 'BX-EXACT',
+    problemReviewed: true,
+    problemIds: [expectedFirst.id, expectedMissing.id],
+    problemCount: 2,
+  }, [expectedFirst, unrelated]);
+
+  assert.deepEqual(state.problems.map(problem => problem.id), [expectedFirst.id]);
+  assert.deepEqual(state.missingIds, [expectedMissing.id]);
+  assert.equal(state.expectedCount, 2);
+  assert.equal(state.missingCount, 1);
+  assert.equal(state.complete, false);
+});
+
+test('notifying warehouse submits every expected pending problem with the box atomically', async () => {
+  const first = normalizeReceiveProblem({
+    boxId: 'BX-NOTIFY', sku: 'SKU-1', types: ['damaged'], status: 'pending_recheck',
+  }, 1000);
+  const second = normalizeReceiveProblem({
+    boxId: 'BX-NOTIFY', sku: 'SKU-2', types: ['wrong_item'], status: 'pending_recheck',
+  }, 1000);
+  const box = {
+    id: 'BX-NOTIFY',
+    problemReviewed: false,
+    problemIds: [first.id, second.id],
+    problemCount: 2,
+  };
+  const calls = [];
+
+  const result = await notifyWarehouseReceiveProblems({
+    box,
+    problemNote: 'ส่งให้คลังแก้ 2 รายการ',
+    loadReceiveProblems: async boxId => {
+      assert.equal(boxId, box.id);
+      return [first, second];
+    },
+    commitReceiveOutcome: async (...args) => {
+      calls.push(args);
+      return args[2].map(problem => ({ ...problem, status: args[3] }));
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], box.id);
+  assert.deepEqual(calls[0][1], {
+    problemNote: 'ส่งให้คลังแก้ 2 รายการ',
+    problemReviewed: true,
+  });
+  assert.deepEqual(calls[0][2].map(problem => problem.id), [first.id, second.id]);
+  assert.equal(calls[0][3], 'submitted');
+  assert.deepEqual(result.savedProblems.map(problem => problem.status), ['submitted', 'submitted']);
+});
+
+test('warehouse notification blocks missing expected problems and propagates commit failures for retry', async () => {
+  const first = normalizeReceiveProblem({
+    boxId: 'BX-RETRY', sku: 'SKU-1', types: ['damaged'], status: 'pending_recheck',
+  }, 1000);
+  const second = normalizeReceiveProblem({
+    boxId: 'BX-RETRY', sku: 'SKU-2', types: ['wrong_item'], status: 'pending_recheck',
+  }, 1000);
+  const box = {
+    id: 'BX-RETRY',
+    problemIds: [first.id, second.id],
+    problemCount: 2,
+  };
+  let commitCalls = 0;
+
+  await assert.rejects(
+    notifyWarehouseReceiveProblems({
+      box,
+      loadReceiveProblems: async () => [first],
+      commitReceiveOutcome: async () => { commitCalls += 1; },
+    }),
+    error => error.code === 'receive-problems-incomplete'
+      && error.problemState.missingIds[0] === second.id,
+  );
+  assert.equal(commitCalls, 0);
+
+  await assert.rejects(
+    notifyWarehouseReceiveProblems({
+      box,
+      loadReceiveProblems: async () => [first, second],
+      commitReceiveOutcome: async () => {
+        commitCalls += 1;
+        throw new Error('firestore-offline');
+      },
+    }),
+    /firestore-offline/,
+  );
+  assert.equal(commitCalls, 1);
 });
 
 test('drafts survive retention while submitted/resolved problems expire after 30 days', () => {
