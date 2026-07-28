@@ -7,7 +7,76 @@ import {
   finalizePackedItemEdits,
   preparePackedItemsForEdit,
   resolveWarehouseScanParent,
+  savePackedItemAdjustment,
 } from '../src/warehouseHelpers.js';
+
+test('problem-page quantity adjustment waits for the transactional save and updates every quantity field', async () => {
+  const source = [{
+    sku: 'SKU-A',
+    unit: 'box',
+    qty: 2,
+    got: 2,
+    gotBase: 24,
+    scannedUnit: 'box',
+    scannedLots: [{ lot: 'LOT-A', qty: 2, unit: 'box' }],
+  }];
+  let releaseSave;
+  let savedArgs;
+  let settled = false;
+  const saveWarehouseBoxItems = (...args) => new Promise(resolve => {
+    savedArgs = args;
+    releaseSave = resolve;
+  });
+
+  const pending = savePackedItemAdjustment({
+    boxId: 'BX-1',
+    items: source,
+    rowIndex: 0,
+    delta: 1,
+    factorMap: { 'SKU-A__box': 12 },
+    saveWarehouseBoxItems,
+  });
+  pending.finally(() => { settled = true; });
+  await Promise.resolve();
+
+  assert.equal(settled, false, 'the adjustment must remain pending until Firestore finishes');
+  assert.equal(savedArgs[0], 'BX-1');
+  assert.strictEqual(savedArgs[1], source);
+  assert.equal(savedArgs[2][0].qty, 3);
+  assert.equal(savedArgs[2][0].got, 3);
+  assert.equal(savedArgs[2][0].gotBase, 36);
+  assert.equal(savedArgs[2][0].scannedLots[0].qty, 3);
+  assert.deepEqual(savedArgs[3], { totalQty: 3, skuCount: 1 });
+
+  releaseSave();
+  const result = await pending;
+  assert.equal(settled, true);
+  assert.equal(result.changed, true);
+});
+
+test('failed problem-page quantity adjustment rejects without mutating the source data', async () => {
+  const source = [{
+    sku: 'SKU-A',
+    qty: 1,
+    got: 1,
+    gotBase: 1,
+    scannedLots: [{ lot: 'LOT-A', qty: 1, unit: 'piece' }],
+  }];
+  const failure = Object.assign(new Error('offline'), { code: 'unavailable' });
+
+  await assert.rejects(
+    savePackedItemAdjustment({
+      boxId: 'BX-1',
+      items: source,
+      rowIndex: 0,
+      delta: -1,
+      saveWarehouseBoxItems: async () => { throw failure; },
+    }),
+    error => error === failure,
+  );
+  assert.equal(source[0].qty, 1);
+  assert.equal(source[0].gotBase, 1);
+});
 
 test('multi-LOT edit round-trip preserves the original breakdown on a no-op save', () => {
   const source = [{

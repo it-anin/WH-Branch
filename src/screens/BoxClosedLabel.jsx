@@ -5,13 +5,13 @@ import SketchyBarcode from '../components/SketchyBarcode.jsx';
 import { fixItemName, lookupFactor } from '../units.js';
 import { branchLabel } from '../branches.js';
 import {
-  adjustPackedItem,
   buildLotRows,
   finalizePackedItemEdits,
   preparePackedItemsForEdit,
   problemTypeLabels,
   receiveProblemSkuFromId,
   resolveWarehouseScanParent,
+  savePackedItemAdjustment,
   selectWarehouseReceiveProblems,
   toBuddhistExpiry,
 } from '../warehouseHelpers.js';
@@ -159,10 +159,13 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   const [receiveProblemsLoading, setReceiveProblemsLoading] = useState(false);
   const [receiveProblemsError, setReceiveProblemsError] = useState(false);
   const [problemResolving, setProblemResolving] = useState(false);
+  const [qtyAdjusting, setQtyAdjusting] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const nextEditRowIdRef = useRef(0);
   const editSourceItemsRef = useRef([]);
   const editSavingRef = useRef(false);
+  const problemResolvingRef = useRef(false);
+  const qtyAdjustingRef = useRef(false);
 
   // อนุมัติแล้ว = exported/received, รออนุมัติ = closed (ยังไม่ส่ง POS)
   const isApproved = (b) => b.status === 'exported' || b.status === 'received';
@@ -316,16 +319,43 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
   }
 
   // แก้ไขจำนวนสินค้าในลังที่มีปัญหา (+/-)
-  function adjustQty(rowIndex, delta) {
-    if (!activeBox) return;
-    const items = itemsByBox?.[activeBox.id] || [];
-    const next = adjustPackedItem(items, rowIndex, delta, factorMap);
-    setItemsByBox(prev => ({ ...prev, [activeBox.id]: next }));
+  async function adjustQty(rowIndex, delta) {
+    if (!activeBox || qtyAdjustingRef.current || problemResolvingRef.current) return;
+    const boxId = activeBox.id;
+    const items = itemsByBox?.[boxId] || [];
+    qtyAdjustingRef.current = true;
+    setQtyAdjusting(true);
+    try {
+      await savePackedItemAdjustment({
+        boxId,
+        items,
+        rowIndex,
+        delta,
+        factorMap,
+        saveWarehouseBoxItems,
+      });
+    } catch (err) {
+      if (err?.code === 'warehouse-edit-conflict') {
+        showToast('⚠ รายการลังถูกแก้จากอีกเครื่อง กรุณารอข้อมูลล่าสุดแล้วลองใหม่', 'error');
+      } else if (err?.code === 'warehouse-box-not-editable' || err?.code === 'warehouse-box-missing') {
+        showToast('⚠ สถานะลังเปลี่ยนแล้ว ไม่สามารถแก้จำนวนได้', 'error');
+      } else {
+        console.error('save warehouse quantity adjustment failed:', err?.code || err?.message || err);
+        showToast('⚠ บันทึกจำนวนไม่สำเร็จ จำนวนเดิมยังไม่ถูกเปลี่ยน กรุณาลองใหม่', 'error');
+      }
+    } finally {
+      qtyAdjustingRef.current = false;
+      setQtyAdjusting(false);
+    }
   }
 
   // แก้ไข/อนุมัติ → ปิดสถานะปัญหา + อัปเดต skuCount/totalQty (แจ้งกลับหน้ารับสินค้า)
   async function resolveProblem() {
-    if (!activeBox || problemResolving) return;
+    if (!activeBox || problemResolvingRef.current) return;
+    if (qtyAdjustingRef.current) {
+      showToast('กำลังบันทึกจำนวนสินค้า กรุณารอสักครู่', 'warn');
+      return;
+    }
     const items = itemsByBox?.[activeBox.id] || [];
     const totalQty = items.reduce((s, l) => s + (l.qty ?? l.got ?? 0), 0);
     const skuCount = items.filter(l => (l.qty ?? l.got ?? 0) > 0).length;
@@ -335,6 +365,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       skuCount,
       totalQty,
     };
+    problemResolvingRef.current = true;
     setProblemResolving(true);
     try {
       if (commitReceiveOutcome) {
@@ -349,6 +380,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       console.error('resolve receive problems failed:', err.code || err.message);
       showToast('⚠ อนุมัติการแก้ไขไม่สำเร็จ กรุณาลองใหม่', 'error');
     } finally {
+      problemResolvingRef.current = false;
       setProblemResolving(false);
     }
   }
@@ -953,9 +985,9 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                             <td style={{ fontFamily: 'JetBrains Mono' }}>{l.scannedUnit || l.unit}</td>
                             <td>
                               <div className="row" style={{ gap: 8, justifyContent: 'center', alignItems: 'center' }}>
-                                <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--red)', color: 'var(--red)', fontWeight: 700 }} onClick={() => adjustQty(rowIndex, -1)}>−</button>
+                                <button className="btn sm" disabled={qtyAdjusting || problemResolving} style={{ minWidth: 32, borderColor: 'var(--red)', color: 'var(--red)', fontWeight: 700 }} onClick={() => adjustQty(rowIndex, -1)}>−</button>
                                 <span style={{ fontFamily: 'system-ui', fontSize: 24, fontWeight: 700, minWidth: 30, textAlign: 'center' }}>{l.qty ?? l.got ?? 0}</span>
-                                <button className="btn sm" style={{ minWidth: 32, borderColor: 'var(--green)', color: 'var(--green)', fontWeight: 700 }} onClick={() => adjustQty(rowIndex, +1)}>+</button>
+                                <button className="btn sm" disabled={qtyAdjusting || problemResolving} style={{ minWidth: 32, borderColor: 'var(--green)', color: 'var(--green)', fontWeight: 700 }} onClick={() => adjustQty(rowIndex, +1)}>+</button>
                               </div>
                             </td>
                           </tr>
@@ -971,15 +1003,16 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
                 <div className="row" style={{ marginTop: 14, gap: 8, justifyContent: 'flex-end' }}>
                   <button
                     className="btn sm"
+                    disabled={qtyAdjusting || problemResolving}
                     style={{ background: 'var(--accent)', borderColor: 'var(--accent)', color: 'white', fontWeight: 700 }}
                     onClick={() => { setProblemEditing(true); startEdit(); }}
                   >✎ แก้ไขรายการสินค้า</button>
                   <button
                     className="btn sm"
-                    disabled={problemResolving || receiveProblemsLoading || receiveProblemsError || receiveProblemsMissing}
+                    disabled={qtyAdjusting || problemResolving || receiveProblemsLoading || receiveProblemsError || receiveProblemsMissing}
                     style={{ background: 'var(--green)', borderColor: 'var(--green)', color: 'white', fontWeight: 700 }}
                     onClick={resolveProblem}
-                  >{problemResolving ? 'กำลังอนุมัติ…' : '✓ อนุมัติ'}</button>
+                  >{qtyAdjusting ? 'กำลังบันทึกจำนวน…' : problemResolving ? 'กำลังอนุมัติ…' : '✓ อนุมัติ'}</button>
                 </div>
               </div>
 

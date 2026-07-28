@@ -643,6 +643,35 @@ export function adjustPackedItem(items, rowIndex, delta, factorMap = {}) {
   return items.map((item, index) => index === rowIndex ? updated : item);
 }
 
+// Persist a problem-page +/- edit before allowing any later approval action.
+// The supplied writer uses the existing Firestore transaction that updates
+// boxItems and the box summary together and rejects stale concurrent edits.
+export async function savePackedItemAdjustment({
+  boxId,
+  items = [],
+  rowIndex,
+  delta,
+  factorMap = {},
+  saveWarehouseBoxItems,
+}) {
+  const nextItems = adjustPackedItem(items, rowIndex, delta, factorMap);
+  if (nextItems === items) {
+    return { changed: false, items, summaryPatch: null };
+  }
+  if (!boxId || typeof saveWarehouseBoxItems !== 'function') {
+    const error = new Error('warehouse-qty-save-unavailable');
+    error.code = 'warehouse-qty-save-unavailable';
+    throw error;
+  }
+
+  const summaryPatch = {
+    totalQty: nextItems.reduce((sum, item) => sum + numberOrZero(item?.qty ?? item?.got), 0),
+    skuCount: nextItems.filter(item => numberOrZero(item?.qty ?? item?.got) > 0).length,
+  };
+  await saveWarehouseBoxItems(boxId, items, nextItems, summaryPatch);
+  return { changed: true, items: nextItems, summaryPatch };
+}
+
 // A catalog row belongs to at most one packer. If legacy assignments contain
 // the same zone more than once, packer order deterministically chooses the owner.
 export function computeCatalogByPacker(items, assignments, packers, getZone = zoneOfItem) {
