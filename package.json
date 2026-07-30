@@ -6,13 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test tests/warehouse-p1.test.js tests/warehouse-p2-p3.test.js tests/branch-lot-exp.test.js tests/receive-startup.test.js tests/receive-problems.test.js tests/picklist-run.test.js tests/warehouse-lot-edit.test.js",
+    "test": "node --test tests/warehouse-p1.test.js tests/warehouse-p2-p3.test.js tests/branch-lot-exp.test.js tests/receive-startup.test.js tests/receive-problems.test.js tests/picklist-run.test.js tests/warehouse-lot-edit.test.js tests/r14-qr.test.js",
     "test:emulator": "node --test tests/firestore-emulator.test.js",
     "preview": "vite preview"
   },
   "dependencies": {
     "firebase": "^12.12.1",
     "jsbarcode": "^3.12.3",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "xlsx": "^0.18.5"

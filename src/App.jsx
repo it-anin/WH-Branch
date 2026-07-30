@@ -36,6 +36,7 @@ import PackScanC from './screens/PackScanC.jsx';
 import BoxClosedLabel from './screens/BoxClosedLabel.jsx';
 import LookupByBoxBarcode from './screens/LookupByBoxBarcode.jsx';
 import BranchReceive from './screens/BranchReceive.jsx';
+import ProductQrPage from './screens/ProductQrPage.jsx';
 import PackerDashboard from './screens/PackerDashboard.jsx';
 import AndroidApp from './screens/AndroidApp.jsx';
 import Login from './screens/Login.jsx';
@@ -54,6 +55,7 @@ const TABS = [
   { k: 'list',   label: 'รายการเบิกสินค้า' },
   { k: 'scan',   label: 'แพ็คกิ้ง' },
   { k: 'closed', label: 'คลังสินค้าส่งออก' },
+  { k: 'qr',     label: 'QR' },
   { k: 'receive', label: '📥 รับสินค้า (สาขา)' },
 ];
 
@@ -66,7 +68,7 @@ const PACKERS = [
 
 // tab ที่แต่ละ role เห็นบน Desktop (A1 login) — warehouse = งานคลัง, branch = รับสินค้าเท่านั้น (ปรับที่นี่จุดเดียว)
 const ROLE_TABS = {
-  warehouse: ['flow', 'list', 'scan', 'closed'],
+  warehouse: ['flow', 'list', 'scan', 'closed', 'qr'],
   branch: ['receive'],
 };
 
@@ -83,6 +85,8 @@ const PROGRESS_WRITE_INTERVAL_MS = 1000;
 // MAX_CHUNKS = เพดานที่ listener/cleanup รู้จัก (10 × ~700KB = ข้อมูล LOT ได้ ~7MB — เหลือเฟือ)
 const LOTMAP_MAX_CHUNKS = 10;
 const LOTMAP_CHUNK_BUDGET = 700_000; // ~700KB ต่อ doc (JSON length โดยประมาณ)
+const QR_PRODUCTS_MAX_CHUNKS = 10;
+const QR_PRODUCTS_CHUNK_BUDGET = 700_000;
 
 // nameMap (ชื่อสินค้าต่อ SKU จาก R05.106 ColF) — วัดไฟล์จริง 7,868 SKU = ~555KB ยังลง doc เดียวได้
 // แต่ shard ตั้งแต่แรกตาม Known Pitfall (config/lotMap ชนลิมิต 1MB/doc มาแล้ว 2 รอบเพราะไม่ได้เผื่อ)
@@ -767,7 +771,7 @@ export default function App() {
     if (!window.confirm(
       'ล้างข้อมูล Firestore ทั้งหมด?\n\n' +
       '— boxes, boxItems, progress, history, dismissals\n' +
-      '— catalog, barcodeMap, costMap, lotMap, receive\n\n' +
+      '— catalog, barcodeMap, costMap, lotMap, qrProducts, receive\n\n' +
       '⚠ ไม่สามารถกู้คืนได้'
     )) return;
     try {
@@ -789,6 +793,8 @@ export default function App() {
       batch.delete(doc(db, 'config', 'factorMap'));
       batch.delete(doc(db, 'config', 'lotMap'));
       for (let i = 1; i < LOTMAP_MAX_CHUNKS; i++) batch.delete(doc(db, 'config', `lotMap_${i}`)); // ลบ shard ทุกตัว (no-op ถ้าไม่มี)
+      batch.delete(doc(db, 'config', 'qrProducts'));
+      for (let i = 1; i < QR_PRODUCTS_MAX_CHUNKS; i++) batch.delete(doc(db, 'config', `qrProducts_${i}`));
       batch.delete(doc(db, 'config', 'nameMap'));
       for (let i = 1; i < NAMEMAP_MAX_CHUNKS; i++) batch.delete(doc(db, 'config', `nameMap_${i}`));
       await batch.commit();
@@ -805,11 +811,15 @@ export default function App() {
       setNameMap({});
       setCostMap({});
       setLotMap({});
+      setQrProducts({});
+      setQrProductsLoaded(false);
+      setQrProductsLoadError(null);
       setHistory([]);
       setCatalogMeta(null);
       setBarcodeMapMeta(null);
       setCostMapMeta(null);
       setLotMapMeta(null);
+      setQrProductsMeta(null);
       showToast('ล้าง Firestore ทั้งหมดแล้ว ✓');
     } catch (err) {
       reportFirestoreError(err, { source: 'firestore-reset', critical: true });
@@ -852,10 +862,14 @@ export default function App() {
   const [nameMap, setNameMap] = useState({}); // {sku: ชื่อสินค้า} จาก R05.106 ColF — แหล่งชื่อสำรองตอนสแกนสินค้านอก Picklist (Outbound); คงเป็น {} บน Android (ไม่ subscribe)
   const [costMap, setCostMap] = useState({});
   const [lotMap, setLotMap] = useState({});
+  const [qrProducts, setQrProducts] = useState({});
+  const [qrProductsLoaded, setQrProductsLoaded] = useState(false);
+  const [qrProductsLoadError, setQrProductsLoadError] = useState(null);
   const [catalogMeta, setCatalogMeta] = useState(null);
   const [barcodeMapMeta, setBarcodeMapMeta] = useState(null);
   const [costMapMeta, setCostMapMeta] = useState(null);
   const [lotMapMeta, setLotMapMeta] = useState(null);
+  const [qrProductsMeta, setQrProductsMeta] = useState(null);
   const [zoneAssignments, setZoneAssignments] = useState({});
   // ใช้ Catalog + Zone Assignments สดเป็น source of truth; config/catalogByPacker
   // เป็น cache สำหรับ client รุ่นเก่าเท่านั้นและไม่ถูกอ่านกลับใน client รุ่นนี้
@@ -865,6 +879,52 @@ export default function App() {
   );
   const [showZoneAssign, setShowZoneAssign] = useState(false);
   const [showPicklistView, setShowPicklistView] = useState(false); // popup 📋 ดูรายการ Picklist (desktop, tab list)
+
+  // ดัชนีสินค้า R14.102 สำหรับพิมพ์ QR ใช้เฉพาะหน้า QR ของ Desktop Warehouse
+  // แยกจาก lotMap เพื่อไม่เพิ่ม payload ให้ Android/สาขา และเพื่อกรอง Warehouse โดยไม่เปลี่ยน flow แพ็คเดิม
+  useEffect(() => {
+    const enabled = !isAndroidMode && profile?.role === 'warehouse' && tab === 'qr';
+    if (!enabled) {
+      setQrProducts({});
+      setQrProductsMeta(null);
+      setQrProductsLoaded(false);
+      setQrProductsLoadError(null);
+      return undefined;
+    }
+
+    setQrProductsLoaded(false);
+    setQrProductsLoadError(null);
+    const qrQuery = query(
+      collection(db, 'config'),
+      where(documentId(), '>=', 'qrProducts'),
+      where(documentId(), '<=', 'qrProducts' + String.fromCharCode(0xf8ff)),
+    );
+    return onSnapshot(qrQuery, snap => {
+      if (snap.empty) {
+        setQrProducts({});
+        setQrProductsMeta(null);
+        setQrProductsLoaded(true);
+        return;
+      }
+      const entries = [];
+      let meta = null;
+      snap.docs.forEach(d => {
+        entries.push(...(d.data().entries || []));
+        if (d.id === 'qrProducts') meta = d.data()._meta || null;
+      });
+      setQrProducts(Object.fromEntries(entries.map(e => [
+        e.key,
+        { sku: e.key, name: typeof e.name === 'string' ? e.name : '', lots: Array.isArray(e.lots) ? e.lots : [] },
+      ])));
+      setQrProductsMeta(meta);
+      setQrProductsLoaded(true);
+      setQrProductsLoadError(null);
+    }, err => {
+      setQrProductsLoaded(true);
+      setQrProductsLoadError(err.code || err.message || 'unknown');
+      reportFirestoreError(err, { source: 'qrProducts', critical: true });
+    });
+  }, [profile?.role, reportFirestoreError, tab]);
 
   // ── ลำดับอัปโหลด 4 ไฟล์ (Tab: รายการเบิกสินค้า) — Picklist → R05.106 → R05.105 → LOT+EXP
   // ⚠ ต้องอยู่ "หลัง" useState ของ catalog/barcodeMap/costMap เสมอ — const อยู่ใน temporal dead zone
@@ -1070,33 +1130,129 @@ export default function App() {
     showToast(`Cost map: ${entries.length} รายการ ✓`);
   }
 
-  function handleLotMapImport(map, meta) {
-    setLotMap(map);
-    // map = { [sku]: [{lot, qty, exp?}, ...] } — ทั้งก้อน (มี exp) ~1.3MB เกิน 1MB/doc → แบ่งเขียนเป็น chunk ละ ~700KB
-    const entries = Object.entries(map).map(([key, lots]) => ({ key, lots }));
-    const total = entries.reduce((s, e) => s + (e.lots?.length || 0), 0);
-    const chunks = [];
-    let cur = [], curSize = 0;
-    for (const e of entries) {
-      const size = JSON.stringify(e).length; // ประมาณขนาด Firestore ต่อ entry (ทั้ง SKU อยู่ chunk เดียวกันเสมอ ไม่แตกข้าม doc)
-      if (curSize + size > LOTMAP_CHUNK_BUDGET && cur.length > 0) { chunks.push(cur); cur = []; curSize = 0; }
-      cur.push(e); curSize += size;
-    }
-    if (cur.length > 0) chunks.push(cur);
-    const batch = writeBatch(db);
-    chunks.forEach((chunkEntries, i) => {
-      const ref = doc(db, 'config', i === 0 ? 'lotMap' : `lotMap_${i}`);
-      batch.set(ref, { entries: chunkEntries, ...(i === 0 && meta ? { _meta: meta } : {}) });
-    });
-    // ลบ chunk เก่าที่รอบนี้ไม่ใช้ (import ก่อนหน้าอาจมี chunk มากกว่า — delete doc ที่ไม่มีอยู่เป็น no-op)
-    for (let i = Math.max(chunks.length, 1); i < LOTMAP_MAX_CHUNKS; i++) batch.delete(doc(db, 'config', `lotMap_${i}`));
-    return batch.commit()
-      .then(() => showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓ (${chunks.length} doc)`, 'success'))
-      .catch(err => {
-        reportFirestoreError(err, { source: 'lotMap-write', critical: true });
-        showToast('⚠ Firestore error: ' + err.code, 'error');
-        throw err;
+  async function handleLotMapImport(snapshot, meta) {
+    const map = snapshot?.lotMap || snapshot || {};
+    const importedQrProducts = snapshot?.qrProducts || {};
+    const isR14102 = snapshot?.isR14102 === true;
+
+    const splitIntoChunks = (entries, budget, maxChunks, code) => {
+      const chunks = [];
+      let current = [];
+      let currentSize = 0;
+      entries.forEach(entry => {
+        const size = approxDocBytes(entry) + 1;
+        if (size > budget) {
+          const error = new Error(`${code}-entry`);
+          error.code = `${code}-entry`;
+          throw error;
+        }
+        if (currentSize + size > budget && current.length > 0) {
+          chunks.push(current);
+          current = [];
+          currentSize = 0;
+        }
+        current.push(entry);
+        currentSize += size;
       });
+      if (current.length > 0) chunks.push(current);
+      if (chunks.length > maxChunks) {
+        const error = new Error(code);
+        error.code = code;
+        throw error;
+      }
+      return chunks;
+    };
+
+    const entries = Object.entries(map).map(([key, lots]) => ({ key, lots }));
+    const total = entries.reduce((sum, entry) => sum + (entry.lots?.length || 0), 0);
+    if (entries.length === 0) {
+      const error = new Error('lot-map-empty');
+      error.code = 'lot-map-empty';
+      throw error;
+    }
+
+    let lotChunks;
+    let qrEntries = [];
+    let qrChunks = [];
+    try {
+      lotChunks = splitIntoChunks(entries, LOTMAP_CHUNK_BUDGET, LOTMAP_MAX_CHUNKS, 'lot-map-too-large');
+      if (isR14102) {
+        qrEntries = Object.entries(importedQrProducts).map(([key, product]) => ({
+          key,
+          name: typeof product?.name === 'string' ? product.name : '',
+          lots: Array.isArray(product?.lots) ? product.lots : [],
+        }));
+        if (qrEntries.length === 0) {
+          const error = new Error('qr-products-empty');
+          error.code = 'qr-products-empty';
+          throw error;
+        }
+        qrChunks = splitIntoChunks(
+          qrEntries,
+          QR_PRODUCTS_CHUNK_BUDGET,
+          QR_PRODUCTS_MAX_CHUNKS,
+          'qr-products-too-large',
+        );
+      }
+    } catch (err) {
+      showToast(`⚠ บันทึก R14.102 ไม่ได้: ${err.code || err.message}`, 'error');
+      throw err;
+    }
+
+    const batch = writeBatch(db);
+    lotChunks.forEach((chunkEntries, i) => {
+      batch.set(
+        doc(db, 'config', i === 0 ? 'lotMap' : `lotMap_${i}`),
+        { entries: chunkEntries, ...(i === 0 && meta ? { _meta: meta } : {}) },
+      );
+    });
+    for (let i = Math.max(lotChunks.length, 1); i < LOTMAP_MAX_CHUNKS; i++) {
+      batch.delete(doc(db, 'config', `lotMap_${i}`));
+    }
+
+    if (isR14102) {
+      const warningCount = Number(
+        snapshot?.counts?.warningCount
+        ?? (Array.isArray(snapshot?.warnings) ? snapshot.warnings.length : 0),
+      );
+      const qrMeta = {
+        ...(meta || {}),
+        schemaVersion: 1,
+        sourceReport: 'R14.102',
+        warehouse: 'Warehouse',
+        warningCount,
+        ...(snapshot?.counts ? { counts: snapshot.counts } : {}),
+        ...(snapshot?.warnings ? { warnings: snapshot.warnings } : {}),
+      };
+      qrChunks.forEach((chunkEntries, i) => {
+        batch.set(
+          doc(db, 'config', i === 0 ? 'qrProducts' : `qrProducts_${i}`),
+          { entries: chunkEntries, ...(i === 0 ? { _meta: qrMeta } : {}) },
+        );
+      });
+      for (let i = Math.max(qrChunks.length, 1); i < QR_PRODUCTS_MAX_CHUNKS; i++) {
+        batch.delete(doc(db, 'config', `qrProducts_${i}`));
+      }
+    } else {
+      // R01.119 ยังใช้กับ packing ได้ แต่ไม่มีชื่อ/warehouse ครบพอสำหรับ QR — ล้าง snapshot เก่ากันข้อมูลค้าง
+      batch.delete(doc(db, 'config', 'qrProducts'));
+      for (let i = 1; i < QR_PRODUCTS_MAX_CHUNKS; i++) {
+        batch.delete(doc(db, 'config', `qrProducts_${i}`));
+      }
+    }
+
+    try {
+      // lotMap + qrProducts ต้องเปลี่ยนพร้อมกันเท่านั้น; listeners จะอัปเดต local state หลัง commit สำเร็จ
+      await batch.commit();
+      const qrText = isR14102
+        ? ` · QR ${qrEntries.length} SKU (${qrChunks.length} doc)`
+        : ' · ล้างดัชนี QR เดิมแล้ว';
+      showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓ (${lotChunks.length} doc)${qrText}`, 'success');
+    } catch (err) {
+      reportFirestoreError(err, { source: 'r14102-write', critical: true });
+      showToast('⚠ Firestore error: ' + (err.code || err.message), 'error');
+      throw err;
+    }
   }
 
   function handleZoneAssign(assignments) {
@@ -1189,7 +1345,7 @@ export default function App() {
           (clip ไม่สร้าง scroll container/containing block → ไม่กระทบ sticky/fixed; modal อยู่นอก canvas อยู่แล้ว) */}
       <div style={{ overflowX: 'clip' }}>
       {/* key={tab} → remount ทุกครั้งที่สลับ tab ให้ .tab-slide เล่นซ้ำ; --dir = ทิศเลื่อน (คอสเมติกล้วน ไม่แตะ flow) */}
-      <div key={tab} className={`canvas tab-slide${!showAll && tab === 'closed' ? ' canvas-wide' : ''}`} style={{ '--dir': tabDirRef.current }}>
+      <div key={tab} className={`canvas tab-slide${!showAll && (tab === 'closed' || tab === 'qr') ? ' canvas-wide' : ''}`} style={{ '--dir': tabDirRef.current }}>
         {(showAll || tab === 'flow') && (
           <>
             <div className="screen-label">
@@ -1414,10 +1570,27 @@ export default function App() {
           </>
         )}
 
+        {(showAll || tab === 'qr') && (
+          <>
+            <div className="screen-label" style={{ marginTop: 40 }}>
+              <span className="num">04</span> สินค้า / QR
+              <span className="desc">— ค้นหา SKU, ชื่อสินค้า หรือ LOT จาก R14.102 แล้วพิมพ์ฉลาก 20×10 มม.</span>
+            </div>
+            <ProductQrPage
+              products={qrProducts}
+              meta={qrProductsMeta}
+              loaded={qrProductsLoaded}
+              loadError={qrProductsLoadError}
+              setTab={setTab}
+              showToast={showToast}
+            />
+          </>
+        )}
+
         {(showAll || tab === 'lookup') && (
           <>
             <div className="screen-label" style={{ marginTop: 40 }}>
-              <span className="num">04</span> สแกนบาร์โค้ดลัง → ดูรายการ
+              <span className="num">05</span> สแกนบาร์โค้ดลัง → ดูรายการ
               <span className="desc">— ยืนยันสินค้าในลังโดยไม่ต้องเปิดลัง</span>
             </div>
             <LookupByBoxBarcode {...screenProps} />
