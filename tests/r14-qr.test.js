@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   QR_EXPIRY_STATUS,
+  QR_LABEL_SHEET,
   QR_VALIDATION,
   R14102HeaderError,
   buildQrPayload,
@@ -15,6 +16,7 @@ import {
   parseTransactionTimestamp,
   qrModuleCount,
   searchQrProducts,
+  splitQrLabelCopies,
 } from '../src/r14QrHelpers.js';
 
 const HEADER = [
@@ -302,4 +304,26 @@ test('search ranks exact SKU/LOT matches and pagination clamps page bounds', () 
     total: 3,
     totalPages: 2,
   });
+});
+
+test('90x60 mm QR sheets split copies into 4x5 label pages', () => {
+  assert.equal(QR_LABEL_SHEET.columns * QR_LABEL_SHEET.rows, QR_LABEL_SHEET.capacity);
+  assert.equal(
+    (QR_LABEL_SHEET.paddingXmm * 2)
+      + (QR_LABEL_SHEET.labelWidthMm * QR_LABEL_SHEET.columns)
+      + (QR_LABEL_SHEET.columnGapMm * (QR_LABEL_SHEET.columns - 1)),
+    QR_LABEL_SHEET.widthMm,
+  );
+  assert.equal(
+    (QR_LABEL_SHEET.paddingYmm * 2)
+      + (QR_LABEL_SHEET.labelHeightMm * QR_LABEL_SHEET.rows)
+      + (QR_LABEL_SHEET.rowGapMm * (QR_LABEL_SHEET.rows - 1)),
+    QR_LABEL_SHEET.heightMm,
+  );
+
+  assert.deepEqual(splitQrLabelCopies(0), []);
+  assert.deepEqual(splitQrLabelCopies(1), [1]);
+  assert.deepEqual(splitQrLabelCopies(20), [20]);
+  assert.deepEqual(splitQrLabelCopies(21), [20, 1]);
+  assert.deepEqual(splitQrLabelCopies(100), [20, 20, 20, 20, 20]);
 });

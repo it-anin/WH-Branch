@@ -5,7 +5,9 @@ import {
   buildQrPayload,
   classifyExpiry,
   QR_EXPIRY_STATUS,
+  QR_LABEL_SHEET,
   QR_VALIDATION,
+  splitQrLabelCopies,
 } from '../r14QrHelpers.js';
 
 const PAGE_SIZE = 50;
@@ -189,9 +191,9 @@ function lineFontSize(value, baseLength = 0) {
   return '1.18mm';
 }
 
-function ProductQrLabel({ row, svg, preview = false }) {
+function ProductQrLabel({ row, svg, preview = false, unit: requestedUnit }) {
   const svgUrl = svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : '';
-  const unit = preview ? '14px' : '1mm';
+  const unit = requestedUnit ?? (preview ? '14px' : '1mm');
 
   return (
     <div
@@ -309,6 +311,54 @@ function ProductQrLabel({ row, svg, preview = false }) {
   );
 }
 
+function ProductQrSheet({ row, svg, filledCount, preview = false }) {
+  const unit = preview ? '5px' : '1mm';
+  const safeFilledCount = Math.min(
+    QR_LABEL_SHEET.capacity,
+    Math.max(0, Math.floor(Number(filledCount) || 0)),
+  );
+
+  return (
+    <div
+      className={preview ? 'product-qr-sheet-preview' : 'product-qr-print-sheet'}
+      style={{
+        '--qr-sheet-unit': unit,
+        width: `calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.widthMm})`,
+        height: `calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.heightMm})`,
+        boxSizing: 'border-box',
+        display: 'grid',
+        gridTemplateColumns: `repeat(${QR_LABEL_SHEET.columns}, calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.labelWidthMm}))`,
+        gridTemplateRows: `repeat(${QR_LABEL_SHEET.rows}, calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.labelHeightMm}))`,
+        columnGap: `calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.columnGapMm})`,
+        rowGap: `calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.rowGapMm})`,
+        padding: `calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.paddingYmm}) calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.paddingXmm})`,
+        overflow: 'hidden',
+        background: preview ? '#dceff0' : '#fff',
+      }}
+    >
+      {Array.from({ length: QR_LABEL_SHEET.capacity }, (_, slotIndex) => (
+        <div
+          className="product-qr-print-slot"
+          key={slotIndex}
+          style={{
+            width: `calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.labelWidthMm})`,
+            height: `calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.labelHeightMm})`,
+            boxSizing: 'border-box',
+            overflow: 'hidden',
+            border: preview ? '1px dashed rgba(45, 90, 90, .35)' : 'none',
+            borderRadius: preview ? 'calc(var(--qr-sheet-unit) * 0.7)' : 0,
+            background: '#fff',
+          }}
+        >
+          {slotIndex < safeFilledCount && (
+            <ProductQrLabel row={row} svg={svg} preview={preview} unit={unit} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function StatusBadge({ state }) {
   const colors = state.tone === 'success'
     ? { color: '#39752a', background: '#eaf5e5', border: '#8aba75' }
@@ -406,37 +456,53 @@ export default function ProductQrPage({
     style.id = PRINT_STYLE_ID;
     style.textContent = `
       @media print {
-        @page { size: 20mm 10mm !important; margin: 0 !important; }
+        @page {
+          size: ${QR_LABEL_SHEET.widthMm}mm ${QR_LABEL_SHEET.heightMm}mm !important;
+          margin: 0 !important;
+        }
         html, body {
-          width: 20mm !important;
-          min-width: 20mm !important;
+          width: ${QR_LABEL_SHEET.widthMm}mm !important;
+          min-width: ${QR_LABEL_SHEET.widthMm}mm !important;
           margin: 0 !important;
           padding: 0 !important;
           background: #fff !important;
+          overflow: visible !important;
         }
         body.${PRINT_BODY_CLASS} > * { display: none !important; }
         body.${PRINT_BODY_CLASS} > .product-qr-print-root {
           display: block !important;
-          width: 20mm !important;
+          width: ${QR_LABEL_SHEET.widthMm}mm !important;
           margin: 0 !important;
           padding: 0 !important;
         }
         body.${PRINT_BODY_CLASS} > .print-only-label { display: none !important; }
-        .product-qr-print-copy {
-          display: block !important;
+        .product-qr-print-sheet {
+          display: grid !important;
           position: relative !important;
-          width: 20mm !important;
-          height: 10mm !important;
+          width: ${QR_LABEL_SHEET.widthMm}mm !important;
+          height: ${QR_LABEL_SHEET.heightMm}mm !important;
           margin: 0 !important;
-          padding: 0 !important;
+          padding: ${QR_LABEL_SHEET.paddingYmm}mm ${QR_LABEL_SHEET.paddingXmm}mm !important;
+          grid-template-columns: repeat(${QR_LABEL_SHEET.columns}, ${QR_LABEL_SHEET.labelWidthMm}mm) !important;
+          grid-template-rows: repeat(${QR_LABEL_SHEET.rows}, ${QR_LABEL_SHEET.labelHeightMm}mm) !important;
+          column-gap: ${QR_LABEL_SHEET.columnGapMm}mm !important;
+          row-gap: ${QR_LABEL_SHEET.rowGapMm}mm !important;
           overflow: hidden !important;
           box-sizing: border-box !important;
           break-after: page;
           page-break-after: always;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
-        .product-qr-print-copy:last-child {
+        .product-qr-print-sheet:last-child {
           break-after: auto;
           page-break-after: auto;
+        }
+        .product-qr-print-slot {
+          width: ${QR_LABEL_SHEET.labelWidthMm}mm !important;
+          height: ${QR_LABEL_SHEET.labelHeightMm}mm !important;
+          overflow: hidden !important;
+          box-sizing: border-box !important;
         }
       }
     `;
@@ -566,6 +632,10 @@ export default function ProductQrPage({
     ?? meta?.fileDate,
   );
   const productCount = Object.keys(products || {}).length;
+  const normalizedCopyCount = clampCopies(copies);
+  const previewSheetCounts = splitQrLabelCopies(normalizedCopyCount);
+  const previewFilledCount = previewSheetCounts[0] ?? 1;
+  const printSheetCounts = printJob ? splitQrLabelCopies(printJob.copies) : [];
 
   return (
     <div style={{ fontFamily: 'system-ui, Tahoma, sans-serif' }}>
@@ -606,7 +676,7 @@ export default function ProductQrPage({
           <div>
             <div className="hand" style={{ fontSize: 24 }}>QR สินค้า</div>
             <div style={{ marginTop: 3, color: 'var(--mute)', fontSize: 12 }}>
-              สติ๊กเกอร์ Thermal 20×10 มม. · ข้อมูลเฉพาะ Warehouse จาก R14.102
+              กระดาษ 90×60 มม. · สติ๊กเกอร์ 20×10 มม. · 4×5 ดวงต่อแผ่น
             </div>
           </div>
           <div style={{
@@ -823,7 +893,7 @@ export default function ProductQrPage({
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <div>
                 <div id="product-qr-preview-title" style={{ fontSize: 20, fontWeight: 800 }}>
-                  ตัวอย่างสติ๊กเกอร์ QR
+                  ตัวอย่างแผ่นสติ๊กเกอร์ QR
                 </div>
                 <div style={{ color: 'var(--mute)', fontSize: 12, marginTop: 2 }}>
                   SKU {selected.sku} · LOT {selected.lot}
@@ -864,15 +934,18 @@ export default function ProductQrPage({
             }}>
               <div className="product-qr-preview-scale">
                 <div style={{
-                  width: 280,
-                  height: 140,
                   boxSizing: 'content-box',
                   overflow: 'hidden',
                   border: '1px solid #aaa',
                   boxShadow: '0 4px 14px rgba(0,0,0,.12)',
                   background: '#fff',
                 }}>
-                  <ProductQrLabel row={selected} svg={qrSvg} preview />
+                  <ProductQrSheet
+                    row={selected}
+                    svg={qrSvg}
+                    filledCount={previewFilledCount}
+                    preview
+                  />
                 </div>
               </div>
             </div>
@@ -883,7 +956,8 @@ export default function ProductQrPage({
               fontSize: 11,
               marginBottom: 14,
             }}>
-              ตัวอย่างขยายจากขนาดจริง 20×10 มม.
+              ตัวอย่างแผ่นที่ 1 จาก {previewSheetCounts.length} แผ่น ·
+              {' '}{previewFilledCount}/{QR_LABEL_SHEET.capacity} ดวงในแผ่นแรก
             </div>
 
             {qrLoading && (
@@ -914,7 +988,7 @@ export default function ProductQrPage({
               fontWeight: 700,
               textAlign: 'center',
             }}>
-              ตั้งค่าไดรเวอร์: กระดาษ 20×10 มม. · Scale 100% · Copies 1
+              ตั้งค่าไดรเวอร์: กระดาษ 90×60 มม. · Margins None · Scale 100% · Copies 1
             </div>
 
             <div style={{
@@ -927,7 +1001,7 @@ export default function ProductQrPage({
               paddingTop: 14,
             }}>
               <label style={{ fontSize: 12, fontWeight: 700 }}>
-                จำนวนสติ๊กเกอร์
+                จำนวนสติ๊กเกอร์ ({previewSheetCounts.length} แผ่น)
                 <input
                   className="input"
                   type="number"
@@ -954,7 +1028,7 @@ export default function ProductQrPage({
                     cursor: qrLoading || !qrSvg || qrError || printJob ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  {printJob ? 'กำลังเปิดหน้าพิมพ์...' : `พิมพ์ ${clampCopies(copies)} ดวง`}
+                  {printJob ? 'กำลังเปิดหน้าพิมพ์...' : `พิมพ์ ${normalizedCopyCount} ดวง`}
                 </button>
               </div>
             </div>
@@ -965,10 +1039,13 @@ export default function ProductQrPage({
 
       {printJob && createPortal(
         <div className="product-qr-print-root" aria-hidden="true">
-          {Array.from({ length: printJob.copies }, (_, index) => (
-            <div className="product-qr-print-copy" key={index}>
-              <ProductQrLabel row={printJob.row} svg={printJob.svg} />
-            </div>
+          {printSheetCounts.map((filledCount, sheetIndex) => (
+            <ProductQrSheet
+              key={sheetIndex}
+              row={printJob.row}
+              svg={printJob.svg}
+              filledCount={filledCount}
+            />
           ))}
         </div>,
         document.body,

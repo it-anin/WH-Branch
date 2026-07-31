@@ -559,3 +559,29 @@ export function paginateQrRows(rows, requestedPage = 1, requestedPageSize = 50) 
     totalPages,
   };
 }
+
+export const QR_LABEL_SHEET = Object.freeze({
+  widthMm: 90,
+  heightMm: 60,
+  columns: 4,
+  rows: 5,
+  labelWidthMm: 20,
+  labelHeightMm: 10,
+  paddingXmm: 2,
+  paddingYmm: 2,
+  columnGapMm: 2,
+  rowGapMm: 1.5,
+  capacity: 20,
+});
+
+export function splitQrLabelCopies(requestedCopies, requestedCapacity = QR_LABEL_SHEET.capacity) {
+  const copies = Math.max(0, Math.floor(Number(requestedCopies) || 0));
+  const capacity = Math.max(1, Math.floor(Number(requestedCapacity) || QR_LABEL_SHEET.capacity));
+  const sheets = [];
+
+  for (let remaining = copies; remaining > 0; remaining -= capacity) {
+    sheets.push(Math.min(capacity, remaining));
+  }
+
+  return sheets;
+}
