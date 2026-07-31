@@ -2,17 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import {
+  buildThermalQrGraphic,
   buildQrPayload,
   classifyExpiry,
   paginateQrLabelItems,
   QR_EXPIRY_STATUS,
   QR_LABEL_SHEET,
+  QR_THERMAL_PRINT,
   QR_VALIDATION,
   splitQrLabelCopies,
 } from '../r14QrHelpers.js';
 
 const PAGE_SIZE = 50;
-const MAX_QR_MODULES = 29; // QR Version 3
+const MAX_QR_MODULES = QR_THERMAL_PRINT.maxCoreModules; // QR Version 3
 const MAX_PRINT_LABELS = 100;
 const PRINT_STYLE_ID = 'product-qr-print-style';
 const PRINT_BODY_CLASS = 'product-qr-printing';
@@ -23,19 +25,13 @@ function qrRowKey(row) {
   return JSON.stringify([row.sku, row.lot, row.exp, row.lotIndex]);
 }
 
-async function generateQrSvg(row) {
+function generateQrGraphic(row) {
   const payload = buildQrPayload(row);
   const qr = QRCode.create(payload, { errorCorrectionLevel: 'M' });
   if (qr.modules.size > MAX_QR_MODULES) {
     throw new Error(`ข้อมูลยาวเกิน QR Version 3 (${qr.modules.size} modules)`);
   }
-  const version = Math.round((qr.modules.size - 17) / 4);
-  return QRCode.toString(payload, {
-    type: 'svg',
-    errorCorrectionLevel: 'M',
-    margin: 4,
-    version,
-  });
+  return buildThermalQrGraphic(qr.modules);
 }
 
 function validationCode(validation) {
@@ -212,9 +208,12 @@ function lineFontSize(value, baseLength = 0) {
   return '1.18mm';
 }
 
-function ProductQrLabel({ row, svg, preview = false, unit: requestedUnit }) {
-  const svgUrl = svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : '';
+function ProductQrLabel({ row, graphic, preview = false, unit: requestedUnit }) {
   const unit = requestedUnit ?? (preview ? '14px' : '1mm');
+  const requestedSizeMm = Number(graphic?.sizeMm);
+  const qrSizeMm = Number.isFinite(requestedSizeMm) && requestedSizeMm > 0
+    ? Math.min(QR_THERMAL_PRINT.maxOuterSizeMm, requestedSizeMm)
+    : QR_THERMAL_PRINT.maxOuterSizeMm;
 
   return (
     <div
@@ -243,14 +242,34 @@ function ProductQrLabel({ row, svg, preview = false, unit: requestedUnit }) {
         justifyContent: 'center',
         overflow: 'hidden',
       }}>
-        {svgUrl ? (
-          <img
-            src={svgUrl}
-            alt=""
+        {graphic?.path && graphic?.totalModules ? (
+          <svg
+            className="product-qr-code"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox={`0 0 ${graphic.totalModules} ${graphic.totalModules}`}
+            width="100%"
+            height="100%"
+            preserveAspectRatio="xMidYMid meet"
+            shapeRendering="crispEdges"
+            colorRendering="optimizeSpeed"
+            focusable="false"
             aria-hidden="true"
-            draggable={false}
-            style={{ display: 'block', width: '100%', height: '100%' }}
-          />
+            style={{
+              display: 'block',
+              width: `calc(var(--qr-label-unit) * ${qrSizeMm})`,
+              height: `calc(var(--qr-label-unit) * ${qrSizeMm})`,
+              flex: '0 0 auto',
+              background: '#fff',
+            }}
+          >
+            <rect
+              className="product-qr-code-bg"
+              width={graphic.totalModules}
+              height={graphic.totalModules}
+              fill="#fff"
+            />
+            <path className="product-qr-code-modules" d={graphic.path} fill="#000" />
+          </svg>
         ) : (
           <div style={{
             width: '88%',
@@ -375,7 +394,7 @@ function ProductQrSheet({ labels = [], preview = false }) {
             {label && (
               <ProductQrLabel
                 row={label.row}
-                svg={label.svg}
+                graphic={label.graphic}
                 preview={preview}
                 unit={unit}
               />
@@ -425,7 +444,7 @@ export default function ProductQrPage({
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
   const [copies, setCopies] = useState(1);
-  const [qrSvg, setQrSvg] = useState('');
+  const [qrGraphic, setQrGraphic] = useState(null);
   const [qrError, setQrError] = useState('');
   const [qrLoading, setQrLoading] = useState(false);
   const [printJob, setPrintJob] = useState(null);
@@ -562,6 +581,18 @@ export default function ProductQrPage({
           overflow: hidden !important;
           box-sizing: border-box !important;
         }
+        .product-qr-code {
+          shape-rendering: crispEdges !important;
+          color-rendering: optimizeSpeed !important;
+          opacity: 1 !important;
+          filter: none !important;
+        }
+        .product-qr-code-bg { fill: #fff !important; }
+        .product-qr-code-modules {
+          fill: #000 !important;
+          stroke: none !important;
+          opacity: 1 !important;
+        }
       }
     `;
     document.head.appendChild(style);
@@ -663,7 +694,7 @@ export default function ProductQrPage({
   const closePreview = () => {
     generationRef.current += 1;
     setSelected(null);
-    setQrSvg('');
+    setQrGraphic(null);
     setQrError('');
     setQrLoading(false);
     setCopies(1);
@@ -686,14 +717,14 @@ export default function ProductQrPage({
     generationRef.current = generation;
     setSelected(row);
     setCopies(1);
-    setQrSvg('');
+    setQrGraphic(null);
     setQrError('');
     setQrLoading(true);
 
     try {
-      const svg = await generateQrSvg(row);
+      const graphic = generateQrGraphic(row);
       if (generationRef.current !== generation) return;
-      setQrSvg(svg);
+      setQrGraphic(graphic);
     } catch (error) {
       if (generationRef.current !== generation) return;
       const message = error?.message || 'สร้าง QR ไม่สำเร็จ';
@@ -722,7 +753,7 @@ export default function ProductQrPage({
     try {
       const labels = await Promise.all(selectedRows.map(async row => {
         try {
-          return { row, svg: await generateQrSvg(row) };
+          return { row, graphic: generateQrGraphic(row) };
         } catch (error) {
           throw new Error(`SKU ${row.sku} LOT ${row.lot}: ${error?.message || 'สร้าง QR ไม่สำเร็จ'}`);
         }
@@ -738,7 +769,7 @@ export default function ProductQrPage({
   };
 
   const startPrint = () => {
-    if (!selected || selected.state.blocked || qrLoading || !qrSvg || qrError) return;
+    if (!selected || selected.state.blocked || qrLoading || !qrGraphic || qrError) return;
 
     if (selected.state.warning) {
       const confirmed = window.confirm(
@@ -752,7 +783,7 @@ export default function ProductQrPage({
     setPrintJob({
       labels: Array.from(
         { length: normalizedCopies },
-        () => ({ row: selected, svg: qrSvg }),
+        () => ({ row: selected, graphic: qrGraphic }),
       ),
     });
   };
@@ -803,7 +834,7 @@ export default function ProductQrPage({
   const previewSheetCounts = splitQrLabelCopies(normalizedCopyCount);
   const previewFilledCount = previewSheetCounts[0] ?? 1;
   const singlePreviewLabels = selected
-    ? Array.from({ length: previewFilledCount }, () => ({ row: selected, svg: qrSvg }))
+    ? Array.from({ length: previewFilledCount }, () => ({ row: selected, graphic: qrGraphic }))
     : [];
   const bulkPreviewSheets = paginateQrLabelItems(bulkPreview?.labels || []);
   const bulkWarningCount = (bulkPreview?.labels || []).filter(
@@ -1272,10 +1303,10 @@ export default function ProductQrPage({
                   className="btn primary"
                   type="button"
                   onClick={startPrint}
-                  disabled={qrLoading || !qrSvg || !!qrError || !!printJob}
+                  disabled={qrLoading || !qrGraphic || !!qrError || !!printJob}
                   style={{
-                    opacity: qrLoading || !qrSvg || qrError || printJob ? 0.45 : 1,
-                    cursor: qrLoading || !qrSvg || qrError || printJob ? 'not-allowed' : 'pointer',
+                    opacity: qrLoading || !qrGraphic || qrError || printJob ? 0.45 : 1,
+                    cursor: qrLoading || !qrGraphic || qrError || printJob ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {printJob ? 'กำลังเปิดหน้าพิมพ์...' : `พิมพ์ ${normalizedCopyCount} ดวง`}

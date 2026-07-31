@@ -597,3 +597,77 @@ export function paginateQrLabelItems(items, requestedCapacity = QR_LABEL_SHEET.c
 
   return sheets;
 }
+
+export const QR_THERMAL_PRINT = Object.freeze({
+  quietZoneModules: 4,
+  moduleSizeMm: 0.25,
+  maxCoreModules: 29,
+  maxOuterSizeMm: 9.25,
+});
+
+export function thermalQrPhysicalSizeMm(
+  coreModules,
+  quietZoneModules = QR_THERMAL_PRINT.quietZoneModules,
+  moduleSizeMm = QR_THERMAL_PRINT.moduleSizeMm,
+) {
+  const core = Number(coreModules);
+  const quietZone = Number(quietZoneModules);
+  const moduleSize = Number(moduleSizeMm);
+  if (
+    !Number.isInteger(core)
+    || core <= 0
+    || !Number.isInteger(quietZone)
+    || quietZone < 0
+    || !Number.isFinite(moduleSize)
+    || moduleSize <= 0
+  ) {
+    return null;
+  }
+  return Number(((core + (quietZone * 2)) * moduleSize).toFixed(4));
+}
+
+export function buildThermalQrGraphic(modules, options = {}) {
+  const coreModules = Number(modules?.size);
+  const data = modules?.data;
+  const quietZoneModules = Number(
+    options.quietZoneModules ?? QR_THERMAL_PRINT.quietZoneModules,
+  );
+  const moduleSizeMm = Number(options.moduleSizeMm ?? QR_THERMAL_PRINT.moduleSizeMm);
+  if (
+    !Number.isInteger(coreModules)
+    || coreModules <= 0
+    || (!Array.isArray(data) && !ArrayBuffer.isView(data))
+    || data.length < coreModules * coreModules
+    || !Number.isInteger(quietZoneModules)
+    || quietZoneModules < 0
+    || !Number.isFinite(moduleSizeMm)
+    || moduleSizeMm <= 0
+  ) {
+    throw new TypeError('Invalid QR module matrix');
+  }
+
+  const totalModules = coreModules + (quietZoneModules * 2);
+  const path = [];
+  for (let y = 0; y < coreModules; y += 1) {
+    let x = 0;
+    while (x < coreModules) {
+      while (x < coreModules && !data[(y * coreModules) + x]) x += 1;
+      if (x >= coreModules) break;
+      const runStart = x;
+      while (x < coreModules && data[(y * coreModules) + x]) x += 1;
+      const runLength = x - runStart;
+      path.push(
+        `M${runStart + quietZoneModules} ${y + quietZoneModules}`
+        + `h${runLength}v1h-${runLength}z`,
+      );
+    }
+  }
+
+  return {
+    path: path.join(''),
+    coreModules,
+    totalModules,
+    moduleSizeMm,
+    sizeMm: thermalQrPhysicalSizeMm(coreModules, quietZoneModules, moduleSizeMm),
+  };
+}

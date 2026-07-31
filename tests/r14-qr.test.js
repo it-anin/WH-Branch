@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import QRCode from 'qrcode';
 
 import {
   QR_EXPIRY_STATUS,
   QR_LABEL_SHEET,
+  QR_THERMAL_PRINT,
   QR_VALIDATION,
   R14102HeaderError,
+  buildThermalQrGraphic,
   buildQrPayload,
   canEncodeQrVersion,
   classifyExpiry,
@@ -18,6 +21,7 @@ import {
   qrModuleCount,
   searchQrProducts,
   splitQrLabelCopies,
+  thermalQrPhysicalSizeMm,
 } from '../src/r14QrHelpers.js';
 
 const HEADER = [
@@ -339,4 +343,45 @@ test('multiple selected QR items keep their order across 20-slot sheets', () => 
   assert.deepEqual(paginateQrLabelItems([]), []);
   assert.deepEqual(paginateQrLabelItems(null), []);
   assert.deepEqual(paginateQrLabelItems(items.slice(0, 20)).map(sheet => sheet.length), [20]);
+});
+
+test('thermal QR uses filled black modules on a 0.25 mm printer dot grid', () => {
+  assert.equal(thermalQrPhysicalSizeMm(21), 7.25);
+  assert.equal(thermalQrPhysicalSizeMm(25), 8.25);
+  assert.equal(thermalQrPhysicalSizeMm(29), 9.25);
+  assert.equal(thermalQrPhysicalSizeMm(0), null);
+
+  const graphic = buildThermalQrGraphic({
+    size: 3,
+    data: Uint8Array.from([
+      1, 1, 0,
+      0, 1, 0,
+      1, 0, 1,
+    ]),
+  }, { quietZoneModules: 1, moduleSizeMm: 0.25 });
+
+  assert.equal(graphic.totalModules, 5);
+  assert.equal(graphic.sizeMm, 1.25);
+  assert.equal(graphic.coreModules, 3);
+  assert.match(graphic.path, /M1 1h2v1h-2z/);
+  assert.doesNotMatch(graphic.path, /stroke=/);
+  assert.throws(() => buildThermalQrGraphic({ size: 2, data: [1] }), /Invalid QR module matrix/);
+});
+
+test('actual QR versions 1-3 remain inside the thermal label QR area', () => {
+  const payloads = [
+    'A',
+    'LOT:ABC\nEXP:31/12/2030',
+    `LOT:${'X'.repeat(24)}\nEXP:31/12/2030`,
+  ];
+  const graphics = payloads.map(payload => {
+    const qr = QRCode.create(payload, { errorCorrectionLevel: 'M' });
+    return buildThermalQrGraphic(qr.modules);
+  });
+
+  assert.deepEqual(graphics.map(graphic => graphic.coreModules), [21, 25, 29]);
+  assert.deepEqual(graphics.map(graphic => graphic.totalModules), [29, 33, 37]);
+  assert.deepEqual(graphics.map(graphic => graphic.sizeMm), [7.25, 8.25, 9.25]);
+  assert.ok(graphics.every(graphic => graphic.sizeMm <= QR_THERMAL_PRINT.maxOuterSizeMm));
+  assert.ok(graphics.every(graphic => graphic.path.length > 0));
 });
