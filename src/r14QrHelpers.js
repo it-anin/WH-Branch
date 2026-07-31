@@ -585,3 +585,15 @@ export function splitQrLabelCopies(requestedCopies, requestedCapacity = QR_LABEL
 
   return sheets;
 }
+
+export function paginateQrLabelItems(items, requestedCapacity = QR_LABEL_SHEET.capacity) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const capacity = Math.max(1, Math.floor(Number(requestedCapacity) || QR_LABEL_SHEET.capacity));
+  const sheets = [];
+
+  for (let start = 0; start < safeItems.length; start += capacity) {
+    sheets.push(safeItems.slice(start, start + capacity));
+  }
+
+  return sheets;
+}

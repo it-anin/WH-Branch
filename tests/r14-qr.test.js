@@ -12,6 +12,7 @@ import {
   flattenQrProducts,
   paginateQrRows,
   parseLotRows,
+  paginateQrLabelItems,
   parseR14102Rows,
   parseTransactionTimestamp,
   qrModuleCount,
@@ -326,4 +327,16 @@ test('90x60 mm QR sheets split copies into 4x5 label pages', () => {
   assert.deepEqual(splitQrLabelCopies(20), [20]);
   assert.deepEqual(splitQrLabelCopies(21), [20, 1]);
   assert.deepEqual(splitQrLabelCopies(100), [20, 20, 20, 20, 20]);
+});
+
+test('multiple selected QR items keep their order across 20-slot sheets', () => {
+  const items = Array.from({ length: 41 }, (_, index) => ({ id: index + 1 }));
+  const sheets = paginateQrLabelItems(items);
+
+  assert.equal(sheets.length, 3);
+  assert.deepEqual(sheets.map(sheet => sheet.length), [20, 20, 1]);
+  assert.deepEqual(sheets.flat(), items);
+  assert.deepEqual(paginateQrLabelItems([]), []);
+  assert.deepEqual(paginateQrLabelItems(null), []);
+  assert.deepEqual(paginateQrLabelItems(items.slice(0, 20)).map(sheet => sheet.length), [20]);
 });

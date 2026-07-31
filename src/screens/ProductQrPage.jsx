@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import {
   buildQrPayload,
   classifyExpiry,
+  paginateQrLabelItems,
   QR_EXPIRY_STATUS,
   QR_LABEL_SHEET,
   QR_VALIDATION,
@@ -12,10 +13,30 @@ import {
 
 const PAGE_SIZE = 50;
 const MAX_QR_MODULES = 29; // QR Version 3
+const MAX_PRINT_LABELS = 100;
 const PRINT_STYLE_ID = 'product-qr-print-style';
 const PRINT_BODY_CLASS = 'product-qr-printing';
 
 const clampCopies = value => Math.min(100, Math.max(1, Number.parseInt(value, 10) || 1));
+
+function qrRowKey(row) {
+  return JSON.stringify([row.sku, row.lot, row.exp, row.lotIndex]);
+}
+
+async function generateQrSvg(row) {
+  const payload = buildQrPayload(row);
+  const qr = QRCode.create(payload, { errorCorrectionLevel: 'M' });
+  if (qr.modules.size > MAX_QR_MODULES) {
+    throw new Error(`ข้อมูลยาวเกิน QR Version 3 (${qr.modules.size} modules)`);
+  }
+  const version = Math.round((qr.modules.size - 17) / 4);
+  return QRCode.toString(payload, {
+    type: 'svg',
+    errorCorrectionLevel: 'M',
+    margin: 4,
+    version,
+  });
+}
 
 function validationCode(validation) {
   if (validation === false) return 'invalid';
@@ -311,12 +332,11 @@ function ProductQrLabel({ row, svg, preview = false, unit: requestedUnit }) {
   );
 }
 
-function ProductQrSheet({ row, svg, filledCount, preview = false }) {
+function ProductQrSheet({ labels = [], preview = false }) {
   const unit = preview ? '5px' : '1mm';
-  const safeFilledCount = Math.min(
-    QR_LABEL_SHEET.capacity,
-    Math.max(0, Math.floor(Number(filledCount) || 0)),
-  );
+  const safeLabels = Array.isArray(labels)
+    ? labels.slice(0, QR_LABEL_SHEET.capacity)
+    : [];
 
   return (
     <div
@@ -336,25 +356,33 @@ function ProductQrSheet({ row, svg, filledCount, preview = false }) {
         background: preview ? '#dceff0' : '#fff',
       }}
     >
-      {Array.from({ length: QR_LABEL_SHEET.capacity }, (_, slotIndex) => (
-        <div
-          className="product-qr-print-slot"
-          key={slotIndex}
-          style={{
-            width: `calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.labelWidthMm})`,
-            height: `calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.labelHeightMm})`,
-            boxSizing: 'border-box',
-            overflow: 'hidden',
-            border: preview ? '1px dashed rgba(45, 90, 90, .35)' : 'none',
-            borderRadius: preview ? 'calc(var(--qr-sheet-unit) * 0.7)' : 0,
-            background: '#fff',
-          }}
-        >
-          {slotIndex < safeFilledCount && (
-            <ProductQrLabel row={row} svg={svg} preview={preview} unit={unit} />
-          )}
-        </div>
-      ))}
+      {Array.from({ length: QR_LABEL_SHEET.capacity }, (_, slotIndex) => {
+        const label = safeLabels[slotIndex];
+        return (
+          <div
+            className="product-qr-print-slot"
+            key={slotIndex}
+            style={{
+              width: `calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.labelWidthMm})`,
+              height: `calc(var(--qr-sheet-unit) * ${QR_LABEL_SHEET.labelHeightMm})`,
+              boxSizing: 'border-box',
+              overflow: 'hidden',
+              border: preview ? '1px dashed rgba(45, 90, 90, .35)' : 'none',
+              borderRadius: preview ? 'calc(var(--qr-sheet-unit) * 0.7)' : 0,
+              background: '#fff',
+            }}
+          >
+            {label && (
+              <ProductQrLabel
+                row={label.row}
+                svg={label.svg}
+                preview={preview}
+                unit={unit}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -401,7 +429,11 @@ export default function ProductQrPage({
   const [qrError, setQrError] = useState('');
   const [qrLoading, setQrLoading] = useState(false);
   const [printJob, setPrintJob] = useState(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState(() => new Set());
+  const [bulkPreview, setBulkPreview] = useState(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
   const generationRef = useRef(0);
+  const selectAllRef = useRef(null);
 
   const rows = useMemo(() => normalizeRows(products), [products]);
   const filteredRows = useMemo(() => {
@@ -416,6 +448,17 @@ export default function ProductQrPage({
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const visibleRows = filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const selectedRows = useMemo(
+    () => rows.filter(row => selectedRowKeys.has(qrRowKey(row))),
+    [rows, selectedRowKeys],
+  );
+  const selectableVisibleRows = visibleRows.filter(row => !row.state.blocked);
+  const selectedVisibleCount = selectableVisibleRows.filter(
+    row => selectedRowKeys.has(qrRowKey(row)),
+  ).length;
+  const allVisibleSelected = selectableVisibleRows.length > 0
+    && selectedVisibleCount === selectableVisibleRows.length;
+  const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
 
   useEffect(() => {
     setPage(1);
@@ -424,6 +467,21 @@ export default function ProductQrPage({
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
+
+  useEffect(() => {
+    const validKeys = new Set(
+      rows.filter(row => !row.state.blocked).map(qrRowKey),
+    );
+    setSelectedRowKeys(current => {
+      const next = new Set([...current].filter(key => validKeys.has(key)));
+      if (next.size === current.size && [...next].every(key => current.has(key))) return current;
+      return next;
+    });
+  }, [rows]);
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someVisibleSelected;
+  }, [someVisibleSelected]);
 
   useEffect(() => () => {
     generationRef.current += 1;
@@ -561,6 +619,47 @@ export default function ProductQrPage({
     if (typeof showToast === 'function') showToast(message, type);
   };
 
+  const toggleRowSelection = row => {
+    if (row.state.blocked || bulkLoading || printJob) return;
+    const key = qrRowKey(row);
+    const alreadySelected = selectedRowKeys.has(key);
+    if (!alreadySelected && selectedRowKeys.size >= MAX_PRINT_LABELS) {
+      notify(`เลือกพิมพ์ได้สูงสุด ${MAX_PRINT_LABELS} รายการต่อครั้ง`);
+      return;
+    }
+    setSelectedRowKeys(current => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleVisibleSelection = () => {
+    if (bulkLoading || printJob || selectableVisibleRows.length === 0) return;
+    const visibleKeys = selectableVisibleRows.map(qrRowKey);
+    if (allVisibleSelected) {
+      setSelectedRowKeys(current => {
+        const next = new Set(current);
+        visibleKeys.forEach(key => next.delete(key));
+        return next;
+      });
+      return;
+    }
+
+    const missingKeys = visibleKeys.filter(key => !selectedRowKeys.has(key));
+    if (selectedRowKeys.size + missingKeys.length > MAX_PRINT_LABELS) {
+      notify(`เลือกทั้งหมดในหน้านี้ไม่ได้ เพราะเกิน ${MAX_PRINT_LABELS} รายการ`);
+      return;
+    }
+    setSelectedRowKeys(current => new Set([...current, ...missingKeys]));
+  };
+
+  const clearSelection = () => {
+    if (bulkLoading || printJob) return;
+    setSelectedRowKeys(new Set());
+  };
+
   const closePreview = () => {
     generationRef.current += 1;
     setSelected(null);
@@ -568,6 +667,13 @@ export default function ProductQrPage({
     setQrError('');
     setQrLoading(false);
     setCopies(1);
+  };
+
+  const closeBulkPreview = () => {
+    if (printJob) return;
+    generationRef.current += 1;
+    setBulkPreview(null);
+    setBulkLoading(false);
   };
 
   const openPreview = async row => {
@@ -585,18 +691,7 @@ export default function ProductQrPage({
     setQrLoading(true);
 
     try {
-      const payload = buildQrPayload(row);
-      const qr = QRCode.create(payload, { errorCorrectionLevel: 'M' });
-      if (qr.modules.size > MAX_QR_MODULES) {
-        throw new Error(`ข้อมูลยาวเกิน QR Version 3 (${qr.modules.size} modules)`);
-      }
-      const version = Math.round((qr.modules.size - 17) / 4);
-      const svg = await QRCode.toString(payload, {
-        type: 'svg',
-        errorCorrectionLevel: 'M',
-        margin: 4,
-        version,
-      });
+      const svg = await generateQrSvg(row);
       if (generationRef.current !== generation) return;
       setQrSvg(svg);
     } catch (error) {
@@ -606,6 +701,39 @@ export default function ProductQrPage({
       notify(message);
     } finally {
       if (generationRef.current === generation) setQrLoading(false);
+    }
+  };
+
+  const openBulkPreview = async () => {
+    if (selectedRows.length === 0 || bulkLoading || printJob) return;
+    if (selectedRows.length > MAX_PRINT_LABELS) {
+      notify(`เลือกพิมพ์ได้สูงสุด ${MAX_PRINT_LABELS} รายการต่อครั้ง`);
+      return;
+    }
+    const blockedRow = selectedRows.find(row => row.state.blocked);
+    if (blockedRow) {
+      notify(`${blockedRow.sku} LOT ${blockedRow.lot}: ${blockedRow.state.label}`);
+      return;
+    }
+
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    setBulkLoading(true);
+    try {
+      const labels = await Promise.all(selectedRows.map(async row => {
+        try {
+          return { row, svg: await generateQrSvg(row) };
+        } catch (error) {
+          throw new Error(`SKU ${row.sku} LOT ${row.lot}: ${error?.message || 'สร้าง QR ไม่สำเร็จ'}`);
+        }
+      }));
+      if (generationRef.current !== generation) return;
+      setBulkPreview({ labels });
+    } catch (error) {
+      if (generationRef.current !== generation) return;
+      notify(error?.message || 'สร้าง QR หลายรายการไม่สำเร็จ');
+    } finally {
+      if (generationRef.current === generation) setBulkLoading(false);
     }
   };
 
@@ -621,7 +749,46 @@ export default function ProductQrPage({
 
     const normalizedCopies = clampCopies(copies);
     setCopies(normalizedCopies);
-    setPrintJob({ row: selected, svg: qrSvg, copies: normalizedCopies });
+    setPrintJob({
+      labels: Array.from(
+        { length: normalizedCopies },
+        () => ({ row: selected, svg: qrSvg }),
+      ),
+    });
+  };
+
+  const startBulkPrint = () => {
+    const labels = bulkPreview?.labels || [];
+    if (labels.length === 0 || bulkLoading || printJob) return;
+    const currentRowsByKey = new Map(rows.map(row => [qrRowKey(row), row]));
+    const staleLabel = labels.find(label => !currentRowsByKey.has(qrRowKey(label.row)));
+    if (staleLabel) {
+      notify(`ข้อมูล SKU ${staleLabel.row.sku} LOT ${staleLabel.row.lot} เปลี่ยนแล้ว กรุณาเลือกใหม่`);
+      return;
+    }
+    const refreshedLabels = labels.map(label => ({
+      ...label,
+      row: currentRowsByKey.get(qrRowKey(label.row)),
+    }));
+    const blockedLabel = refreshedLabels.find(label => label.row.state.blocked);
+    if (blockedLabel) {
+      notify(`${blockedLabel.row.sku} LOT ${blockedLabel.row.lot}: ${blockedLabel.row.state.label}`);
+      return;
+    }
+
+    const warnings = refreshedLabels.filter(label => label.row.state.warning);
+    if (warnings.length > 0) {
+      const examples = warnings.slice(0, 5).map(
+        label => `• SKU ${label.row.sku} · LOT ${label.row.lot} · ${label.row.state.label}`,
+      ).join('\n');
+      const remaining = warnings.length > 5 ? `\nและอีก ${warnings.length - 5} รายการ` : '';
+      const confirmed = window.confirm(
+        `พบสินค้าหมดอายุหรือหมดอายุวันนี้ ${warnings.length} รายการ\n${examples}${remaining}\n\nยืนยันพิมพ์ทั้งหมดหรือไม่?`,
+      );
+      if (!confirmed) return;
+    }
+
+    setPrintJob({ labels: refreshedLabels });
   };
 
   const fileName = meta?.fileName ?? meta?.filename ?? meta?.sourceFile ?? '';
@@ -635,7 +802,14 @@ export default function ProductQrPage({
   const normalizedCopyCount = clampCopies(copies);
   const previewSheetCounts = splitQrLabelCopies(normalizedCopyCount);
   const previewFilledCount = previewSheetCounts[0] ?? 1;
-  const printSheetCounts = printJob ? splitQrLabelCopies(printJob.copies) : [];
+  const singlePreviewLabels = selected
+    ? Array.from({ length: previewFilledCount }, () => ({ row: selected, svg: qrSvg }))
+    : [];
+  const bulkPreviewSheets = paginateQrLabelItems(bulkPreview?.labels || []);
+  const bulkWarningCount = (bulkPreview?.labels || []).filter(
+    label => label.row.state.warning,
+  ).length;
+  const printSheets = paginateQrLabelItems(printJob?.labels || []);
 
   return (
     <div style={{ fontFamily: 'system-ui, Tahoma, sans-serif' }}>
@@ -775,6 +949,51 @@ export default function ProductQrPage({
               </div>
             </div>
 
+            {selectedRows.length > 0 && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+                marginBottom: 12,
+                padding: '10px 12px',
+                border: '1px solid #8aba75',
+                borderRadius: 9,
+                background: '#f1f8ed',
+              }}>
+                <div>
+                  <div style={{ color: '#39752a', fontWeight: 800 }}>
+                    เลือกแล้ว {selectedRows.length.toLocaleString()} รายการ ·
+                    {' '}{Math.ceil(selectedRows.length / QR_LABEL_SHEET.capacity).toLocaleString()} แผ่น
+                  </div>
+                  <div style={{ marginTop: 2, color: 'var(--mute)', fontSize: 11 }}>
+                    พิมพ์รายการละ 1 ดวง · เลือกได้สูงสุด {MAX_PRINT_LABELS} รายการต่อครั้ง
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    className="btn sm ghost"
+                    type="button"
+                    onClick={clearSelection}
+                    disabled={bulkLoading || !!printJob}
+                  >
+                    ล้างที่เลือก
+                  </button>
+                  <button
+                    className="btn sm primary"
+                    type="button"
+                    onClick={openBulkPreview}
+                    disabled={bulkLoading || !!printJob}
+                  >
+                    {bulkLoading
+                      ? 'กำลังสร้าง QR...'
+                      : `พิมพ์รายการที่เลือก (${selectedRows.length.toLocaleString()})`}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div
               className="product-qr-table-wrap"
               style={{ border: '1.5px solid var(--line)', borderRadius: 9, background: '#fff' }}
@@ -782,6 +1001,18 @@ export default function ProductQrPage({
               <table className="tbl" style={{ width: '100%', fontSize: 13 }}>
                 <thead>
                   <tr>
+                    <th style={{ width: 42, textAlign: 'center' }}>
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={toggleVisibleSelection}
+                        disabled={selectableVisibleRows.length === 0 || bulkLoading || !!printJob}
+                        aria-label="เลือกสินค้าที่พิมพ์ได้ทั้งหมดในหน้านี้"
+                        title="เลือกสินค้าที่พิมพ์ได้ทั้งหมดในหน้านี้"
+                        style={{ width: 17, height: 17, cursor: 'pointer' }}
+                      />
+                    </th>
                     <th style={{ width: 105 }}>SKU</th>
                     <th>ชื่อสินค้า</th>
                     <th style={{ width: 125 }}>LOT</th>
@@ -791,47 +1022,68 @@ export default function ProductQrPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRows.map(row => (
-                    <tr key={`${row.sku}__${row.lot}__${row.exp}__${row.lotIndex}`}>
-                      <td className="mono" style={{ fontWeight: 700 }}>{row.sku}</td>
-                      <td style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }} title={row.name}>
-                        {row.name}
-                      </td>
-                      <td className="mono">{row.lot || '—'}</td>
-                      <td className="mono">{row.exp || '—'}</td>
-                      <td>
-                        <StatusBadge state={row.state} />
-                        {row.state.detail && (
-                          <div style={{
-                            color: row.state.tone === 'danger' ? '#b42d25' : 'var(--mute)',
-                            fontSize: 10,
-                            marginTop: 3,
-                          }}>
-                            {row.state.detail}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button
-                          className="btn sm primary"
-                          type="button"
-                          onClick={() => openPreview(row)}
-                          disabled={row.state.blocked}
-                          title={row.state.blocked ? `${row.state.label}: ${row.state.detail}` : 'ดูตัวอย่าง QR'}
-                          style={{
-                            minWidth: 48,
-                            opacity: row.state.blocked ? 0.42 : 1,
-                            cursor: row.state.blocked ? 'not-allowed' : 'pointer',
-                          }}
-                        >
-                          QR
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {visibleRows.map(row => {
+                    const key = qrRowKey(row);
+                    const isSelected = selectedRowKeys.has(key);
+                    const selectionDisabled = row.state.blocked
+                      || bulkLoading
+                      || !!printJob
+                      || (!isSelected && selectedRowKeys.size >= MAX_PRINT_LABELS);
+                    return (
+                      <tr key={key} style={{ background: isSelected ? '#f5faf2' : undefined }}>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleRowSelection(row)}
+                            disabled={selectionDisabled}
+                            aria-label={`เลือก SKU ${row.sku} LOT ${row.lot}`}
+                            title={row.state.blocked
+                              ? `${row.state.label}: ${row.state.detail}`
+                              : 'เลือกพิมพ์รายการนี้ร่วมกับรายการอื่น'}
+                            style={{ width: 17, height: 17, cursor: selectionDisabled ? 'not-allowed' : 'pointer' }}
+                          />
+                        </td>
+                        <td className="mono" style={{ fontWeight: 700 }}>{row.sku}</td>
+                        <td style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }} title={row.name}>
+                          {row.name}
+                        </td>
+                        <td className="mono">{row.lot || '—'}</td>
+                        <td className="mono">{row.exp || '—'}</td>
+                        <td>
+                          <StatusBadge state={row.state} />
+                          {row.state.detail && (
+                            <div style={{
+                              color: row.state.tone === 'danger' ? '#b42d25' : 'var(--mute)',
+                              fontSize: 10,
+                              marginTop: 3,
+                            }}>
+                              {row.state.detail}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            className="btn sm primary"
+                            type="button"
+                            onClick={() => openPreview(row)}
+                            disabled={row.state.blocked || bulkLoading || !!printJob}
+                            title={row.state.blocked ? `${row.state.label}: ${row.state.detail}` : 'ดูตัวอย่าง QR'}
+                            style={{
+                              minWidth: 48,
+                              opacity: row.state.blocked || bulkLoading || printJob ? 0.42 : 1,
+                              cursor: row.state.blocked || bulkLoading || printJob ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            QR
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {visibleRows.length === 0 && (
                     <tr>
-                      <td colSpan={6} style={{ padding: 28, textAlign: 'center', color: 'var(--mute)' }}>
+                      <td colSpan={7} style={{ padding: 28, textAlign: 'center', color: 'var(--mute)' }}>
                         ไม่พบ SKU, ชื่อสินค้า หรือ LOT ที่ค้นหา
                       </td>
                     </tr>
@@ -941,9 +1193,7 @@ export default function ProductQrPage({
                   background: '#fff',
                 }}>
                   <ProductQrSheet
-                    row={selected}
-                    svg={qrSvg}
-                    filledCount={previewFilledCount}
+                    labels={singlePreviewLabels}
                     preview
                   />
                 </div>
@@ -1037,14 +1287,154 @@ export default function ProductQrPage({
         document.body,
       )}
 
+      {bulkPreview && createPortal(
+        <div
+          className="product-qr-modal-backdrop"
+          role="presentation"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget && !printJob) closeBulkPreview();
+          }}
+        >
+          <div
+            className="product-qr-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-qr-bulk-preview-title"
+            style={{ width: 'min(760px, 96vw)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <div>
+                <div id="product-qr-bulk-preview-title" style={{ fontSize: 20, fontWeight: 800 }}>
+                  ตัวอย่างพิมพ์ QR หลายรายการ
+                </div>
+                <div style={{ color: 'var(--mute)', fontSize: 12, marginTop: 2 }}>
+                  {bulkPreview.labels.length.toLocaleString()} รายการ ·
+                  {' '}{bulkPreviewSheets.length.toLocaleString()} แผ่น · รายการละ 1 ดวง
+                </div>
+              </div>
+              <button
+                className="btn sm ghost"
+                type="button"
+                onClick={closeBulkPreview}
+                disabled={!!printJob}
+                aria-label="ปิดตัวอย่างหลายรายการ"
+                style={{ marginLeft: 'auto' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {bulkWarningCount > 0 && (
+              <div style={{
+                marginTop: 14,
+                border: '1px solid #e4a09a',
+                borderRadius: 8,
+                padding: '9px 11px',
+                color: '#a82821',
+                background: '#fdebea',
+                fontWeight: 700,
+                fontSize: 13,
+              }}>
+                ⚠ มีสินค้าหมดอายุหรือหมดอายุวันนี้ {bulkWarningCount.toLocaleString()} รายการ
+                {' '}ระบบจะขอยืนยันอีกครั้งก่อนพิมพ์
+              </div>
+            )}
+
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              margin: '20px 0 10px',
+              overflow: 'hidden',
+            }}>
+              <div className="product-qr-preview-scale">
+                <div style={{
+                  boxSizing: 'content-box',
+                  overflow: 'hidden',
+                  border: '1px solid #aaa',
+                  boxShadow: '0 4px 14px rgba(0,0,0,.12)',
+                  background: '#fff',
+                }}>
+                  <ProductQrSheet labels={bulkPreviewSheets[0] || []} preview />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center', color: 'var(--mute)', fontSize: 11, marginBottom: 12 }}>
+              ตัวอย่างแผ่นที่ 1 จาก {bulkPreviewSheets.length.toLocaleString()} แผ่น
+              {bulkPreview.labels.length > QR_LABEL_SHEET.capacity
+                ? ` · แสดง ${QR_LABEL_SHEET.capacity} รายการแรก`
+                : ''}
+            </div>
+
+            <div style={{
+              maxHeight: 160,
+              overflow: 'auto',
+              border: '1px solid var(--line)',
+              borderRadius: 8,
+              background: '#fff',
+            }}>
+              {bulkPreview.labels.map(({ row }, index) => (
+                <div
+                  key={qrRowKey(row)}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '36px minmax(90px, .8fr) minmax(100px, 1fr) minmax(95px, .8fr)',
+                    gap: 8,
+                    alignItems: 'center',
+                    padding: '6px 9px',
+                    borderBottom: index < bulkPreview.labels.length - 1 ? '1px solid var(--line)' : 'none',
+                    fontSize: 11,
+                  }}
+                >
+                  <span style={{ color: 'var(--mute)', textAlign: 'right' }}>{index + 1}.</span>
+                  <span className="mono" style={{ fontWeight: 800 }}>{row.sku}</span>
+                  <span className="mono">LOT {row.lot}</span>
+                  <span className="mono">EXP {row.exp}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              marginTop: 12,
+              padding: '8px 10px',
+              borderRadius: 8,
+              color: '#594c37',
+              background: '#fff7df',
+              fontSize: 12,
+              fontWeight: 700,
+              textAlign: 'center',
+            }}>
+              ตั้งค่าไดรเวอร์: กระดาษ 90×60 มม. · Margins None · Scale 100% · Copies 1
+            </div>
+
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+              marginTop: 14,
+              borderTop: '1px solid var(--line)',
+              paddingTop: 14,
+            }}>
+              <button className="btn ghost" type="button" onClick={closeBulkPreview} disabled={!!printJob}>
+                ยกเลิก
+              </button>
+              <button className="btn primary" type="button" onClick={startBulkPrint} disabled={!!printJob}>
+                {printJob
+                  ? 'กำลังเปิดหน้าพิมพ์...'
+                  : `พิมพ์ ${bulkPreview.labels.length.toLocaleString()} รายการ`}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
       {printJob && createPortal(
         <div className="product-qr-print-root" aria-hidden="true">
-          {printSheetCounts.map((filledCount, sheetIndex) => (
+          {printSheets.map((labels, sheetIndex) => (
             <ProductQrSheet
               key={sheetIndex}
-              row={printJob.row}
-              svg={printJob.svg}
-              filledCount={filledCount}
+              labels={labels}
             />
           ))}
         </div>,
