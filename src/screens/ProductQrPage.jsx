@@ -865,8 +865,13 @@ export default function ProductQrPage({
           border-radius: 14px;
           background: #fff;
           box-shadow: 0 18px 50px rgba(0,0,0,.25);
+          transform-origin: center bottom;
+          animation: toastIn .42s cubic-bezier(.34, 1.56, .34, 1) both;
         }
         .product-qr-print-root { display: none; }
+        @media (prefers-reduced-motion: reduce) {
+          .product-qr-modal { animation: none; }
+        }
         @media (max-width: 760px) {
           .product-qr-table-wrap { overflow-x: auto; }
           .product-qr-preview-scale { transform: scale(.82); transform-origin: center; margin: -12px -28px; }
