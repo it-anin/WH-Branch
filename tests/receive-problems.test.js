@@ -11,9 +11,23 @@ import {
   receiveProblemId,
   receiveProblemRoute,
   receiveProblemSkuFromId,
+  selectHistoryReceiveProblems,
   selectWarehouseReceiveProblems,
   upsertReceiveProblemList,
 } from '../src/warehouseHelpers.js';
+
+test('history problem viewer keeps evidence for one box in report order', () => {
+  const problems = [
+    { id: 'other', boxId: 'BX-OTHER', sku: 'X', createdAt: 1, image: 'data:image/jpeg;base64,other' },
+    { id: 'second', boxId: 'BX-OLD', sku: 'B', createdAt: 200, image: null },
+    { id: 'first', boxId: 'BX-OLD', sku: 'A', createdAt: 100, image: 'data:image/jpeg;base64,evidence' },
+  ];
+
+  const selected = selectHistoryReceiveProblems(problems, ' BX-OLD ');
+  assert.deepEqual(selected.map(problem => problem.id), ['first', 'second']);
+  assert.equal(selected[0].image, 'data:image/jpeg;base64,evidence');
+  assert.deepEqual(selectHistoryReceiveProblems(problems, ''), []);
+});
 
 test('one box has one deterministic receive problem per SKU', () => {
   const first = normalizeReceiveProblem({

@@ -90,6 +90,17 @@ export function upsertReceiveProblemList(problems, problem) {
     .sort((a, b) => numberOrZero(a.createdAt) - numberOrZero(b.createdAt));
 }
 
+// History keeps only a box snapshot, while receive problem documents (including
+// inline evidence images) remain in their own collection. Select defensively by
+// Box ID and keep the original report order for the read-only history dialog.
+export function selectHistoryReceiveProblems(problems, boxId) {
+  const target = cleanText(boxId);
+  if (!target) return [];
+  return (problems || [])
+    .filter(problem => cleanText(problem?.boxId) === target)
+    .sort((a, b) => numberOrZero(a?.createdAt) - numberOrZero(b?.createdAt));
+}
+
 export function problemTypeLabels(types) {
   const labels = Object.fromEntries(RECEIVE_PROBLEM_TYPE_OPTIONS.map(option => [option.value, option.label]));
   return (types || []).map(type => labels[type] || type);

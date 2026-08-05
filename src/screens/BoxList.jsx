@@ -1,7 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { branchLabel } from '../branches.js';
-import { filterTodayBoxes } from '../warehouseHelpers.js';
+import {
+  filterTodayBoxes,
+  problemTypeLabels,
+  selectHistoryReceiveProblems,
+} from '../warehouseHelpers.js';
 
 // ถังของลังที่ไม่มี box.branch (สาขารับไม่ได้) — lowercase ชนกับ code จริงไม่ได้ (extractBranch uppercase เสมอ)
 const NO_BRANCH = '__none';
@@ -23,7 +27,8 @@ function formatTime(ms) {
 }
 
 // onDelete: ส่งมาเฉพาะตารางลังวันนี้ (ลังจริงใน Firestore) — ประวัติย้อนหลังไม่ส่ง เพราะเป็น snapshot ลังที่ถูกลบไปแล้ว ลบซ้ำไม่ได้
-function BoxTable({ boxes, onOpen, onPrint, onDelete }) {
+function BoxTable({ boxes, onOpen, onPrint, onHistory, onDelete }) {
+  const hasActions = Boolean(onHistory || onDelete);
   if (boxes.length === 0) return (
     <div style={{ padding: '20px 0', fontFamily: 'system-ui', color: 'var(--mute)', textAlign: 'center' }}>
       ไม่มีข้อมูลลัง
@@ -35,7 +40,7 @@ function BoxTable({ boxes, onOpen, onPrint, onDelete }) {
         <tr>
           <th>Box ID</th><th>สถานะ</th><th>พนักงาน</th><th>SKU</th><th>ชิ้น</th>
           <th>เลขที่เอกสาร</th><th>เปิดลัง</th><th>ปิดลัง</th><th>อัปเดต</th>
-          {onDelete && <th style={{ width: 44 }}></th>}
+          {hasActions && <th style={{ width: onHistory ? 118 : 44 }}></th>}
         </tr>
       </thead>
       <tbody>
@@ -50,15 +55,26 @@ function BoxTable({ boxes, onOpen, onPrint, onDelete }) {
             <td className="mono" style={{ fontSize: 12, color: 'var(--mute)' }}>{formatTime(b.createdAt)}</td>
             <td className="mono" style={{ fontSize: 12, color: 'var(--mute)' }}>{formatTime(b.closedAt)}</td>
             <td style={{ color: 'var(--mute)' }}>{b.updated}</td>
-            {onDelete && (
+            {hasActions && (
               <td>
-                <button
-                  className="btn sm ghost"
-                  style={{ color: b.status === 'received' ? 'var(--mute)' : 'var(--red, #c0392b)', padding: '2px 7px' }}
-                  disabled={b.status === 'received'}   // ลังที่สาขารับแล้วห้ามลบ (เสีย audit trail) — deleteBox() กันไว้อีกชั้น
-                  title={b.status === 'received' ? 'ลบไม่ได้ — สาขารับสินค้าแล้ว' : 'ลบลังนี้ (ของจะกลับไปรายการเบิก)'}
-                  onClick={() => onDelete(b.id)}
-                >🗑</button>
+                <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
+                  {onHistory && (
+                    <button
+                      className="btn sm ghost"
+                      style={{ padding: '4px 9px', whiteSpace: 'nowrap' }}
+                      onClick={() => onHistory(b)}
+                    >🔎 ดูประวัติ</button>
+                  )}
+                  {onDelete && (
+                    <button
+                      className="btn sm ghost"
+                      style={{ color: b.status === 'received' ? 'var(--mute)' : 'var(--red, #c0392b)', padding: '2px 7px' }}
+                      disabled={b.status === 'received'}   // ลังที่สาขารับแล้วห้ามลบ (เสีย audit trail) — deleteBox() กันไว้อีกชั้น
+                      title={b.status === 'received' ? 'ลบไม่ได้ — สาขารับสินค้าแล้ว' : 'ลบลังนี้ (ของจะกลับไปรายการเบิก)'}
+                      onClick={() => onDelete(b.id)}
+                    >🗑</button>
+                  )}
+                </div>
               </td>
             )}
           </tr>
@@ -68,7 +84,7 @@ function BoxTable({ boxes, onOpen, onPrint, onDelete }) {
   );
 }
 
-function HistoryEntry({ entry, generateCSV, triggerDownload, onDelete }) {
+function HistoryEntry({ entry, generateCSV, triggerDownload, onViewBox, onDelete }) {
   const [open, setOpen] = useState(false);
   const total = entry.boxes.length;
   const exported = entry.boxes.filter(b => b.status === 'exported' || b.status === 'received').length;
@@ -112,16 +128,127 @@ function HistoryEntry({ entry, generateCSV, triggerDownload, onDelete }) {
       </div>
       {open && (
         <div style={{ padding: '0 0 8px' }}>
-          <BoxTable boxes={entry.boxes} />
+          <BoxTable boxes={entry.boxes} onHistory={onViewBox} />
         </div>
       )}
     </div>
   );
 }
 
-export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, deleteHistoryEntry, historyRetentionDays, clearBoxes, clearFirestore, deleteBox }) {
+function HistoryBoxDialog({ box, problems, loading, error, onClose, onRetry }) {
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: 'rgba(0,0,0,0.58)', padding: 24,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}
+    >
+      <div style={{
+        width: 'min(980px, 96vw)', maxHeight: '90vh', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+        background: 'var(--paper, white)', border: '2px solid var(--ink)', borderRadius: 16,
+        boxShadow: '0 18px 60px rgba(0,0,0,0.32)',
+      }}>
+        <div className="row" style={{ padding: '16px 18px', borderBottom: '1.5px solid var(--line)', gap: 10 }}>
+          <div>
+            <div style={{ fontFamily: 'system-ui', fontSize: 19, fontWeight: 800 }}>ประวัติลัง {box.id}</div>
+            <div className="mono" style={{ marginTop: 3, fontSize: 11, color: 'var(--mute)' }}>
+              {box.pos && box.pos !== '—' ? box.pos : 'ไม่มีเลขที่เอกสาร'}
+            </div>
+          </div>
+          <span className="chip" style={{ marginLeft: 8, background: statusLabel[box.status]?.bg, borderColor: statusLabel[box.status]?.border }}>
+            ● {statusLabel[box.status]?.label || box.status}
+          </span>
+          <div className="spacer" />
+          <button className="btn sm ghost" onClick={onClose}>× ปิด</button>
+        </div>
+
+        <div style={{ padding: 18, overflowY: 'auto' }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8,
+            marginBottom: 16,
+          }}>
+            {[
+              ['สาขาปลายทาง', box.branch ? branchLabel(box.branch) : 'ไม่ระบุสาขา'],
+              ['พนักงานแพ็ค', box.packer?.name || '—'],
+              ['จำนวน SKU', box.skuCount ?? 0],
+              ['จำนวนชิ้น', box.totalQty ?? 0],
+              ['เวลาปิดลัง', formatTime(box.closedAt)],
+            ].map(([label, value]) => (
+              <div key={label} style={{ padding: '10px 12px', border: '1px solid var(--line)', borderRadius: 9, background: 'white', minWidth: 0 }}>
+                <div style={{ fontFamily: 'system-ui', fontSize: 11, color: 'var(--mute)' }}>{label}</div>
+                <div style={{ marginTop: 3, fontFamily: 'system-ui', fontSize: 14, fontWeight: 800, overflowWrap: 'anywhere' }}>{value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontFamily: 'system-ui', fontSize: 16, fontWeight: 800, marginBottom: 9 }}>
+            ปัญหาและรูปหลักฐาน
+          </div>
+          {loading ? (
+            <div style={{ padding: 24, border: '1px dashed var(--line)', borderRadius: 10, textAlign: 'center', color: 'var(--mute)' }}>
+              กำลังโหลดข้อมูลปัญหาและรูปภาพ…
+            </div>
+          ) : error ? (
+            <div style={{ padding: 16, border: '1.5px solid var(--red)', borderRadius: 10, background: '#fde8e8', color: 'var(--red)', textAlign: 'center' }}>
+              <div style={{ fontFamily: 'system-ui', fontWeight: 800 }}>โหลดประวัติปัญหาไม่สำเร็จ</div>
+              <button className="btn sm" style={{ marginTop: 9 }} onClick={onRetry}>ลองใหม่</button>
+            </div>
+          ) : problems.length === 0 ? (
+            <div style={{ padding: 20, border: '1px dashed var(--line)', borderRadius: 10, textAlign: 'center', color: 'var(--mute)', fontFamily: 'system-ui' }}>
+              ไม่พบข้อมูลแจ้งปัญหาของลังนี้ หรือข้อมูลปัญหาหมดอายุแล้ว
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
+              {problems.map(problem => (
+                <div key={problem.id} style={{ padding: 13, border: '1.5px solid var(--red)', borderRadius: 11, background: '#fff8f8', minWidth: 0 }}>
+                  <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>SKU {problem.sku}</div>
+                  <div style={{ marginTop: 2, fontFamily: 'system-ui', fontSize: 15, fontWeight: 800 }}>{problem.name || problem.sku}</div>
+                  {problem.barcode && <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>Barcode: {problem.barcode}</div>}
+                  <div style={{ marginTop: 6, color: 'var(--red)', fontFamily: 'system-ui', fontSize: 13, fontWeight: 800 }}>
+                    {problemTypeLabels(problem.types).join(', ') || 'ไม่ระบุประเภทปัญหา'}
+                  </div>
+                  {problem.affectedQty && (
+                    <div style={{ marginTop: 4, fontFamily: 'system-ui', fontSize: 12 }}>
+                      จำนวนที่มีปัญหา: <b>{problem.affectedQty} {problem.unit || 'หน่วย'}</b>
+                    </div>
+                  )}
+                  {(problem.lotExpRows || []).map((row, index) => (
+                    <div key={`${row.lot || ''}-${row.exp || ''}-${index}`} className="mono" style={{ marginTop: 3, fontSize: 10, color: 'var(--accent)' }}>
+                      LOT: {row.lot || '—'} · EXP: {row.exp || '—'}
+                    </div>
+                  ))}
+                  {problem.note && <div style={{ marginTop: 7, whiteSpace: 'pre-wrap', fontFamily: 'system-ui', fontSize: 12 }}>📝 {problem.note}</div>}
+                  {problem.image ? (
+                    <div style={{ marginTop: 9 }}>
+                      <img src={problem.image} alt={`หลักฐาน ${problem.sku}`} style={{ width: '100%', maxHeight: 300, objectFit: 'contain', display: 'block', border: '1px solid var(--line)', borderRadius: 8, background: 'white' }} />
+                      <a href={problem.image} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6, color: 'var(--accent)', fontFamily: 'system-ui', fontSize: 12, fontWeight: 700 }}>
+                        เปิดรูปขนาดใหญ่ ↗
+                      </a>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 8, color: 'var(--mute)', fontFamily: 'system-ui', fontSize: 11 }}>ไม่มีรูปหลักฐาน</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, deleteHistoryEntry, historyRetentionDays, clearBoxes, clearFirestore, deleteBox, loadReceiveProblems = async () => [] }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [search, setSearch] = useState('');
+  const [historyBox, setHistoryBox] = useState(null);
+  const [historyProblems, setHistoryProblems] = useState([]);
+  const [historyProblemsLoading, setHistoryProblemsLoading] = useState(false);
+  const [historyProblemsError, setHistoryProblemsError] = useState(false);
+  const historyProblemLoadSeqRef = useRef(0);
   const deletingBox = confirmDeleteId ? boxes.find(b => b.id === confirmDeleteId) || null : null;
 
   // ตัวกรองสาขา — scope ทั้งหน้า (ตารางวันนี้ + ชิปสรุป + Export + ประวัติ)
@@ -160,6 +287,34 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
   function handleDeleteHistory(entryId) {
     if (!window.confirm('ลบประวัติวันนี้ออกจากรายการ?')) return;
     deleteHistoryEntry(entryId);
+  }
+
+  async function openHistoryBox(box) {
+    if (!box?.id) return;
+    const seq = ++historyProblemLoadSeqRef.current;
+    setHistoryBox(box);
+    setHistoryProblems([]);
+    setHistoryProblemsError(false);
+    setHistoryProblemsLoading(true);
+    try {
+      const problems = await loadReceiveProblems(box.id);
+      if (historyProblemLoadSeqRef.current !== seq) return;
+      setHistoryProblems(selectHistoryReceiveProblems(problems, box.id));
+    } catch (err) {
+      if (historyProblemLoadSeqRef.current !== seq) return;
+      console.error('history loadReceiveProblems failed:', err?.code || err?.message || err);
+      setHistoryProblemsError(true);
+    } finally {
+      if (historyProblemLoadSeqRef.current === seq) setHistoryProblemsLoading(false);
+    }
+  }
+
+  function closeHistoryBox() {
+    historyProblemLoadSeqRef.current += 1;
+    setHistoryBox(null);
+    setHistoryProblems([]);
+    setHistoryProblemsLoading(false);
+    setHistoryProblemsError(false);
   }
 
   // เลือกสาขาเจาะจง → ตัด entry ที่ไม่มีลังของสาขานั้นออก (เหลือเฉพาะวันที่เกี่ยวข้อง)
@@ -268,6 +423,7 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
                 entry={{ ...entry, boxes: entryBoxes }}
                 generateCSV={generateCSV}
                 triggerDownload={triggerDownload}
+                onViewBox={openHistoryBox}
                 onDelete={() => handleDeleteHistory(entry.id)}
               />
             ))}
@@ -319,6 +475,18 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
             </div>
           </div>
         </div>,
+        document.body
+      )}
+
+      {historyBox && createPortal(
+        <HistoryBoxDialog
+          box={historyBox}
+          problems={historyProblems}
+          loading={historyProblemsLoading}
+          error={historyProblemsError}
+          onClose={closeHistoryBox}
+          onRetry={() => openHistoryBox(historyBox)}
+        />,
         document.body
       )}
     </div>
