@@ -101,6 +101,64 @@ export function selectHistoryReceiveProblems(problems, boxId) {
     .sort((a, b) => numberOrZero(a?.createdAt) - numberOrZero(b?.createdAt));
 }
 
+export function selectProblemHistoryBoxes(boxes, historyEntries, problems = []) {
+  const byId = new Map();
+  const add = (box, historyClearedAt = null) => {
+    const id = cleanText(box?.id);
+    const hasProblem = Boolean(
+      box?.problemReviewed
+      || box?.problemResolved
+      || numberOrZero(box?.problemCount) > 0
+      || (box?.problemIds || []).length > 0
+      || box?.problemType === 'item'
+      || box?.problemType === 'mixed'
+      || cleanText(box?.problemNote)
+      || box?.problemImage
+    );
+    if (!id || !hasProblem) return;
+    byId.set(id, { ...box, id, historyClearedAt });
+  };
+
+  (historyEntries || []).forEach(entry => {
+    (entry?.boxes || []).forEach(box => add(box, entry?.clearedAt || null));
+  });
+  // Current live boxes win if the same ID is also present in a history snapshot.
+  (boxes || []).forEach(box => add(box, null));
+
+  // Problem documents outlive the active box list. Include them directly so a
+  // report remains discoverable even when its box snapshot is no longer around.
+  const problemsByBox = new Map();
+  (problems || []).forEach(problem => {
+    const boxId = cleanText(problem?.boxId);
+    if (!boxId || problem?.status === 'draft') return;
+    const current = problemsByBox.get(boxId) || [];
+    current.push(problem);
+    problemsByBox.set(boxId, current);
+  });
+  problemsByBox.forEach((boxProblems, boxId) => {
+    const existing = byId.get(boxId) || { id: boxId };
+    const problemIds = [...new Set(boxProblems.map(problem => cleanText(problem?.id)).filter(Boolean))];
+    const latestProblemAt = Math.max(...boxProblems.map(problem => numberOrZero(
+      problem?.resolvedAt || problem?.submittedAt || problem?.updatedAt || problem?.createdAt,
+    )));
+    byId.set(boxId, {
+      ...existing,
+      id: boxId,
+      problemReviewed: true,
+      problemResolved: boxProblems.every(problem => problem?.status === 'resolved'),
+      problemCount: problemIds.length || boxProblems.length,
+      problemIds,
+      problemUpdatedAt: latestProblemAt,
+    });
+  });
+
+  return [...byId.values()].sort((a, b) => {
+    const bTime = numberOrZero(b?.problemUpdatedAt || b?.receivedAt || b?.closedAt || b?.createdAt);
+    const aTime = numberOrZero(a?.problemUpdatedAt || a?.receivedAt || a?.closedAt || a?.createdAt);
+    return bTime - aTime || String(b.id).localeCompare(String(a.id));
+  });
+}
+
 export function problemTypeLabels(types) {
   const labels = Object.fromEntries(RECEIVE_PROBLEM_TYPE_OPTIONS.map(option => [option.value, option.label]));
   return (types || []).map(type => labels[type] || type);

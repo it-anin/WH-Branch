@@ -428,13 +428,14 @@ export default function App() {
   }
 
   async function loadReceiveProblems(boxId) {
-    if (!boxId) return [];
     let snap;
     try {
-      snap = await getDocs(query(
-        collection(db, 'receiveProblems'),
-        where('boxId', '==', boxId),
-      ));
+      snap = boxId
+        ? await getDocs(query(
+            collection(db, 'receiveProblems'),
+            where('boxId', '==', boxId),
+          ))
+        : await getDocs(collection(db, 'receiveProblems'));
     } catch (err) {
       reportFirestoreError(err, { source: 'receiveProblems-read', critical: true });
       throw err;

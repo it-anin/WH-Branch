@@ -5,6 +5,7 @@ import {
   filterTodayBoxes,
   problemTypeLabels,
   selectHistoryReceiveProblems,
+  selectProblemHistoryBoxes,
 } from '../warehouseHelpers.js';
 
 // ถังของลังที่ไม่มี box.branch (สาขารับไม่ได้) — lowercase ชนกับ code จริงไม่ได้ (extractBranch uppercase เสมอ)
@@ -27,8 +28,7 @@ function formatTime(ms) {
 }
 
 // onDelete: ส่งมาเฉพาะตารางลังวันนี้ (ลังจริงใน Firestore) — ประวัติย้อนหลังไม่ส่ง เพราะเป็น snapshot ลังที่ถูกลบไปแล้ว ลบซ้ำไม่ได้
-function BoxTable({ boxes, onOpen, onPrint, onHistory, onDelete }) {
-  const hasActions = Boolean(onHistory || onDelete);
+function BoxTable({ boxes, onOpen, onPrint, onDelete }) {
   if (boxes.length === 0) return (
     <div style={{ padding: '20px 0', fontFamily: 'system-ui', color: 'var(--mute)', textAlign: 'center' }}>
       ไม่มีข้อมูลลัง
@@ -40,7 +40,7 @@ function BoxTable({ boxes, onOpen, onPrint, onHistory, onDelete }) {
         <tr>
           <th>Box ID</th><th>สถานะ</th><th>พนักงาน</th><th>SKU</th><th>ชิ้น</th>
           <th>เลขที่เอกสาร</th><th>เปิดลัง</th><th>ปิดลัง</th><th>อัปเดต</th>
-          {hasActions && <th style={{ width: onHistory ? 118 : 44 }}></th>}
+          {onDelete && <th style={{ width: 44 }}></th>}
         </tr>
       </thead>
       <tbody>
@@ -55,26 +55,15 @@ function BoxTable({ boxes, onOpen, onPrint, onHistory, onDelete }) {
             <td className="mono" style={{ fontSize: 12, color: 'var(--mute)' }}>{formatTime(b.createdAt)}</td>
             <td className="mono" style={{ fontSize: 12, color: 'var(--mute)' }}>{formatTime(b.closedAt)}</td>
             <td style={{ color: 'var(--mute)' }}>{b.updated}</td>
-            {hasActions && (
+            {onDelete && (
               <td>
-                <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
-                  {onHistory && (
-                    <button
-                      className="btn sm ghost"
-                      style={{ padding: '4px 9px', whiteSpace: 'nowrap' }}
-                      onClick={() => onHistory(b)}
-                    >🔎 ดูประวัติ</button>
-                  )}
-                  {onDelete && (
-                    <button
-                      className="btn sm ghost"
-                      style={{ color: b.status === 'received' ? 'var(--mute)' : 'var(--red, #c0392b)', padding: '2px 7px' }}
-                      disabled={b.status === 'received'}   // ลังที่สาขารับแล้วห้ามลบ (เสีย audit trail) — deleteBox() กันไว้อีกชั้น
-                      title={b.status === 'received' ? 'ลบไม่ได้ — สาขารับสินค้าแล้ว' : 'ลบลังนี้ (ของจะกลับไปรายการเบิก)'}
-                      onClick={() => onDelete(b.id)}
-                    >🗑</button>
-                  )}
-                </div>
+                <button
+                  className="btn sm ghost"
+                  style={{ color: b.status === 'received' ? 'var(--mute)' : 'var(--red, #c0392b)', padding: '2px 7px' }}
+                  disabled={b.status === 'received'}   // ลังที่สาขารับแล้วห้ามลบ (เสีย audit trail) — deleteBox() กันไว้อีกชั้น
+                  title={b.status === 'received' ? 'ลบไม่ได้ — สาขารับสินค้าแล้ว' : 'ลบลังนี้ (ของจะกลับไปรายการเบิก)'}
+                  onClick={() => onDelete(b.id)}
+                >🗑</button>
               </td>
             )}
           </tr>
@@ -84,7 +73,7 @@ function BoxTable({ boxes, onOpen, onPrint, onHistory, onDelete }) {
   );
 }
 
-function HistoryEntry({ entry, generateCSV, triggerDownload, onViewBox, onDelete }) {
+function HistoryEntry({ entry, generateCSV, triggerDownload, onDelete }) {
   const [open, setOpen] = useState(false);
   const total = entry.boxes.length;
   const exported = entry.boxes.filter(b => b.status === 'exported' || b.status === 'received').length;
@@ -128,7 +117,7 @@ function HistoryEntry({ entry, generateCSV, triggerDownload, onViewBox, onDelete
       </div>
       {open && (
         <div style={{ padding: '0 0 8px' }}>
-          <BoxTable boxes={entry.boxes} onHistory={onViewBox} />
+          <BoxTable boxes={entry.boxes} />
         </div>
       )}
     </div>
@@ -241,6 +230,108 @@ function HistoryBoxDialog({ box, problems, loading, error, onClose, onRetry }) {
   );
 }
 
+function ProblemHistoryIndexDialog({ boxes, loading, error, onClose, onRetry, onView }) {
+  const [query, setQuery] = useState('');
+  const needle = query.trim().toLowerCase();
+  const visible = needle
+    ? boxes.filter(box => [
+        box.id,
+        box.pos,
+        box.branch,
+        branchLabel(box.branch || ''),
+        box.packer?.name,
+      ].join(' ').toLowerCase().includes(needle))
+    : boxes;
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9998,
+        background: 'rgba(0,0,0,0.58)', padding: 24,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}
+    >
+      <div style={{
+        width: 'min(1080px, 96vw)', maxHeight: '90vh', overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+        background: 'var(--paper, white)', border: '2px solid var(--ink)', borderRadius: 16,
+        boxShadow: '0 18px 60px rgba(0,0,0,0.32)',
+      }}>
+        <div className="row" style={{ padding: '15px 18px', borderBottom: '1.5px solid var(--line)', gap: 10 }}>
+          <div>
+            <div style={{ fontFamily: 'system-ui', fontSize: 19, fontWeight: 800 }}>🕘 ประวัติการแจ้งปัญหา</div>
+            <div style={{ marginTop: 2, fontFamily: 'system-ui', fontSize: 11, color: 'var(--mute)' }}>
+              รวมลังวันนี้และประวัติย้อนหลังที่ยังอยู่ในระบบ
+            </div>
+          </div>
+          <span className="chip" style={{ marginLeft: 8 }}>{boxes.length} ลัง</span>
+          <div className="spacer" />
+          <input
+            className="input"
+            style={{ width: 300 }}
+            placeholder="ค้นหา Box ID / POS / สาขา / พนักงาน"
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            autoFocus
+          />
+          <button className="btn sm ghost" onClick={onClose}>× ปิด</button>
+        </div>
+
+        <div style={{ padding: 16, overflowY: 'auto' }}>
+          {loading ? (
+            <div style={{ padding: 28, border: '1px dashed var(--line)', borderRadius: 10, color: 'var(--mute)', textAlign: 'center', fontFamily: 'system-ui' }}>
+              กำลังโหลดรายการแจ้งปัญหาทั้งหมด…
+            </div>
+          ) : error ? (
+            <div style={{ padding: 20, border: '1.5px solid var(--red)', borderRadius: 10, background: '#fde8e8', color: 'var(--red)', textAlign: 'center', fontFamily: 'system-ui' }}>
+              <div style={{ fontWeight: 800 }}>โหลดประวัติการแจ้งปัญหาไม่สำเร็จ</div>
+              <button className="btn sm" style={{ marginTop: 9 }} onClick={onRetry}>ลองใหม่</button>
+            </div>
+          ) : visible.length === 0 ? (
+            <div style={{ padding: 28, border: '1px dashed var(--line)', borderRadius: 10, color: 'var(--mute)', textAlign: 'center', fontFamily: 'system-ui' }}>
+              {boxes.length === 0
+                ? 'ยังไม่มีลังที่แจ้งปัญหาในรายการวันนี้หรือประวัติย้อนหลัง'
+                : `ไม่พบลังที่ตรงกับ “${query.trim()}”`}
+            </div>
+          ) : (
+            <div style={{ border: '1.5px solid var(--line)', borderRadius: 10, overflow: 'hidden', background: 'white' }}>
+              <table className="tbl">
+                <thead><tr><th>Box ID</th><th>สาขา</th><th>พนักงาน</th><th>จำนวนปัญหา</th><th>สถานะปัญหา</th><th>ปิดลัง</th><th></th></tr></thead>
+                <tbody>
+                  {visible.map(box => {
+                    const problemCount = box.problemCount || (box.problemIds || []).length || 1;
+                    const resolved = Boolean(box.problemResolved);
+                    return (
+                      <tr key={box.id}>
+                        <td><b className="mono">{box.id}</b>{box.pos && box.pos !== '—' && <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>{box.pos}</div>}</td>
+                        <td style={{ fontFamily: 'system-ui', fontWeight: 700 }}>{box.branch ? branchLabel(box.branch) : 'ไม่ระบุสาขา'}</td>
+                        <td style={{ fontFamily: 'system-ui' }}>{box.packer?.name || '—'}</td>
+                        <td>{problemCount} รายการ</td>
+                        <td>
+                          <span className="chip" style={{
+                            color: resolved ? '#1a7a3a' : 'var(--red)',
+                            background: resolved ? '#e8f5e9' : '#fde8e8',
+                            borderColor: resolved ? '#79bb8e' : 'var(--red)',
+                          }}>
+                            {resolved ? '✓ แก้ไขแล้ว' : '● แจ้งปัญหา'}
+                          </span>
+                        </td>
+                        <td className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{formatTime(box.closedAt)}</td>
+                        <td style={{ textAlign: 'right' }}><button className="btn sm" onClick={() => onView(box)}>ดูปัญหา/รูป →</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, deleteHistoryEntry, historyRetentionDays, clearBoxes, clearFirestore, deleteBox, loadReceiveProblems = async () => [] }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [search, setSearch] = useState('');
@@ -248,7 +339,12 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
   const [historyProblems, setHistoryProblems] = useState([]);
   const [historyProblemsLoading, setHistoryProblemsLoading] = useState(false);
   const [historyProblemsError, setHistoryProblemsError] = useState(false);
+  const [problemHistoryOpen, setProblemHistoryOpen] = useState(false);
+  const [problemIndexProblems, setProblemIndexProblems] = useState([]);
+  const [problemIndexLoading, setProblemIndexLoading] = useState(false);
+  const [problemIndexError, setProblemIndexError] = useState(false);
   const historyProblemLoadSeqRef = useRef(0);
+  const problemIndexLoadSeqRef = useRef(0);
   const deletingBox = confirmDeleteId ? boxes.find(b => b.id === confirmDeleteId) || null : null;
 
   // ตัวกรองสาขา — scope ทั้งหน้า (ตารางวันนี้ + ชิปสรุป + Export + ประวัติ)
@@ -261,6 +357,7 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
   const branchBoxes = boxes.filter(b => matchBranch(b, branchFilter));
   // Search มีผลเฉพาะตารางวันนี้หลังกรองสาขา; summary/export/history ยังใช้ branchBoxes ชุดเต็ม
   const todayBoxes = filterTodayBoxes(branchBoxes, itemsByBox, search);
+  const problemHistoryBoxes = selectProblemHistoryBoxes(boxes, history, problemIndexProblems);
 
   // suffix ชื่อไฟล์ Export ตามสาขาที่กรอง: 'all' → ไม่เติม, สาขา → -SRC, ไม่ระบุ → -nobranch
   const exportSuffix = branchFilter === 'all' ? '' : branchFilter === NO_BRANCH ? '-nobranch' : `-${branchFilter}`;
@@ -315,6 +412,30 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
     setHistoryProblems([]);
     setHistoryProblemsLoading(false);
     setHistoryProblemsError(false);
+  }
+
+  async function openProblemHistory() {
+    const seq = ++problemIndexLoadSeqRef.current;
+    setProblemHistoryOpen(true);
+    setProblemIndexLoading(true);
+    setProblemIndexError(false);
+    try {
+      const problems = await loadReceiveProblems();
+      if (problemIndexLoadSeqRef.current !== seq) return;
+      setProblemIndexProblems(problems);
+    } catch (err) {
+      if (problemIndexLoadSeqRef.current !== seq) return;
+      console.error('problem history index load failed:', err?.code || err?.message || err);
+      setProblemIndexError(true);
+    } finally {
+      if (problemIndexLoadSeqRef.current === seq) setProblemIndexLoading(false);
+    }
+  }
+
+  function closeProblemHistory() {
+    problemIndexLoadSeqRef.current += 1;
+    setProblemHistoryOpen(false);
+    setProblemIndexLoading(false);
   }
 
   // เลือกสาขาเจาะจง → ตัด entry ที่ไม่มีลังของสาขานั้นออก (เหลือเฉพาะวันที่เกี่ยวข้อง)
@@ -380,6 +501,13 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
           <span className="chip" style={{ background: '#f5b8d4', borderColor: '#c04080' }}>สาขารับสินค้าแล้ว · {branchBoxes.filter(b => b.status === 'received').length}</span>
           <div className="spacer" />
           <button className="btn sm ghost" onClick={() => showToast('รีเฟรชแล้ว')}>⟲ รีเฟรช</button>
+          <button
+            className="btn sm"
+            style={{ borderColor: 'var(--red)', color: 'var(--red)', background: '#fff8f8' }}
+            onClick={openProblemHistory}
+          >
+            🕘 ประวัติการแจ้งปัญหา
+          </button>
           <button className="btn sm" onClick={handleExport}>{exportLabel}</button>
           <button
             className="btn sm"
@@ -423,7 +551,6 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
                 entry={{ ...entry, boxes: entryBoxes }}
                 generateCSV={generateCSV}
                 triggerDownload={triggerDownload}
-                onViewBox={openHistoryBox}
                 onDelete={() => handleDeleteHistory(entry.id)}
               />
             ))}
@@ -486,6 +613,18 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
           error={historyProblemsError}
           onClose={closeHistoryBox}
           onRetry={() => openHistoryBox(historyBox)}
+        />,
+        document.body
+      )}
+
+      {problemHistoryOpen && createPortal(
+        <ProblemHistoryIndexDialog
+          boxes={problemHistoryBoxes}
+          loading={problemIndexLoading}
+          error={problemIndexError}
+          onClose={closeProblemHistory}
+          onRetry={openProblemHistory}
+          onView={openHistoryBox}
         />,
         document.body
       )}

@@ -12,6 +12,7 @@ import {
   receiveProblemRoute,
   receiveProblemSkuFromId,
   selectHistoryReceiveProblems,
+  selectProblemHistoryBoxes,
   selectWarehouseReceiveProblems,
   upsertReceiveProblemList,
 } from '../src/warehouseHelpers.js';
@@ -27,6 +28,35 @@ test('history problem viewer keeps evidence for one box in report order', () => 
   assert.deepEqual(selected.map(problem => problem.id), ['first', 'second']);
   assert.equal(selected[0].image, 'data:image/jpeg;base64,evidence');
   assert.deepEqual(selectHistoryReceiveProblems(problems, ''), []);
+});
+
+test('problem history index combines live and archived problem boxes without duplicates', () => {
+  const archived = {
+    clearedAt: '2026-08-04T17:00:00.000Z',
+    boxes: [
+      { id: 'BX-OLD', problemReviewed: true, problemCount: 2, closedAt: 100 },
+      { id: 'BX-CLEAN', problemReviewed: false, closedAt: 200 },
+      { id: 'BX-DUP', problemReviewed: true, branch: 'OLD', closedAt: 300 },
+    ],
+  };
+  const live = [
+    { id: 'BX-LIVE', problemIds: ['BX-LIVE__SKU'], closedAt: 400 },
+    { id: 'BX-DUP', problemResolved: true, branch: 'NEW', closedAt: 500 },
+    { id: 'BX-NORMAL', closedAt: 600 },
+  ];
+
+  const problems = [
+    { id: 'P-ORPHAN', boxId: 'BX-ORPHAN', status: 'submitted', updatedAt: 700 },
+    { id: 'P-RESOLVED', boxId: 'BX-DUP', status: 'resolved', resolvedAt: 800 },
+    { id: 'P-DRAFT', boxId: 'BX-DRAFT', status: 'draft', updatedAt: 900 },
+  ];
+
+  const selected = selectProblemHistoryBoxes(live, [archived], problems);
+  assert.deepEqual(selected.map(box => box.id), ['BX-DUP', 'BX-ORPHAN', 'BX-LIVE', 'BX-OLD']);
+  assert.equal(selected[0].branch, 'NEW', 'live metadata must be retained when problem documents are merged');
+  assert.equal(selected[0].problemResolved, true);
+  assert.equal(selected[1].problemCount, 1, 'orphan problem documents must remain discoverable by Box ID');
+  assert.equal(selected[3].historyClearedAt, archived.clearedAt);
 });
 
 test('one box has one deterministic receive problem per SKU', () => {
