@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { isUrgentItem } from '../units.js';
+import { validatePicklistLocationGuard } from '../warehouseHelpers.js';
 
 const TEMPLATE_CSV = [
   'ColA,ColB,ColC,ColD,ColE,ColF,ColG',
@@ -129,6 +130,24 @@ export default function ImportCatalog({ catalog, meta, onImport, locked = false,
         );
         return;
       }
+      const locationGuard = validatePicklistLocationGuard(items);
+      if (!locationGuard.ok) {
+        const preview = locationGuard.missing.slice(0, 10).map(item => {
+          const position = item.no ? `ลำดับ ${item.no}` : `แถว ${item.rowNumber}`;
+          return `• ${position} · SKU ${item.sku || 'ไม่ระบุ'}`;
+        }).join('\n');
+        const remaining = locationGuard.missing.length > 10
+          ? `\n• และอีก ${locationGuard.missing.length - 10} รายการ`
+          : '';
+        window.alert(
+          `⛔ อัปโหลด Picklist ปกติไม่ได้\n\n` +
+          `พบสินค้าไม่มี Location ${locationGuard.missing.length} จาก ${items.length} รายการ\n\n` +
+          `${preview}${remaining}\n\n` +
+          `กรุณาใส่ Location ให้ครบทุกรายการแล้วอัปโหลดใหม่\n` +
+          `ข้อมูล Picklist เดิมยังไม่ถูกเปลี่ยน`,
+        );
+        return;
+      }
       const b = extractBranch(file.name);
       // ชื่อไฟล์ไม่มีรหัสสาขา → ลังที่เปิดหลังจากนี้จะได้ branch: null (createNewBox อ่านจาก catalogMeta.branch)
       // ซึ่ง "สาขาสแกนรับไม่ได้เลย" (BranchReceive กรอง b.branch === branch ตรงๆ ตั้งแต่ 2a23385)
@@ -171,13 +190,13 @@ export default function ImportCatalog({ catalog, meta, onImport, locked = false,
   }
 
   // ── ปุ่มเบิกด่วน: แทนที่รายการด่วนเดิม "ทั้งหมดทุกสาขา" ไม่แตะ Picklist ปกติ (ดู onImport ใน App.jsx) ──
-  // → stamp branch ลงทุกรายการ (เบิกด่วนคนละสาขากับงานปกติได้ — createNewBox อ่าน item.branch ผ่าน resolveBoxBranch)
+  // → stamp branch ลงทุกรายการ (เบิกด่วนคนละสาขากับงานปกติได้ — scan แรกอ่าน item.branch เพื่อล็อกปลายทางลัง)
   // → urgent=true → zoneOfItem จัดเข้า NOLOC_ZONE เสมอโดยไม่อ่าน Col G → เห็นเฉพาะคนที่ tick โซน 📌เบิกด่วน
   function handleUrgentFile(e) {
     readItems(e, async (items, file) => {
       const b = extractBranch(file.name);
-      // ไม่มีรหัสสาขา = หนักกว่าฝั่ง Picklist ปกติ: item.branch เป็น null → resolveBoxBranch fallback
-      // ไปสาขาของ Picklist ปกติ → ลังเบิกด่วนได้สาขาผิดแบบเงียบ ๆ (สาขาปลายทางจริงรับไม่ได้)
+      // ไม่มีรหัสสาขา = item.branch เป็น null → flow แพ็คจะ block ตอนสแกนเพื่อไม่ให้ fallback
+      // ไปสาขาของ Picklist ปกติแบบเงียบ ๆ แต่ยังเตือนตั้งแต่อัปโหลดเพื่อให้แก้ชื่อไฟล์ก่อนเริ่มงาน
       if (!b) {
         const ok = window.confirm(
           `⚠ ชื่อไฟล์ไม่มีรหัสสาขา\n\n` +

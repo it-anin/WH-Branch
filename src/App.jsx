@@ -13,7 +13,6 @@ import {
   lookupFactor,
   mergePicklistRun,
   picklistRunKey,
-  resolveBoxBranch,
   samePicklistRun,
   STANDARD_UNIT_FACTOR,
   UNIT_FACTOR_OVERRIDE,
@@ -624,7 +623,7 @@ export default function App() {
     return `${todayPrefix}${String(next).padStart(4, '0')}`;
   }
 
-  async function createNewBox() {
+  async function createNewBox(initialBranch = null) {
     const now = new Date();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
@@ -645,16 +644,71 @@ export default function App() {
       reportFirestoreError(err, { source: 'open-box', critical: true });
       throw err;
     }
-    // สาขาของลัง = สาขาของ "รายการที่พนักงานคนนี้ถือ" (resolveBoxBranch ใน units.js — เทสต์ตรงได้)
-    // รองรับเบิกด่วนคนละสาขา: คนแพ็คด่วน (tick 📌เบิกด่วน อย่างเดียว) รายการ stamp สาขาเดียว → ลังได้สาขานั้น
-    // พนักงานปกติไม่มี item.branch → fallback catalogMeta.branch = เส้นทางเดิม byte-identical
+    // ลังที่พนักงานกดเปิดเองยังไม่กำหนดสาขา — สแกนสินค้าสำเร็จชิ้นแรกจึง lock ผ่าน lockBoxBranch
+    // Desktop ที่ auto-open ตอนสแกนส่ง initialBranch มาได้ เพื่อสร้างลังพร้อมปลายทางใน write เดียว
     const packCatalog = packer ? (catalogByPacker[packer.code] ?? []) : catalog;
-    const boxBranch = resolveBoxBranch(packCatalog, catalogMeta?.branch);
+    const boxBranch = String(initialBranch || '').trim().toUpperCase() || null;
     const runFields = boxPicklistRunFields(packCatalog);
     const newBox = { id: newId, pos: '—', status: 'open', packer: packer || null, branch: boxBranch, ...runFields, skuCount: 0, totalQty: 0, updated: time, createdAt: Date.now() };
-    setBoxes(prev => [newBox, ...prev]);
+    try {
+      // ต้อง await ให้เอกสารลังมีอยู่ก่อนคืนค่า ไม่เช่นนั้น transaction lock สาขาจาก scan แรกอาจอ่านไม่พบลัง
+      await setDoc(doc(db, 'boxes', newId), newBox);
+    } catch (err) {
+      reportFirestoreError(err, { source: 'open-box-save', critical: true });
+      throw err;
+    }
+    boxesRef.current = [newBox, ...boxesRef.current.filter(box => box.id !== newId)];
+    _setBoxes(boxesRef.current);
     setActiveBoxId(newId);
     return newId;
+  }
+
+  // ล็อกปลายทางแบบ transaction เพื่อกัน PDA สองเครื่องสแกนสินค้าคนละสาขาลงลังเดียวกันพร้อมกัน
+  async function lockBoxBranch(boxId, requestedBranch) {
+    const branch = String(requestedBranch || '').trim().toUpperCase();
+    if (!boxId || !branch) {
+      const error = new Error('box-branch-required');
+      error.code = 'box-branch-required';
+      throw error;
+    }
+
+    const boxRef = doc(db, 'boxes', boxId);
+    let lockedBranch = branch;
+    try {
+      await runTransaction(db, async transaction => {
+        const snapshot = await transaction.get(boxRef);
+        if (!snapshot.exists()) {
+          const error = new Error('box-branch-box-missing');
+          error.code = 'box-branch-box-missing';
+          throw error;
+        }
+        const current = snapshot.data();
+        if (!['open', 'packing'].includes(current.status)) {
+          const error = new Error('box-branch-box-closed');
+          error.code = 'box-branch-box-closed';
+          throw error;
+        }
+        const existing = String(current.branch || '').trim().toUpperCase();
+        if (existing && existing !== branch) {
+          const error = new Error('box-branch-mismatch');
+          error.code = 'box-branch-mismatch';
+          error.lockedBranch = existing;
+          error.itemBranch = branch;
+          throw error;
+        }
+        lockedBranch = existing || branch;
+        if (!existing) transaction.set(boxRef, { branch: lockedBranch }, { merge: true });
+      });
+    } catch (err) {
+      if (!String(err?.code || '').startsWith('box-branch-')) {
+        reportFirestoreError(err, { source: 'box-branch-lock', critical: true });
+      }
+      throw err;
+    }
+
+    boxesRef.current = boxesRef.current.map(box => box.id === boxId ? { ...box, branch: lockedBranch } : box);
+    _setBoxes(boxesRef.current);
+    return lockedBranch;
   }
 
   async function clearBoxes() {
@@ -1266,7 +1320,7 @@ export default function App() {
   }
 
   const receiveDataLoadError = receiveDataLoadErrors.boxes || receiveDataLoadErrors.boxItems;
-  const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, saveWarehouseBoxItems, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearFirestore, deleteBox, loadReceiveProblems, upsertReceiveProblem, deleteReceiveProblem, commitReceiveOutcome, packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, saveWarehouseBoxItems, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearFirestore, deleteBox, loadReceiveProblems, upsertReceiveProblem, deleteReceiveProblem, commitReceiveOutcome, packer, setTab, showToast, createNewBox, lockBoxBranch, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   // Gate: ยังไม่ login → แสดงหน้า Login (ทั้ง Android + Desktop)
   if (!profile) {

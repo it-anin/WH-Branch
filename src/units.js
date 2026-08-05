@@ -167,14 +167,43 @@ export function catalogSig(items) {
   return `${(items || []).length}:${h >>> 0}`;
 }
 
-// สาขาของ "ลังใหม่" จากรายการที่พนักงานคนนั้นถือ — รองรับ Picklist เบิกด่วนคนละสาขากับงานปกติ
-// item.branch มีเฉพาะรายการเบิกด่วน (stamp ตอน import); รายการปกติไม่มี → นับเป็น metaBranch (Picklist ปกติ)
-// ทุกรายการสาขาเดียว → ใช้สาขานั้น · ปนหลายสาขา/ไม่มีรายการ → fallback metaBranch (= พฤติกรรมเดิมเป๊ะ)
-// ⚠ ใช้ใน createNewBox (flow ล็อก) — box.branch เป็น write-once สาขาสแกนรับได้เฉพาะลังที่สาขาตรง
+const normalizeBranchCode = value => String(value ?? '').trim().toUpperCase();
+
+// รายการเบิกด่วน stamp branch ต่อ item ส่วนรายการปกติใช้ branch ของ Picklist หลัก
+// เก็บกติกานี้จุดเดียวเพื่อให้ตอนสแกนและตอนปิดลังได้ปลายทางเดียวกัน
+export function packItemBranch(item, metaBranch = null) {
+  // urgent ที่ไม่มี branch ต้องถูก block ห้ามไหลไปสาขา Picklist ปกติแบบเงียบ ๆ
+  if (item?.urgent === true) return normalizeBranchCode(item?.branch) || null;
+  return normalizeBranchCode(item?.branch ?? metaBranch) || null;
+}
+
+// ใช้ตรวจสินค้าที่แพ็คจริงตอนปิดลัง ห้าม fallback ไป Picklist ปกติเมื่อมีหลายสาขา
+// เพราะนั่นทำให้ลัง SSS ถูกติดป้าย ONN ได้แบบเคส BX-0508-0007
+export function resolvePackedBoxBranch(items, metaBranch = null) {
+  const resolved = (items || []).map(item => packItemBranch(item, metaBranch));
+  const branches = [...new Set(resolved.filter(Boolean))];
+  const hasMissingBranch = resolved.some(branch => !branch);
+  return {
+    branch: branches.length === 1 && !hasMissingBranch ? branches[0] : null,
+    branches,
+    mixed: branches.length > 1,
+  };
+}
+
+// Backward-compatible helper สำหรับจุดที่ต้อง preview ปลายทางจาก catalog ทั้งก้อน
+// ถ้าปนหลายสาขาต้องคืน null เพื่อบังคับให้รอสแกนชิ้นแรก ห้ามเลือกสาขาปกติเอง
 export function resolveBoxBranch(packCatalog, metaBranch) {
-  const fallback = metaBranch || null;
-  const branches = [...new Set((packCatalog || []).map(c => c.branch ?? fallback))];
-  return branches.length === 1 ? branches[0] : fallback;
+  return resolvePackedBoxBranch(packCatalog, metaBranch).branch;
+}
+
+export function validatePackBranch(lockedBranch, itemBranch) {
+  const locked = normalizeBranchCode(lockedBranch);
+  const requested = normalizeBranchCode(itemBranch);
+  if (!requested) return { ok: false, reason: 'missing_branch', lockedBranch: locked || null, itemBranch: null };
+  if (locked && locked !== requested) {
+    return { ok: false, reason: 'branch_mismatch', lockedBranch: locked, itemBranch: requested };
+  }
+  return { ok: true, branch: locked || requested, firstScan: !locked };
 }
 
 // ชื่อ Picklist บนจอแพ็คต้องมาจาก "รายการที่พนักงานคนนี้ได้รับจริง"
@@ -288,6 +317,8 @@ export function buildPackItems({ catalog, boxes, itemsByBox, packer, factorMap }
       need: walked[i].needFull - walked[i].use, got: 0, gotBase: 0,
       baseUnit: baseUnitOf(c.sku, c.unit),
       location: c.location || '',
+      ...(c.branch != null ? { branch: c.branch } : {}),
+      ...(c.urgent === true ? { urgent: true } : {}),
       picklistRunId: c.picklistRunId,
       picklistRowId: c.picklistRowId || `${picklistRunKey(c.picklistRunId)}:${i + 1}`,
     }))

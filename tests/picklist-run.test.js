@@ -12,8 +12,12 @@ import {
   createPicklistRunId,
   effectivePicklistRunKey,
   mergePicklistRun,
+  packItemBranch,
+  resolveBoxBranch,
+  resolvePackedBoxBranch,
   samePicklistRun,
   stampPicklistRun,
+  validatePackBranch,
   withBoxPicklistRunFields,
 } from '../src/units.js';
 
@@ -141,6 +145,45 @@ test('box metadata supports homogeneous, mixed and legacy runs and detects stale
     { id: 'BX-MIX', picklistRunIds: ['N-1', 'U-2'] },
     baseCatalog('N-1'),
   ), { id: 'BX-MIX', picklistRunId: 'N-1' });
+});
+
+test('packing locks the destination from the first item and rejects mixed-branch boxes', () => {
+  const normal = { ...baseCatalog('N-1')[0] };
+  const urgent = { ...baseCatalog('U-2')[0], sku: 'SKU-U', branch: 'SSS', urgent: true };
+
+  assert.equal(packItemBranch(normal, 'ONN'), 'ONN');
+  assert.equal(packItemBranch(urgent, 'ONN'), 'SSS');
+  assert.equal(packItemBranch({ ...urgent, branch: null }, 'ONN'), null, 'urgent rows without a destination must not fall back to the normal branch');
+  assert.deepEqual(resolvePackedBoxBranch([urgent], 'ONN'), {
+    branch: 'SSS', branches: ['SSS'], mixed: false,
+  });
+  assert.deepEqual(resolvePackedBoxBranch([normal, urgent], 'ONN'), {
+    branch: null, branches: ['ONN', 'SSS'], mixed: true,
+  });
+  assert.deepEqual(resolvePackedBoxBranch([normal, { ...urgent, branch: null }], 'ONN'), {
+    branch: null, branches: ['ONN'], mixed: false,
+  }, 'a missing urgent destination must block close even when another row has a branch');
+  assert.equal(resolveBoxBranch([normal, urgent], 'ONN'), null, 'mixed assignments must never fall back to the normal branch');
+
+  assert.deepEqual(validatePackBranch(null, 'sss'), { ok: true, branch: 'SSS', firstScan: true });
+  assert.deepEqual(validatePackBranch('SSS', 'SSS'), { ok: true, branch: 'SSS', firstScan: false });
+  assert.deepEqual(validatePackBranch('SSS', 'ONN'), {
+    ok: false, reason: 'branch_mismatch', lockedBranch: 'SSS', itemBranch: 'ONN',
+  });
+});
+
+test('packing rows preserve urgent branch metadata through scan and close', () => {
+  const urgentCatalog = [{
+    ...baseCatalog('U-2')[0], branch: 'SSS', urgent: true,
+  }];
+  const [row] = buildPackItems({ catalog: urgentCatalog, boxes: [], itemsByBox: {}, packer, factorMap: {} });
+  assert.equal(row.branch, 'SSS');
+  assert.equal(row.urgent, true);
+
+  const packed = { ...row, got: 1, gotBase: 1, qty: 1 };
+  assert.deepEqual(resolvePackedBoxBranch([packed], 'ONN'), {
+    branch: 'SSS', branches: ['SSS'], mixed: false,
+  });
 });
 
 test('duplicate barcode selection does not cross normal and urgent runs', () => {

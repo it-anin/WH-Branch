@@ -9,11 +9,20 @@ import {
   boxMatchesPicklistRuns,
   buildPackItems,
   lookupFactor,
+  packItemBranch,
   packItemIdentity,
+  resolvePackedBoxBranch,
   resolvePackPicklistDisplay,
+  validatePackBranch,
   withBoxPicklistRunFields,
 } from '../units.js';
-import { calculateLotUsage, findIncompletePackTarget } from '../warehouseHelpers.js';
+import {
+  calculateLotUsage,
+  findIncompletePackTarget,
+  PACKING_LOT_QR_REASONS,
+  parsePackingLotQr,
+  validatePackingLotQr,
+} from '../warehouseHelpers.js';
 
 const PAGE_SIZE = 30;
 const isAndroid = new URLSearchParams(window.location.search).get('android') === '1';
@@ -355,7 +364,7 @@ function ItemCard({ c, done, partial, exiting, settled, onMarkOutOfStock }) {
   );
 }
 
-export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, setItemsByBox, itemsByBox, catalog, catalogLoaded = true, packer, onScanProgress, onDismiss, catalogMeta, lotMap = {}, barcodeMap = {}, factorMap = {} }) {
+export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, lockBoxBranch = null, setItemsByBox, itemsByBox, catalog, catalogLoaded = true, packer, onScanProgress, onDismiss, catalogMeta, lotMap = {}, barcodeMap = {}, factorMap = {} }) {
   // โมเดลหน่วยฐาน: need/gotBase คิดเป็น "หน่วยฐาน" (factor=1) ส่วน got = จำนวนครั้งที่สแกน (ไว้ export ตามหน่วยที่สแกนจริง)
   // factorOf(sku, unit) = จำนวนหน่วยฐานต่อ 1 หน่วยนั้น เช่น โหล=12 → สแกนบาร์โค้ดโหล 1 ครั้ง = +12 หน่วยฐาน
   const factorOf = (sku, unit) => lookupFactor(factorMap, sku, unit);
@@ -382,8 +391,11 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
   const [isOpening, setIsOpening] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
-  const [confirmOver, setConfirmOver] = useState(null); // { match, factor, scannedBarcode, scannedUnit } — สแกนเกินจำนวน รอยืนยัน
+  const [confirmOver, setConfirmOver] = useState(null); // { match, factor, scannedBarcode, scannedUnit, lotSelection? } — สแกนเกินจำนวน รอยืนยัน
   const [pendingLot, setPendingLot] = useState(null); // { match, lots } — รอเลือก LOT
+  const [pendingLotQr, setPendingLotQrState] = useState(null); // { lot, exp } — QR หนึ่งดวงใช้กับสินค้าถัดไปหนึ่งครั้ง
+  const pendingLotQrRef = useRef(null);
+  const lockedBranchRef = useRef(null); // sync guard กัน scan ถัดไปวิ่งแซง Firestore transaction ของชิ้นแรก
   const [manualLotMode, setManualLotMode] = useState(false); // true = แสดงฟอร์มใส่ LOT เอง แทนลิสต์
   const [manualLot, setManualLot] = useState('');
   const [manualExpD, setManualExpD] = useState('');
@@ -400,6 +412,19 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     Object.values(holdTimeoutsRef.current).forEach(clearTimeout);
     Object.values(exitTimeoutsRef.current).forEach(clearTimeout);
   }, []);
+  function setPendingLotQr(next) {
+    pendingLotQrRef.current = next;
+    setPendingLotQrState(next);
+  }
+  // QR ที่รอจับคู่ต้องไม่ข้ามลัง พนักงาน หรือรอบ Picklist
+  useEffect(() => {
+    pendingLotQrRef.current = null;
+    setPendingLotQrState(null);
+  }, [activeBoxId, packer?.code, catalogMeta?.picklistRunId]);
+  useEffect(() => {
+    const activeBox = activeBoxId ? boxes.find(box => box.id === activeBoxId) : null;
+    lockedBranchRef.current = String(activeBox?.branch || '').trim().toUpperCase() || null;
+  }, [activeBoxId, boxes]);
   // Catalog รอบใหม่ทำให้ component remount แต่ activeBoxId อยู่ที่ App และอาจยังชี้ลังรอบเก่า
   // ปลดลังออกทันทีเพื่อกันสแกนสินค้ารอบใหม่ลงลัง/สาขาเดิม; ลังเดิมยังอยู่ในรายการให้คลังตรวจสอบได้
   useEffect(() => {
@@ -461,7 +486,11 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
   }
 
   // ส่วน LOT + applyScan หลังจากผ่านการตรวจสอบ over แล้ว — ใช้ร่วมกันทั้ง processBarcode ปกติ และ handleConfirmOver
-  async function proceedScan(match, factor, scannedBarcode, scannedUnit) {
+  async function proceedScan(match, factor, scannedBarcode, scannedUnit, lotSelection = null) {
+    if (lotSelection) {
+      await applyScan(match, lotSelection.lot, true, lotSelection.exp, scannedBarcode, scannedUnit, factor);
+      return;
+    }
     const allLots = lotMap[match.sku] || [];
     if (allLots.length === 0) {
       await applyScan(match, null, false, '', scannedBarcode, scannedUnit, factor);
@@ -475,7 +504,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     }
     if (isAndroid) {
       playScanSuccess(); // เสียงยืนยัน "สแกนบาร์โค้ดติด" ทันที (เสียงเดียวกับตอนเลือก LOT) — ก่อนเด้ง popup ที่เงียบ ให้รู้ว่าสแกนสำเร็จแล้วค่อยเลือก LOT
-      setPendingLot({ match, lots: availableLots, scannedBarcode, scannedUnit, factor });
+      setPendingLot({ match, lots: availableLots, scannedBarcode, scannedUnit, factor, qrRequired: true });
       return;
     }
     const currentValid = match.lot && availableLots.some(l => l.lot === match.lot);
@@ -485,9 +514,19 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
 
   async function handleConfirmOver() {
     if (!confirmOver) return;
-    const { match, factor, scannedBarcode, scannedUnit } = confirmOver;
+    const { match, factor, scannedBarcode, scannedUnit, lotSelection } = confirmOver;
     setConfirmOver(null);
-    await proceedScan(match, factor, scannedBarcode, scannedUnit);
+    await proceedScan(match, factor, scannedBarcode, scannedUnit, lotSelection);
+  }
+
+  function lotQrErrorMessage(result) {
+    if (result.reason === PACKING_LOT_QR_REASONS.NO_LOT_DATA) return '⚠ SKU นี้ไม่มีข้อมูล LOT สำหรับจับคู่ QR';
+    if (result.reason === PACKING_LOT_QR_REASONS.LOT_NOT_FOUND) return '⚠ LOT ใน QR ไม่ตรงกับ SKU นี้';
+    if (result.reason === PACKING_LOT_QR_REASONS.EXP_MISMATCH) return '⚠ EXP ใน QR ไม่ตรงกับข้อมูล LOT ของ SKU นี้';
+    if (result.reason === PACKING_LOT_QR_REASONS.INSUFFICIENT_STOCK) {
+      return `⚠ LOT เหลือ ${result.remaining || 0} หน่วย · ต้องใช้ ${result.required || 0} หน่วย`;
+    }
+    return '⚠ QR LOT ไม่ถูกต้อง';
   }
 
   // Logic กลาง — ใช้ทั้ง HID keyboard (handleBarcode) และ Broadcast wh-scan (useEffect)
@@ -498,6 +537,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     const staleRun = currentBox && !boxMatchesPicklistRuns(currentBox, catalog, catalogMeta?.picklistRunId);
     const inactiveBox = currentBox && currentBox.status !== 'open' && currentBox.status !== 'packing';
     if (wrongPacker || staleRun || inactiveBox) {
+      setPendingLotQr(null);
       setActiveBoxId(null);
       playScanFail();
       showToast('⚠ Picklist เปลี่ยนรอบหรือลังเดิมไม่พร้อมใช้งาน · กรุณาเปิดลังใหม่', 'error');
@@ -505,16 +545,45 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     }
     // Android: บังคับกด "เปิดลัง" ก่อนสแกนเสมอ (เก็บ KPI เวลาเปิดลัง — ดู handleOpenBox/doClose) — Desktop ยัง auto-open เหมือนเดิม
     if (isAndroid && !activeBoxId) {
+      setPendingLotQr(null);
       playScanFail();
       showToast('⚠ กด "เปิดลัง" ก่อนเริ่มสแกน', 'error');
       return;
     }
     const barcode = val.trim();
+    const lotQr = isAndroid ? parsePackingLotQr(barcode) : null;
+    if (lotQr) {
+      setPendingLotQr(lotQr);
+      playScanSuccess();
+      showToast(`QR LOT ${lotQr.lot} พร้อมแล้ว · สแกนบาร์โค้ดสินค้า`, 'success');
+      return;
+    }
+    const queuedLotQr = pendingLotQrRef.current;
     const hasCatalogMatch = catalog.some(it => matchBarcode(it, barcode));
-    if (!hasCatalogMatch) { playScanFail(); showToast('⚠ ไม่พบในรายการเบิก', 'error'); return; }
+    if (!hasCatalogMatch) {
+      if (queuedLotQr) setPendingLotQr(null);
+      playScanFail();
+      showToast('⚠ ไม่พบในรายการเบิก', 'error');
+      return;
+    }
     const scanTarget = findIncompletePackTarget(catalog, items, barcode, matchBarcode);
-    if (!scanTarget) { playScanFail(); showToast('⚠ ครบแล้ว', 'error'); return; }
+    if (!scanTarget) {
+      if (queuedLotQr) setPendingLotQr(null);
+      playScanFail();
+      showToast('⚠ ครบแล้ว', 'error');
+      return;
+    }
     const { catalogItem: catMatch, target: match } = scanTarget;
+    const itemBranch = packItemBranch(match, catalogMeta?.branch);
+    const branchCheck = validatePackBranch(lockedBranchRef.current || currentBox?.branch, itemBranch);
+    if (!branchCheck.ok) {
+      if (queuedLotQr) setPendingLotQr(null);
+      playScanFail();
+      showToast(branchCheck.reason === 'branch_mismatch'
+        ? `⚠ ลังนี้ล็อกสาขา ${branchCheck.lockedBranch} · สินค้านี้เป็นของ ${branchCheck.itemBranch}`
+        : '⚠ รายการนี้ไม่มีสาขาปลายทาง · ไม่สามารถสแกนลงลังได้', 'error');
+      return;
+    }
 
     // catMatch.barcode อาจเป็น comma-separated หลายตัวต่อ SKU (ดู matchBarcode ใน data.js) — เก็บตัวที่สแกนจริงไว้ export
     const scannedBarcode = catMatch.barcode.split(',').map(b => b.trim()).includes(barcode)
@@ -525,13 +594,31 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     const scannedUnit = skuBarcodeUnit[catMatch.sku]?.[barcode] || catMatch.unit;
     const factor = factorOf(catMatch.sku, scannedUnit);
 
+    let lotSelection = null;
+    if (queuedLotQr) {
+      const result = validatePackingLotQr({
+        sku: match.sku,
+        qr: queuedLotQr,
+        lotMap,
+        usage: calcLotUsage(),
+        factor,
+      });
+      setPendingLotQr(null); // QR หนึ่งครั้งถูกใช้แล้ว ไม่ว่าคู่จะถูกหรือผิด
+      if (!result.ok) {
+        playScanFail();
+        showToast(lotQrErrorMessage(result), 'error');
+        return;
+      }
+      lotSelection = { lot: result.lot, exp: result.exp };
+    }
+
     // สแกนแล้วจะเกินจำนวนที่เบิก → หยุดรอยืนยันก่อน
     if ((match.gotBase || 0) + factor > match.need) {
-      setConfirmOver({ match, factor, scannedBarcode, scannedUnit });
+      setConfirmOver({ match, factor, scannedBarcode, scannedUnit, lotSelection });
       return;
     }
 
-    await proceedScan(match, factor, scannedBarcode, scannedUnit);
+    await proceedScan(match, factor, scannedBarcode, scannedUnit, lotSelection);
   }
 
   // เพิ่ม/รวมจำนวนต่อ LOT จริงบน item (ต่าง LOT ไม่ overwrite กันแบบ it.lot) — ใช้ตอน export แยกแถวเมื่อ SKU เดียวกันในลังนี้สแกนคนละ LOT
@@ -552,6 +639,42 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
   // resetLot=true → เปลี่ยน lot ของ item เป็นค่าใหม่ (กรณี LOT เก่าหมด ต้องสลับ); exp = วันหมดอายุ ค.ศ. DD/MM/YYYY (จากไฟล์ LOT+EXP หรือกรอกเองตอน "ใส่ LOT เอง")
   // scannedBarcode = บาร์โค้ดตัวจริงที่สแกน เก็บไว้ export (ต่างจาก it.barcode ที่อาจเป็น comma-separated หลายตัวจาก catalog)
   async function applyScan(match, lot, resetLot = false, exp = '', scannedBarcode = '', scannedUnit = '', factor = 1) {
+    const itemBranch = packItemBranch(match, catalogMeta?.branch);
+    const branchCheck = validatePackBranch(lockedBranchRef.current, itemBranch);
+    if (!branchCheck.ok) {
+      playScanFail();
+      showToast(branchCheck.reason === 'branch_mismatch'
+        ? `⚠ ลังนี้ล็อกสาขา ${branchCheck.lockedBranch} · สินค้านี้เป็นของ ${branchCheck.itemBranch}`
+        : '⚠ รายการนี้ไม่มีสาขาปลายทาง · ไม่สามารถสแกนลงลังได้', 'error');
+      return false;
+    }
+
+    let boxId = activeBoxId;
+    const previousLockedBranch = lockedBranchRef.current;
+    lockedBranchRef.current = branchCheck.branch; // reserve ทันที กัน scan ถัดไปคนละสาขาวิ่งแซง transaction
+    try {
+      if (!boxId) {
+        boxId = await createNewBox(branchCheck.branch);
+        showToast('เปิดลังใหม่อัตโนมัติ', 'success');
+      } else if (branchCheck.firstScan && lockBoxBranch) {
+        lockedBranchRef.current = await lockBoxBranch(boxId, branchCheck.branch);
+      } else if (branchCheck.firstScan) {
+        // fallback สำหรับ test/consumer เก่าที่ยังไม่ส่ง callback — production ใช้ transaction ด้านบน
+        setBoxes(prev => prev.map(box => box.id === boxId ? { ...box, branch: branchCheck.branch } : box));
+      }
+    } catch (err) {
+      lockedBranchRef.current = previousLockedBranch;
+      playScanFail();
+      if (err?.code === 'box-branch-mismatch') {
+        showToast(`⚠ ลังนี้ถูกล็อกเป็นสาขา ${err.lockedBranch} แล้ว · สินค้านี้เป็นของ ${err.itemBranch}`, 'error');
+      } else if (err?.code === 'box-branch-box-closed') {
+        showToast('⚠ ลังนี้ถูกปิดแล้ว · กรุณาเปิดลังใหม่', 'error');
+      } else {
+        showToast('⚠ ล็อกสาขาของลังไม่สำเร็จ · กรุณาสแกนใหม่', 'error');
+      }
+      return false;
+    }
+
     playScanSuccess();
     // เพิ่งครบ (ก่อนสแกนนี้ยังไม่ครบ, หลังสแกนนี้ครบพอดี) → ค้างหน้าไว้ที่ตำแหน่งเดิม HOLD_MS ก่อน slide-up หาย (EXIT_MS) แล้วค่อยเลื่อนไปท้าย
     if (isAndroid && (match.gotBase || 0) < match.need && (match.gotBase || 0) + factor >= match.need) {
@@ -586,12 +709,8 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
         : it
     );
     setItems(newItems);
-    let boxId = activeBoxId;
-    if (!activeBoxId) {
-      boxId = await createNewBox();
-      showToast('เปิดลังใหม่อัตโนมัติ', 'success');
-    }
     if (onScanProgress && boxId) onScanProgress(boxId, newItems);
+    return true;
   }
 
   // ปิด popup เลือก/ใส่ LOT — ไม่เคลียร์ฟอร์ม "ใส่ LOT เอง" (คงค่า LOT/Exp เดิมไว้)
@@ -673,15 +792,25 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
   }
 
   async function doClose() {
+    setPendingLotQr(null);
     setIsClosing(true);
     setConfirmClose(false);
     const closingBoxId = activeBoxId;
     const pos = generatePOS(closingBoxId || 'BX-0000-0000');
     const time = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
     const packedItems = items.filter(it => it.got > 0).map(it => ({ ...it, qty: it.got }));
+    const packedDestination = resolvePackedBoxBranch(packedItems, catalogMeta?.branch);
+    if (packedDestination.mixed || !packedDestination.branch) {
+      playScanFail();
+      showToast(packedDestination.mixed
+        ? `⚠ ปิดลังไม่ได้ · พบสินค้าปนหลายสาขา (${packedDestination.branches.join(', ')})`
+        : '⚠ ปิดลังไม่ได้ · สินค้าไม่มีสาขาปลายทาง', 'error');
+      setIsClosing(false);
+      return;
+    }
     setBoxes(prev => prev.map(b =>
       b.id === closingBoxId
-        ? withBoxPicklistRunFields({ ...b, status: 'closed', packer: packer || b.packer || null, skuCount: packedItems.length, totalQty: packedItems.reduce((s, it) => s + it.qty, 0), pos, updated: time, closedAt: Date.now() }, packedItems)
+        ? withBoxPicklistRunFields({ ...b, branch: packedDestination.branch, status: 'closed', packer: packer || b.packer || null, skuCount: packedItems.length, totalQty: packedItems.reduce((s, it) => s + it.qty, 0), pos, updated: time, closedAt: Date.now() }, packedItems)
         : b
     ));
     setItemsByBox(prev => ({ ...prev, [closingBoxId]: packedItems }));
@@ -769,7 +898,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
             width: '100%', maxWidth: 360, maxHeight: '85vh',
             display: 'flex', flexDirection: 'column',
           }}>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{manualLotMode ? 'ใส่ LOT เอง' : 'เลือก LOT'}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+              {manualLotMode ? 'ใส่ LOT เอง' : pendingLot.qrRequired ? 'ยังไม่ได้สแกน QR LOT' : 'เลือก LOT'}
+            </div>
             <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
               SKU: <span className="mono">{pendingLot.match.sku}</span>
             </div>
@@ -778,6 +909,21 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
             </div>
             {!manualLotMode ? (
               <>
+                {pendingLot.qrRequired && (
+                  <div style={{
+                    background: '#fff4d6', border: '1.5px solid #d59b16', borderRadius: 9,
+                    padding: '10px 12px', marginBottom: 12, color: '#7b5300',
+                    fontFamily: 'system-ui', fontSize: 13, lineHeight: 1.45,
+                  }}>
+                    ขั้นตอนปกติ: ยกเลิกแล้วสแกน QR LOT ก่อนสแกนบาร์โค้ดสินค้า<br />
+                    หากฉลากเสียหรือไม่มี QR ให้เลือก/กรอก LOT ทางสำรองด้านล่าง
+                  </div>
+                )}
+                {pendingLot.qrRequired && (
+                  <div style={{ fontFamily: 'system-ui', fontSize: 12, fontWeight: 700, color: 'var(--mute)', marginBottom: 6 }}>
+                    ทางสำรอง · เลือก LOT
+                  </div>
+                )}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
                   {pendingLot.lots.map(({ lot, remaining, exp }) => (
                     <button
@@ -806,7 +952,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
                   className="btn sm ghost"
                   style={{ marginTop: 8 }}
                   onClick={closeLotPopup}
-                >ยกเลิก</button>
+                >{pendingLot.qrRequired ? 'ยกเลิก · สแกน QR ก่อน' : 'ยกเลิก'}</button>
               </>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
@@ -991,6 +1137,27 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
                   }}
                 >🔍</button>
                 <button className="btn primary" style={{ fontSize: 15, padding: '10px 16px', whiteSpace: 'nowrap' }} onClick={handleCloseBox}>ปิดลัง</button>
+              </div>
+            )}
+            {pendingLotQr && activeBoxId && (
+              <div role="status" style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                background: '#e8f7ed', border: '1.5px solid #27864a', borderRadius: 10,
+                padding: '9px 10px', marginBottom: 8, color: '#145c30',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: 'system-ui', fontSize: 13, fontWeight: 800 }}>
+                    QR LOT พร้อมแล้ว · รอสแกนบาร์โค้ดสินค้า
+                  </div>
+                  <div className="mono" style={{ fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    LOT: {pendingLotQr.lot} · EXP: {pendingLotQr.exp}
+                  </div>
+                </div>
+                <button
+                  className="btn sm ghost"
+                  style={{ flexShrink: 0, padding: '7px 10px' }}
+                  onClick={() => setPendingLotQr(null)}
+                >ยกเลิก</button>
               </div>
             )}
             {/* search input แสดงเฉพาะเมื่อกด 🔍 — ป้องกัน focus โดยบังเอิญขณะสแกน */}

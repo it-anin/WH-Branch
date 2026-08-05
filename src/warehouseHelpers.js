@@ -327,6 +327,72 @@ export function findIncompletePackTarget(catalog, items, barcode, matchesBarcode
   return catalogItem ? { catalogItem, target, itemIndex } : null;
 }
 
+export const PACKING_LOT_QR_REASONS = Object.freeze({
+  INVALID_QR: 'invalid_qr',
+  NO_LOT_DATA: 'no_lot_data',
+  LOT_NOT_FOUND: 'lot_not_found',
+  EXP_MISMATCH: 'exp_mismatch',
+  INSUFFICIENT_STOCK: 'insufficient_stock',
+});
+
+// Android's scanner bridge removes CR/LF from QR text before dispatching the
+// wh-scan event. Accept both the printed two-line payload and that collapsed
+// form, while keeping the shape strict enough that ordinary product barcodes
+// cannot be mistaken for a LOT QR.
+export function parsePackingLotQr(value) {
+  const text = cleanText(value);
+  const match = text.match(/^LOT:([\s\S]+?)(?:\r\n|\n|\r)?EXP:(\d{1,2}\/\d{1,2}\/\d{4})$/i);
+  if (!match) return null;
+  const lot = cleanText(match[1]);
+  const exp = cleanText(match[2]);
+  return lot && exp ? { lot, exp } : null;
+}
+
+// Validate a parsed QR against the operational lotMap. Quantities and usage
+// are base-unit values, so carton/pack scans reserve their full factor.
+export function validatePackingLotQr({ sku, qr, lotMap = {}, usage = {}, factor = 1 } = {}) {
+  const normalizedSku = cleanText(sku);
+  const lot = cleanText(qr?.lot);
+  const exp = cleanText(qr?.exp);
+  if (!normalizedSku || !lot || !exp) {
+    return { ok: false, reason: PACKING_LOT_QR_REASONS.INVALID_QR };
+  }
+
+  const skuLots = Array.isArray(lotMap?.[normalizedSku]) ? lotMap[normalizedSku] : [];
+  if (skuLots.length === 0) {
+    return { ok: false, reason: PACKING_LOT_QR_REASONS.NO_LOT_DATA };
+  }
+
+  const lotCandidates = skuLots.filter(entry => cleanText(entry?.lot) === lot);
+  if (lotCandidates.length === 0) {
+    return { ok: false, reason: PACKING_LOT_QR_REASONS.LOT_NOT_FOUND };
+  }
+
+  const expCandidates = lotCandidates.filter(entry => cleanText(entry?.exp) === exp);
+  if (expCandidates.length === 0) {
+    return {
+      ok: false,
+      reason: PACKING_LOT_QR_REASONS.EXP_MISMATCH,
+      expectedExp: [...new Set(lotCandidates.map(entry => cleanText(entry?.exp)).filter(Boolean))],
+    };
+  }
+
+  const required = Math.max(0, numberOrZero(factor));
+  const total = expCandidates.reduce((sum, entry) => sum + Math.max(0, numberOrZero(entry?.qty)), 0);
+  const used = Math.max(0, numberOrZero(usage?.[`${normalizedSku}__${lot}`]));
+  const remaining = Math.max(0, total - used);
+  if (required <= 0 || remaining < required) {
+    return {
+      ok: false,
+      reason: PACKING_LOT_QR_REASONS.INSUFFICIENT_STOCK,
+      remaining,
+      required,
+    };
+  }
+
+  return { ok: true, lot, exp, remaining, required };
+}
+
 function mergeBarcodeText(...values) {
   const result = [];
   values.forEach(value => String(value || '').split(',').forEach(part => {
@@ -684,6 +750,27 @@ export function computeCatalogByPacker(items, assignments, packers, getZone = zo
     if (owner) result[owner.code].push(item);
   });
   return result;
+}
+
+// Location is mandatory for a normal Picklist because packers use it to find
+// stock. Urgent Picklists use their dedicated assignment flow and are exempt.
+// Keep this check pure so the importer can reject the file before any state or
+// Firestore write begins.
+export function validatePicklistLocationGuard(items, { urgent = false } = {}) {
+  if (urgent) return { ok: true, skipped: true, missing: [] };
+  const missing = (items || []).flatMap((item, index) => {
+    if (cleanText(item?.location)) return [];
+    return [{
+      rowNumber: index + 2,
+      no: cleanText(item?.no),
+      sku: cleanText(item?.sku),
+    }];
+  });
+  return {
+    ok: missing.length === 0,
+    skipped: false,
+    missing,
+  };
 }
 
 export function assignZoneExclusively(assignments, packerCode, zone, checked) {

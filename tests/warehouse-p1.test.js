@@ -12,12 +12,36 @@ import {
   normalizeExclusiveZoneAssignments,
   shouldSubscribeToHistory,
   shouldSubscribeToProgress,
+  validatePicklistLocationGuard,
 } from '../src/warehouseHelpers.js';
 import { resolvePackPicklistDisplay } from '../src/units.js';
 import { classifyFirestoreError, FIRESTORE_ALERT_COLORS } from '../src/firestoreErrors.js';
 
 const matchesBarcode = (item, barcode) =>
   String(item.barcode || '').split(',').map(value => value.trim()).includes(barcode);
+
+test('normal Picklist upload blocks blank Location while urgent upload remains exempt', () => {
+  const items = [
+    { no: '1', sku: 'SKU-OK', location: ' A-01 ' },
+    { no: '2', sku: 'SKU-BLANK', location: '   ' },
+    { sku: 'SKU-MISSING' },
+  ];
+
+  assert.deepEqual(validatePicklistLocationGuard(items), {
+    ok: false,
+    skipped: false,
+    missing: [
+      { rowNumber: 3, no: '2', sku: 'SKU-BLANK' },
+      { rowNumber: 4, no: '', sku: 'SKU-MISSING' },
+    ],
+  });
+  assert.deepEqual(validatePicklistLocationGuard(items, { urgent: true }), {
+    ok: true,
+    skipped: true,
+    missing: [],
+  });
+  assert.equal(validatePicklistLocationGuard([{ sku: 'SKU-OK', location: 'A-01' }]).ok, true);
+});
 
 test('Firestore errors use distinct operator messages for quota, permission, auth and network', () => {
   const quota = classifyFirestoreError({ code: 'resource-exhausted' }, { source: 'boxes-write' });
