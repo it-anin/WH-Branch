@@ -63,6 +63,7 @@ const PACKERS = [
   { code: 'EMP-02', name: 'แล็ค' },
   { code: 'EMP-03', name: 'พี' },
   { code: 'EMP-04', name: 'ตั๋ง' },
+  { code: 'EMP-05', name: 'กิฟ' },
 ];
 
 // tab ที่แต่ละ role เห็นบน Desktop (A1 login) — warehouse = งานคลัง, branch = รับสินค้าเท่านั้น (ปรับที่นี่จุดเดียว)
