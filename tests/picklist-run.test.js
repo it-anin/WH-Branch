@@ -12,6 +12,8 @@ import {
   createPicklistRunId,
   effectivePicklistRunKey,
   mergePicklistRun,
+  picklistClearBlockingBoxes,
+  planPicklistClear,
   packItemBranch,
   resolveBoxBranch,
   resolvePackedBoxBranch,
@@ -129,6 +131,48 @@ test('normal and urgent imports create independent runs with current replacement
   assert.equal(normalUpdated.length, 1);
   assert.equal(normalUpdated[0].picklistRunId, 'N-NEW');
   assert.equal(normalUpdated[0].qty, 4);
+});
+
+test('clearing one Picklist kind preserves the other kind and its metadata', () => {
+  const normal = { ...baseCatalog('N-1', 1)[0], sku: 'NORMAL' };
+  const urgent = { ...baseCatalog('U-1', 1)[0], sku: 'URGENT', urgent: true, branch: 'SSS' };
+  const meta = {
+    branch: 'ONN', fileName: 'Picklist_ONN', picklistRunId: 'N-1',
+    urgent: { branch: 'SSS', fileName: 'Picklist_SSS_เบิกด่วน', picklistRunId: 'U-1' },
+  };
+
+  const clearNormal = planPicklistClear([normal, urgent], meta, 'normal');
+  assert.deepEqual(clearNormal.items.map(item => item.sku), ['URGENT']);
+  assert.deepEqual(clearNormal.meta, { urgent: meta.urgent });
+
+  const clearUrgent = planPicklistClear([normal, urgent], meta, 'urgent');
+  assert.deepEqual(clearUrgent.items.map(item => item.sku), ['NORMAL']);
+  assert.equal(clearUrgent.meta.branch, 'ONN');
+  assert.equal('urgent' in clearUrgent.meta, false);
+});
+
+test('Picklist clear blocks only active scanned boxes belonging to the selected kind', () => {
+  const normal = { ...baseCatalog('N-1', 1)[0], sku: 'NORMAL', unit: 'ชิ้น' };
+  const urgent = { ...baseCatalog('U-1', 1)[0], sku: 'URGENT', unit: 'ชิ้น', urgent: true, branch: 'SSS' };
+  const boxes = [
+    { id: 'BX-N', status: 'packing', picklistRunId: 'N-1' },
+    { id: 'BX-U', status: 'packing', picklistRunId: 'U-1' },
+    { id: 'BX-CLOSED', status: 'closed', picklistRunId: 'N-1' },
+  ];
+  const scanProgress = {
+    'BX-N': [{ sku: 'NORMAL', unit: 'ชิ้น', gotBase: 1, picklistRunId: 'N-1' }],
+    'BX-U': [{ sku: 'URGENT', unit: 'ชิ้น', gotBase: 1, picklistRunId: 'U-1', urgent: true }],
+    'BX-CLOSED': [{ sku: 'NORMAL', unit: 'ชิ้น', gotBase: 1, picklistRunId: 'N-1' }],
+  };
+
+  assert.deepEqual(
+    picklistClearBlockingBoxes({ catalog: [normal, urgent], boxes, scanProgress, kind: 'normal' }).map(box => box.id),
+    ['BX-N'],
+  );
+  assert.deepEqual(
+    picklistClearBlockingBoxes({ catalog: [normal, urgent], boxes, scanProgress, kind: 'urgent' }).map(box => box.id),
+    ['BX-U'],
+  );
 });
 
 test('box metadata supports homogeneous, mixed and legacy runs and detects stale open boxes', () => {

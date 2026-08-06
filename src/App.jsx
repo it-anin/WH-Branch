@@ -12,7 +12,9 @@ import {
   isUrgentItem,
   lookupFactor,
   mergePicklistRun,
+  picklistClearBlockingBoxes,
   picklistRunKey,
+  planPicklistClear,
   samePicklistRun,
   STANDARD_UNIT_FACTOR,
   UNIT_FACTOR_OVERRIDE,
@@ -48,6 +50,7 @@ import ImportCostMap from './components/ImportCostMap.jsx';
 import ImportLotMap from './components/ImportLotMap.jsx';
 import ZoneAssign from './components/ZoneAssign.jsx';
 import PicklistView from './components/PicklistView.jsx';
+import ClearPicklistDialog from './components/ClearPicklistDialog.jsx';
 
 const TABS = [
   { k: 'flow',   label: 'Dashboard' },
@@ -935,6 +938,7 @@ export default function App() {
   );
   const [showZoneAssign, setShowZoneAssign] = useState(false);
   const [showPicklistView, setShowPicklistView] = useState(false); // popup 📋 ดูรายการ Picklist (desktop, tab list)
+  const [showClearPicklist, setShowClearPicklist] = useState(false);
 
   // ดัชนีสินค้า R14.102 สำหรับพิมพ์ QR ใช้เฉพาะหน้า QR ของ Desktop Warehouse
   // แยกจาก lotMap เพื่อไม่เพิ่ม payload ให้ Android/สาขา และเพื่อกรอง Warehouse โดยไม่เปลี่ยน flow แพ็คเดิม
@@ -1321,6 +1325,56 @@ export default function App() {
     showToast('บันทึกโซนแล้ว ✓', 'success');
   }
 
+  async function handleClearPicklist(kind) {
+    if (catalogImporting) return false;
+    if (!progressLoaded) {
+      showToast('กำลังตรวจสอบลังที่แพ็คอยู่ กรุณารอสักครู่', 'warn');
+      return false;
+    }
+
+    const plan = planPicklistClear(catalog, catalogMeta, kind);
+    if (plan.removed.length === 0) {
+      showToast(kind === 'urgent' ? 'ไม่มีรายการ Picklist เบิกด่วนให้ล้าง' : 'ไม่มีรายการ Picklist ปกติให้ล้าง', 'warn');
+      return false;
+    }
+
+    const blockingBoxes = picklistClearBlockingBoxes({ catalog, boxes, scanProgress, kind });
+    if (blockingBoxes.length > 0) {
+      showToast(`⚠ ล้างไม่ได้ — มี ${blockingBoxes.length} ลังกำลังแพ็คสินค้าประเภทนี้ (${blockingBoxes.map(box => box.id).slice(0, 3).join(', ')})`, 'error');
+      return false;
+    }
+
+    const label = kind === 'urgent' ? 'Picklist เบิกด่วน' : 'Picklist ปกติ';
+    const remainingLabel = kind === 'urgent' ? 'Picklist ปกติ' : 'Picklist เบิกด่วน';
+    if (!window.confirm(
+      `ยืนยันล้าง ${label} ${plan.removed.length} รายการ?\n\n` +
+      `${remainingLabel} ${plan.items.length} รายการจะยังอยู่ตามเดิม\n` +
+      `ลังที่ปิดแล้วและประวัติย้อนหลังจะไม่ถูกลบ`,
+    )) return false;
+
+    const assignments = computeCatalogByPacker(plan.items, zoneAssignments, PACKERS);
+    const metaPayload = plan.meta ? { _meta: plan.meta } : {};
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'config', 'catalog'), { items: plan.items, ...metaPayload });
+    batch.set(doc(db, 'config', 'catalogByPacker'), { assignments, ...metaPayload });
+
+    setCatalogImporting(true);
+    try {
+      await batch.commit();
+      setCatalog(plan.items);
+      setCatalogMeta(plan.meta);
+      setShowClearPicklist(false);
+      showToast(`ล้าง ${label} แล้ว ${plan.removed.length} รายการ ✓`, 'success');
+      return true;
+    } catch (err) {
+      reportFirestoreError(err, { source: 'picklist-clear', critical: true });
+      showToast(`⚠ ล้าง ${label} ไม่สำเร็จ ข้อมูลเดิมยังอยู่ครบ กรุณาลองใหม่`, 'error');
+      return false;
+    } finally {
+      setCatalogImporting(false);
+    }
+  }
+
   const receiveDataLoadError = receiveDataLoadErrors.boxes || receiveDataLoadErrors.boxItems;
   const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, saveWarehouseBoxItems, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearFirestore, deleteBox, loadReceiveProblems, upsertReceiveProblem, deleteReceiveProblem, commitReceiveOutcome, packer, setTab, showToast, createNewBox, lockBoxBranch, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
 
@@ -1515,6 +1569,14 @@ export default function App() {
                   <button className="btn sm" onClick={() => setShowPicklistView(true)}>
                     📋 ดูรายการ Picklist
                   </button>
+                  <button
+                    className="btn sm ghost"
+                    style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+                    disabled={catalogImporting || catalog.length === 0}
+                    onClick={() => setShowClearPicklist(true)}
+                  >
+                    🧹 ล้าง Picklist
+                  </button>
                   <button className="btn sm" style={{ minWidth: 240 }} disabled={catalogImporting} onClick={() => setShowZoneAssign(true)}>
                     📍 กำหนดโซน
                   </button>
@@ -1694,6 +1756,15 @@ export default function App() {
           itemsByBox={itemsByBox}
           factorMap={factorMap}
           onClose={() => setShowPicklistView(false)}
+        />
+      )}
+      {showClearPicklist && (
+        <ClearPicklistDialog
+          normalCount={catalog.filter(item => !isUrgentItem(item)).length}
+          urgentCount={catalog.filter(isUrgentItem).length}
+          clearing={catalogImporting}
+          onClear={handleClearPicklist}
+          onClose={() => { if (!catalogImporting) setShowClearPicklist(false); }}
         />
       )}
       <FirestoreStatusBanner alert={firestoreAlert} onDismiss={() => setFirestoreAlert(null)} />

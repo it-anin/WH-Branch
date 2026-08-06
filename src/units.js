@@ -109,6 +109,40 @@ export const effectivePicklistRunKey = (box, item) => {
   return LEGACY_PICKLIST_RUN_ID;
 };
 
+export function planPicklistClear(catalog, catalogMeta, kind) {
+  if (kind !== 'normal' && kind !== 'urgent') throw new Error('invalid-picklist-kind');
+  const clearUrgent = kind === 'urgent';
+  const removed = (catalog || []).filter(item => isUrgentItem(item) === clearUrgent);
+  const items = (catalog || []).filter(item => isUrgentItem(item) !== clearUrgent);
+
+  let meta = null;
+  if (kind === 'urgent') {
+    const { urgent: _urgent, ...normalMeta } = catalogMeta || {};
+    if (Object.keys(normalMeta).length > 0) meta = normalMeta;
+  } else if (catalogMeta?.urgent) {
+    meta = { urgent: catalogMeta.urgent };
+  }
+
+  return { kind, removed, items, meta };
+}
+
+export function picklistClearBlockingBoxes({ catalog, boxes, scanProgress, kind }) {
+  const clearUrgent = kind === 'urgent';
+  const targetKeys = new Set((catalog || [])
+    .filter(item => isUrgentItem(item) === clearUrgent)
+    .map(item => picklistProgressKey(item.picklistRunId, item.sku, item.unit)));
+  if (targetKeys.size === 0) return [];
+
+  return (boxes || []).filter(box => {
+    if (box?.status !== 'open' && box?.status !== 'packing') return false;
+    return (scanProgress?.[box.id] || []).some(item => {
+      if (Number(item?.got ?? item?.gotBase ?? 0) <= 0) return false;
+      const key = picklistProgressKey(effectivePicklistRunKey(box, item), item?.sku, item?.unit);
+      return targetKeys.has(key);
+    });
+  });
+}
+
 export const picklistProgressKey = (runId, sku, unit) =>
   JSON.stringify([picklistRunKey(runId), String(sku ?? ''), String(unit ?? '')]);
 
