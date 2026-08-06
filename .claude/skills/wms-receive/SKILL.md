@@ -146,6 +146,7 @@ description: Use when touching the branch receive screen src/screens/BranchRecei
 - เคลียร์ timer ที่ `.finally`, `resetToScan`, และ `useEffect` unmount · `problemLoadSeqRef` guard กัน timer ของรอบเก่ายิงข้ามลัง
 
 ## Problem Report Flow (แจ้งปัญหาลัง) — ข้าม 3 หน้าจอ
+- **📌 ประวัติปัญหาย้อนหลังดูที่ BoxList (warehouse):** หน้ารายการลังมีปุ่ม `🕘 ประวัติการแจ้งปัญหา` รวมลังที่เคยแจ้งปัญหา (วันนี้ + history 7 วัน) + ดูรูป/รายละเอียดต่อลัง — ใช้ `loadReceiveProblems()` **no-arg = โหลดทั้ง `receiveProblems` collection** (มี boxId = เฉพาะลัง); ข้อมูลชุดเดียวกับ flow นี้ (รายละเอียดใน CLAUDE.md ส่วน *BoxList*)
 - **2 ทางเข้า (`problemType`):**
   - **`'incomplete'`:** สแกนสินค้าไม่ครบ/เกิน แล้วกด **"✓ ยืนยันรับสินค้า"** → `handleConfirm` (result ≠ ok) persist เป็นปัญหา → Android แสดง "✓ ส่งให้หัวหน้ารีเช็คสินค้าแล้ว"; ปุ่ม card desktop = **"🔁 รีเช็คสินค้า"** (ส้ม) — *ไม่มีรหัสหัวหน้างาน/recheck บน Android แล้ว*
   - **`'damaged'`:** กด **"⚠ แจ้งปัญหา"** → แนบรูป (`compressImage` → base64) → "ยืนยันแจ้งปัญหา" (`handleReportProblem`); ปุ่ม card desktop = **"🔍 ตรวจสอบ"** (แดง)

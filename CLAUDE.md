@@ -484,6 +484,11 @@ open → packing → closed → exported → received
   - **`csvCell()` escape** ทุกเซลล์ (quote ค่าที่มี `,`/`"`/newline, double-quote ตัว `"` ภายใน) กัน CSV parse ผิดแถวถ้าชื่อพนักงาน/ค่ามี comma
   - **`triggerDownload` เติม UTF-8 BOM (`﻿`)** นำหน้า content เฉพาะไฟล์ `.csv` (เช็คจาก mimeType `text/csv`) — ไม่มี BOM ทำให้ Excel (Windows) เดา encoding เป็น ANSI/Windows-874 ผิด ชื่อพนักงานภาษาไทยกลายเป็นตัวอักษรมั่ว (mojibake); ไฟล์ที่ไม่ใช่ CSV (เช่น .txt ไฟล์ POS) ไม่เติม BOM
 - **ประวัติย้อนหลัง — ปุ่ม "⇩ CSV" ต่อวัน (`HistoryEntry.handleExport`, BoxList.jsx):** export **เฉพาะลังที่มีเลขที่เอกสาร** (`b.pos && b.pos !== '—'` = อนุมัติแล้ว) — ต่างจาก "Export รายการลังทั้งหมด" (ทั้งวัน) ที่ export ทุกลัง
+- **🕘 ประวัติการแจ้งปัญหา (ปุ่มแดง บนแถว summary chips ข้างปุ่ม Export) → `openProblemHistory`:** modal 2 ระดับ ให้คลังดู "ลังที่เคยแจ้งปัญหา" ทั้ง**วันนี้ + ย้อนหลัง**ในที่เดียว (เดิมประวัติปัญหาเห็นได้เฉพาะฝั่งรับสินค้าตอนลังยังอยู่)
+  - **รายการรวม:** `selectProblemHistoryBoxes(boxes, history, problemIndexProblems)` (warehouseHelpers) คัดเฉพาะลังที่ "มีปัญหา" (`problemReviewed`/`problemResolved`/`problemCount>0`/`problemIds`/`problemType` `item`\|`mixed`/`problemNote`/`problemImage`) จาก **live boxes วันนี้ + history ย้อนหลัง** (live ชนะถ้า id ซ้ำ) → ตาราง Box ID/สาขา/พนักงาน/จำนวนปัญหา/สถานะ (✓ แก้ไขแล้ว / ● แจ้งปัญหา)/เวลาปิดลัง + ช่องค้นหา
+  - **รายละเอียดต่อลัง:** คลิก "ดูปัญหา/รูป →" → `openHistoryBox` → `loadReceiveProblems(box.id)` + `selectHistoryReceiveProblems` แสดง note/รูปหลักฐานของลังนั้น
+  - **⚠ `loadReceiveProblems(boxId)` (App.jsx) รองรับ no-arg → โหลดทั้ง `receiveProblems` collection** (มี boxId = query `where('boxId','==',…)`); index รวมเรียกแบบ no-arg — เดิม prop นี้มีเฉพาะ BranchReceive (โหลด draft ต่อลัง) ตอนนี้ส่งเข้า BoxList ผ่าน `screenProps` ด้วย · ทุก async ใช้ `seqRef` guard กัน race
+  - **warehouse-only:** ปุ่มอยู่ใน BoxList ซึ่งเป็น tab ของ role `warehouse` เท่านั้น (branch เห็นแค่ `receive`)
 
 ---
 
