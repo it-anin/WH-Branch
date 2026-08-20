@@ -90,32 +90,64 @@ export function upsertReceiveProblemList(problems, problem) {
     .sort((a, b) => numberOrZero(a.createdAt) - numberOrZero(b.createdAt));
 }
 
+// Some receive outcomes (pharmacist confirming a short/excess recheck with no
+// per-SKU report attached) only ever write a note onto the box document itself
+// — no receiveProblems doc is created. This is the same signal the index list
+// uses to decide a box "has a problem"; reused by the detail dialog fallback.
+export function boxHasLegacyProblemData(box) {
+  return Boolean(
+    box?.problemReviewed
+    || box?.problemResolved
+    || numberOrZero(box?.problemCount) > 0
+    || (box?.problemIds || []).length > 0
+    || box?.problemType === 'item'
+    || box?.problemType === 'mixed'
+    || cleanText(box?.problemNote)
+    || box?.problemImage
+  );
+}
+
+const BOX_PROBLEM_TYPE_LABELS = {
+  incomplete: 'สแกน/นับไม่ครบ',
+  mixed: 'ขาด/เกินหลังรีเช็ค',
+  item: 'แจ้งปัญหาสินค้า (ราย SKU)',
+};
+
+export function boxProblemTypeLabel(type) {
+  return BOX_PROBLEM_TYPE_LABELS[type] || type || 'ไม่ระบุประเภทปัญหา';
+}
+
 // History keeps only a box snapshot, while receive problem documents (including
 // inline evidence images) remain in their own collection. Select defensively by
 // Box ID and keep the original report order for the read-only history dialog.
-export function selectHistoryReceiveProblems(problems, boxId) {
+// `box` is optional — when the receiveProblems collection has nothing for this
+// box (see boxHasLegacyProblemData above) but the box snapshot itself carries a
+// problem note, synthesize a single box-level entry so the detail dialog isn't
+// empty while the index list (which reads the same box fields) still lists it.
+export function selectHistoryReceiveProblems(problems, boxId, box = null) {
   const target = cleanText(boxId);
   if (!target) return [];
-  return (problems || [])
+  const matched = (problems || [])
     .filter(problem => cleanText(problem?.boxId) === target)
     .sort((a, b) => numberOrZero(a?.createdAt) - numberOrZero(b?.createdAt));
+  if (matched.length > 0 || !boxHasLegacyProblemData(box)) return matched;
+  return [{
+    id: `${target}__box-level`,
+    isBoxLevel: true,
+    boxId: target,
+    problemType: box?.problemType || null,
+    note: cleanText(box?.problemNote),
+    image: box?.problemImage || null,
+    reportedBy: box?.problemBy || null,
+    at: box?.problemAt || null,
+  }];
 }
 
 export function selectProblemHistoryBoxes(boxes, historyEntries, problems = []) {
   const byId = new Map();
   const add = (box, historyClearedAt = null) => {
     const id = cleanText(box?.id);
-    const hasProblem = Boolean(
-      box?.problemReviewed
-      || box?.problemResolved
-      || numberOrZero(box?.problemCount) > 0
-      || (box?.problemIds || []).length > 0
-      || box?.problemType === 'item'
-      || box?.problemType === 'mixed'
-      || cleanText(box?.problemNote)
-      || box?.problemImage
-    );
-    if (!id || !hasProblem) return;
+    if (!id || !boxHasLegacyProblemData(box)) return;
     byId.set(id, { ...box, id, historyClearedAt });
   };
 

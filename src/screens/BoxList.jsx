@@ -4,6 +4,7 @@ import { branchLabel } from '../branches.js';
 import {
   filterTodayBoxes,
   problemTypeLabels,
+  boxProblemTypeLabel,
   selectHistoryReceiveProblems,
   selectProblemHistoryBoxes,
 } from '../warehouseHelpers.js';
@@ -193,26 +194,47 @@ function HistoryBoxDialog({ box, problems, loading, error, onClose, onRetry }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
               {problems.map(problem => (
                 <div key={problem.id} style={{ padding: 13, border: '1.5px solid var(--red)', borderRadius: 11, background: '#fff8f8', minWidth: 0 }}>
-                  <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>SKU {problem.sku}</div>
-                  <div style={{ marginTop: 2, fontFamily: 'system-ui', fontSize: 15, fontWeight: 800 }}>{problem.name || problem.sku}</div>
-                  {problem.barcode && <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>Barcode: {problem.barcode}</div>}
-                  <div style={{ marginTop: 6, color: 'var(--red)', fontFamily: 'system-ui', fontSize: 13, fontWeight: 800 }}>
-                    {problemTypeLabels(problem.types).join(', ') || 'ไม่ระบุประเภทปัญหา'}
-                  </div>
-                  {problem.affectedQty && (
-                    <div style={{ marginTop: 4, fontFamily: 'system-ui', fontSize: 12 }}>
-                      จำนวนที่มีปัญหา: <b>{problem.affectedQty} {problem.unit || 'หน่วย'}</b>
-                    </div>
+                  {problem.isBoxLevel ? (
+                    <>
+                      <div style={{ fontFamily: 'system-ui', fontSize: 15, fontWeight: 800 }}>📋 รายงานจากสาขา (ระดับลัง)</div>
+                      <div style={{ marginTop: 4, fontFamily: 'system-ui', fontSize: 11, color: 'var(--mute)' }}>
+                        ไม่มีรายการปัญหารายชิ้นแนบมา — ข้อมูลนี้มาจากที่สาขาบันทึกไว้บนตัวลังโดยตรง
+                      </div>
+                      {(problem.reportedBy?.name || problem.at) && (
+                        <div style={{ marginTop: 4, fontFamily: 'system-ui', fontSize: 11, color: 'var(--mute)' }}>
+                          {problem.reportedBy?.name && <>โดย {problem.reportedBy.name}</>}
+                          {problem.reportedBy?.name && problem.at && ' · '}
+                          {problem.at}
+                        </div>
+                      )}
+                      <div style={{ marginTop: 6, color: 'var(--red)', fontFamily: 'system-ui', fontSize: 13, fontWeight: 800 }}>
+                        {boxProblemTypeLabel(problem.problemType)}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>SKU {problem.sku}</div>
+                      <div style={{ marginTop: 2, fontFamily: 'system-ui', fontSize: 15, fontWeight: 800 }}>{problem.name || problem.sku}</div>
+                      {problem.barcode && <div className="mono" style={{ fontSize: 10, color: 'var(--mute)' }}>Barcode: {problem.barcode}</div>}
+                      <div style={{ marginTop: 6, color: 'var(--red)', fontFamily: 'system-ui', fontSize: 13, fontWeight: 800 }}>
+                        {problemTypeLabels(problem.types).join(', ') || 'ไม่ระบุประเภทปัญหา'}
+                      </div>
+                      {problem.affectedQty && (
+                        <div style={{ marginTop: 4, fontFamily: 'system-ui', fontSize: 12 }}>
+                          จำนวนที่มีปัญหา: <b>{problem.affectedQty} {problem.unit || 'หน่วย'}</b>
+                        </div>
+                      )}
+                      {(problem.lotExpRows || []).map((row, index) => (
+                        <div key={`${row.lot || ''}-${row.exp || ''}-${index}`} className="mono" style={{ marginTop: 3, fontSize: 10, color: 'var(--accent)' }}>
+                          LOT: {row.lot || '—'} · EXP: {row.exp || '—'}
+                        </div>
+                      ))}
+                    </>
                   )}
-                  {(problem.lotExpRows || []).map((row, index) => (
-                    <div key={`${row.lot || ''}-${row.exp || ''}-${index}`} className="mono" style={{ marginTop: 3, fontSize: 10, color: 'var(--accent)' }}>
-                      LOT: {row.lot || '—'} · EXP: {row.exp || '—'}
-                    </div>
-                  ))}
                   {problem.note && <div style={{ marginTop: 7, whiteSpace: 'pre-wrap', fontFamily: 'system-ui', fontSize: 12 }}>📝 {problem.note}</div>}
                   {problem.image ? (
                     <div style={{ marginTop: 9 }}>
-                      <img src={problem.image} alt={`หลักฐาน ${problem.sku}`} style={{ width: '100%', maxHeight: 300, objectFit: 'contain', display: 'block', border: '1px solid var(--line)', borderRadius: 8, background: 'white' }} />
+                      <img src={problem.image} alt={`หลักฐาน ${problem.sku || box.id}`} style={{ width: '100%', maxHeight: 300, objectFit: 'contain', display: 'block', border: '1px solid var(--line)', borderRadius: 8, background: 'white' }} />
                       <a href={problem.image} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6, color: 'var(--accent)', fontFamily: 'system-ui', fontSize: 12, fontWeight: 700 }}>
                         เปิดรูปขนาดใหญ่ ↗
                       </a>
@@ -396,7 +418,7 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
     try {
       const problems = await loadReceiveProblems(box.id);
       if (historyProblemLoadSeqRef.current !== seq) return;
-      setHistoryProblems(selectHistoryReceiveProblems(problems, box.id));
+      setHistoryProblems(selectHistoryReceiveProblems(problems, box.id, box));
     } catch (err) {
       if (historyProblemLoadSeqRef.current !== seq) return;
       console.error('history loadReceiveProblems failed:', err?.code || err?.message || err);
