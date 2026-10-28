@@ -969,7 +969,7 @@ export function isHistoryExpired(clearedAt, now, retentionDays = HISTORY_RETENTI
 // ── Clear · เริ่มวันถัดไป: กันลบลังที่ยังไม่จบ flow ──────────────────────────
 // ทำไม: clearBoxes เก็บเข้า history แค่ "หัวลัง" ส่วน boxItems/progress/config/receive ถูกลบจริง
 //   → ลังที่สาขายังไม่รับ ถูก Clear แล้วสาขาสแกนไม่เจอ ("ไม่พบลัง") และกู้รายการสินค้าจาก history ไม่ได้
-// ลังที่ "จบแล้ว" มีอย่างเดียวคือ status 'received'
+// ลังที่ "จบแล้ว" คือ status 'received' (และ exported ที่เลขที่เอกสารขึ้นต้น BKK — ดู isReceiveExemptBox)
 // ยกเว้นลัง open/packing ที่ว่างจริง — Desktop เปิดลังเปล่าใหม่ให้อัตโนมัติหลังปิดลังทุกครั้ง (PackScanC.doClose)
 //   ถ้านับว่าค้างจะ Clear ไม่ได้ทุกวัน
 // ⚠ ลัง open ดู skuCount/totalQty ไม่ได้ (เป็น 0 เสมอจนกว่า doClose) ต้องดู progress/{boxId} แทน
@@ -985,12 +985,30 @@ export const CLEAR_BLOCKER_KINDS = [
   { kind: 'unknown', label: 'สถานะลังไม่รู้จัก' },
 ];
 
+// ลังที่ไม่ต้องรอสาขารับ: เลขที่เอกสารขึ้นต้น BKK (เช่น BKK261000064) — ปลายทางนี้ไม่ได้ใช้ระบบรับสินค้า
+//   ไม่มีใครสแกนรับในระบบ → ลัง exported ค้างตลอดไป ถ้านับเป็นลังค้าง Clear จะล็อกทุกวัน
+// เทียบจาก box.pos ที่พนักงานพิมพ์ตอนอนุมัติเอกสาร (Outbound) — ไม่สนตัวพิมพ์เล็ก/ใหญ่และช่องว่าง
+// pos ก่อนอนุมัติเป็น '—' หรือเลข 14 หลักจาก generatePOS (ตัวเลขล้วน) จึงไม่มีทางขึ้นต้น BKK
+// จะเพิ่มปลายทางอื่นที่ไม่ใช้ระบบ → เติม prefix ในอาร์เรย์นี้
+export const RECEIVE_EXEMPT_DOC_PREFIXES = ['BKK'];
+
+export function isReceiveExemptBox(box) {
+  const doc = String(box?.pos ?? '').replace(/\s/g, '').toUpperCase();
+  return RECEIVE_EXEMPT_DOC_PREFIXES.some(prefix => doc.startsWith(prefix));
+}
+
+// จำนวนลังที่ Clear ปล่อยผ่านเพราะเลขที่เอกสาร BKK (อนุมัติแล้วแต่ไม่มีสาขารับในระบบ) — ไว้บอกในกล่องยืนยันตอน Clear
+export const countReceiveExemptBoxes = (boxes) =>
+  (boxes || []).filter(box => box?.status === 'exported' && isReceiveExemptBox(box)).length;
+
 // คืน kind ของสิ่งที่ค้างอยู่ หรือ null = ลบได้
 export function classifyClearBlocker(box, { itemsByBox = {}, scanProgress = {}, progressLoaded = false } = {}) {
   if (!box || box.status === 'received') return null;
   if (box.problemReported && !box.problemResolved) return 'problem';
   if (box.receivePending) return 'pending';
-  if (box.status === 'exported') return 'exported';
+  // ลัง BKK… ไม่มีสาขารับในระบบ → อนุมัติเอกสารแล้วถือว่าจบ
+  // (problem/pending ด้านบนยังล็อกอยู่ — แปลว่ามีคนทำงานกับลังนั้นในระบบจริงแล้ว ห้าม Clear ทิ้งเงียบ ๆ)
+  if (box.status === 'exported') return isReceiveExemptBox(box) ? null : 'exported';
   if (box.status === 'closed') return 'closed';
   if (box.status === 'open' || box.status === 'packing') {
     if ((itemsByBox?.[box.id] || []).length > 0) return 'packing';

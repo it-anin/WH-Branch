@@ -210,7 +210,7 @@ Firebase Console แสดงข้อความ `Your project has exceeded no
 - ห้ามล้าง `config/receive`
 - ห้าม reset ฐานข้อมูลเพื่อแก้ quota
 - ห้ามกรองลังด้วยวันที่วันนี้เพียงเงื่อนไขเดียว
-- ห้าม archive/delete ลังที่ยังเป็น `open`, `packing`, `closed`, `exported` หรือยังรอสาขายืนยัน
+- ห้าม archive/delete ลังที่ยังเป็น `open`, `packing`, `closed`, `exported` หรือยังรอสาขายืนยัน (ข้อยกเว้นเดียว: `exported` ที่เลขที่เอกสารขึ้นต้น `BKK` — ปลายทางที่ไม่ได้ใช้ระบบรับสินค้า Clear ได้ตามปกติ ดู CLAUDE.md *BoxList*)
 - ห้ามเปลี่ยน `branch` ของลังเก่าแบบเดา
 - ห้ามใช้ `progress` เป็น source of truth ของลังที่ปิดแล้ว
 - ห้ามให้ client หนึ่งเขียนทับลังทั้งหมดจาก snapshot ที่อาจเก่า
