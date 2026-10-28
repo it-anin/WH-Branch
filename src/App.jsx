@@ -21,6 +21,7 @@ import {
 } from './units.js';
 import {
   HISTORY_RETENTION_DAYS,
+  buildClearBlockedMessage,
   buildTopLevelFieldPatch,
   computeCatalogByPacker,
   historyCutoff,
@@ -29,6 +30,7 @@ import {
   normalizeReceiveProblem,
   shouldSubscribeToHistory,
   shouldSubscribeToProgress,
+  summarizeClearBlockers,
 } from './warehouseHelpers.js';
 import { classifyFirestoreError } from './firestoreErrors.js';
 
@@ -718,7 +720,16 @@ export default function App() {
 
   async function clearBoxes() {
     if (boxes.length === 0) { showToast('ไม่มีข้อมูลลังในวันนี้'); return; }
-    if (!window.confirm(`ล้างข้อมูลลังทั้งหมด ${boxes.length} ลัง?\nข้อมูลจะถูกเก็บในประวัติย้อนหลัง ${HISTORY_RETENTION_DAYS} วัน`)) return;
+    // ด่านกัน Clear ลบลังที่ยังไม่จบ flow — history เก็บแค่หัวลัง ส่วน boxItems/progress/receive ถูกลบจริง กู้กลับไม่ได้
+    // (ลังที่สาขายังไม่รับจะสแกนไม่เจอ "ไม่พบลัง" และไม่เหลือรายการสินค้าให้ตรวจ)
+    // อ่านจาก ref ที่สดที่สุด; ปุ่มใน BoxList ล็อกด้วยเงื่อนไขเดียวกันอยู่แล้ว ตรงนี้คือด่านสุดท้ายถ้าถูกเรียกทางอื่น
+    const blockers = summarizeClearBlockers(boxesRef.current, { itemsByBox: itemsByBoxRef.current, scanProgress, progressLoaded });
+    if (blockers.total > 0) { showToast(buildClearBlockedMessage(blockers), 'error'); return; }
+    if (!window.confirm(
+      `ล้างข้อมูลลังทั้งหมด ${boxes.length} ลัง? (สาขารับครบแล้ว)\n` +
+      `ประวัติย้อนหลังเก็บเฉพาะรายการลัง (เลขลัง/สถานะ/เลขที่เอกสาร) ${HISTORY_RETENTION_DAYS} วัน\n` +
+      '⚠ รายการสินค้าในลังจะไม่ถูกเก็บ',
+    )) return;
     const now = new Date();
     const dateKey = now.toISOString().slice(0, 10);
     const label = now.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -1376,7 +1387,9 @@ export default function App() {
   }
 
   const receiveDataLoadError = receiveDataLoadErrors.boxes || receiveDataLoadErrors.boxItems;
-  const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, saveWarehouseBoxItems, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearFirestore, deleteBox, loadReceiveProblems, upsertReceiveProblem, deleteReceiveProblem, commitReceiveOutcome, packer, setTab, showToast, createNewBox, lockBoxBranch, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
+  // ลังที่ยังไม่จบ flow = ห้าม Clear — BoxList ล็อกปุ่ม + โชว์แถบเตือน (clearBoxes กันซ้ำอีกชั้น) คำนวณทุก render ให้ตามสถานะสด
+  const clearBlockers = summarizeClearBlockers(boxes, { itemsByBox, scanProgress, progressLoaded });
+  const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, saveWarehouseBoxItems, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearBlockers, clearFirestore, deleteBox, loadReceiveProblems, upsertReceiveProblem, deleteReceiveProblem, commitReceiveOutcome, packer, setTab, showToast, createNewBox, lockBoxBranch, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   // Gate: ยังไม่ login → แสดงหน้า Login (ทั้ง Android + Desktop)
   if (!profile) {

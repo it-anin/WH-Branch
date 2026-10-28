@@ -321,7 +321,8 @@ return newId;
 - `items มีข้อมูล` → `setDoc(progress/{boxId}, { items: [{sku, got}] })`
 
 ### `clearBoxes()`
-- บันทึก snapshot ลัง → Firestore `history/{Date.now()}` (sync ทุกเครื่อง) + optimistic local update
+- **🔒 ด่านกันลบลังค้างรับ (ก่อน confirm):** `summarizeClearBlockers(boxesRef.current, {itemsByBox, scanProgress, progressLoaded})` (warehouseHelpers) → ถ้ามีลังที่ไม่ใช่ `received` → toast แดง + `return` ไม่ลบอะไร. ปุ่มใน BoxList ล็อกด้วยเงื่อนไขเดียวกัน (`clearBlockers` ส่งผ่าน `screenProps`) — ดู *BoxList — Logic สำคัญ* และ Known Pitfalls
+- บันทึก snapshot ลัง → Firestore `history/{Date.now()}` (sync ทุกเครื่อง) + optimistic local update — **เก็บเฉพาะ "หัวลัง" (`boxes: [...boxes]`) ไม่เก็บ `boxItems`**
 - writeBatch ทำในรอบเดียว: `batch.set(history/{id}, entry)` + `batch.delete(history/{id})` entries เก่ากว่า 7 วัน + ลบ `boxes/*`, `boxItems/*`, `progress/*`, `config/receive`
 - reset refs และ local state (_setBoxes, _setItemsByBox, _setReceiveBoxIds)
 - **migration:** ตอน app load ครั้งแรก ถ้ามี `wh_history` ใน localStorage เก่า → ใช้เป็น initial state ก่อน Firestore listener overwrite
@@ -385,7 +386,7 @@ open → packing → closed → exported → received
 | field | ตั้งค่าเมื่อ | ใช้ที่ | ล้างเมื่อ |
 |---|---|---|---|
 | `closedAt` | `doClose()` (PackScanC) — epoch ms | KPI เวลาเปิด→ปิดลัง คู่กับ `createdAt` — คอลัมน์ "เปิดลัง"/"ปิดลัง" ใน BoxList | — (ลังเก่าก่อนมี field นี้ = ไม่มีค่า → แสดง `—`) |
-| `textExported` | กดส่งออกไฟล์ Text (Outbound) | disable ปุ่มส่งออก Text กันส่งซ้ำ | clearBoxes (ลบ box) |
+| `textExported` | กดส่งออกไฟล์ Text (Outbound) | disable ปุ่มส่งออก Text กันส่งซ้ำ | clearBoxes (ลบ box — Clear ทำได้เฉพาะเมื่อสาขารับครบแล้ว) |
 | `receivePending` | Android กดยืนยันรับ (ผล ok) | Desktop receive แสดง card รออนุมัติ + tab badge | handleApprove (→ received) |
 | `receivedBy` | Android กดยืนยันรับ | BoxCard "ตรวจสอบโดย:" + staff filter (desktop) | — (คงไว้) |
 | `receivingBy` | Android `startReceive` (กำลังตรวจ) | ล็อกลัง — กันพนักงานอื่นสแกนซ้ำขณะตรวจ (ไม่มี timeout; แต่คนอื่นกด "ตรวจแทน" ผ่าน dialog เพื่อโอนล็อกได้ — ดู skill `wms-receive`) | confirm/report/scanNext/**ตรวจแทน** |
@@ -479,6 +480,10 @@ open → packing → closed → exported → received
   - **`BoxTable` ใช้ร่วมกับประวัติย้อนหลัง — ปุ่มลบผูกกับ prop `onDelete` ที่ส่งเฉพาะตารางวันนี้** (ประวัติเป็น snapshot ของลังที่ถูกลบไปแล้ว ลบซ้ำไม่ได้) ห้ามใส่ `onDelete` ให้ `<BoxTable>` ใน `HistoryEntry`
   - **เปิดลัง/ปิดลัง** = `formatTime(b.createdAt)` / `formatTime(b.closedAt)` (BoxList.jsx) — แปลง epoch ms → `HH:MM` ด้วย `toLocaleTimeString('th-TH')`, ไม่มีค่า (ลังเก่าก่อนมี `closedAt` หรือลังที่ยังไม่ปิด) → `—`. ใช้ร่วมกันทั้งตารางหลัก + `HistoryEntry` (component `BoxTable` เดียวกัน)
 - Badge header นับ: กำลังแพ็ค = `open + packing`, ปิดลังแล้ว = `closed`, อนุมัติแล้ว = `exported`
+- **🔒 ปุ่ม "⊘ Clear · เริ่มวันถัดไป" ล็อก (`disabled` + แถบเตือนแดงใต้แถวปุ่ม) เมื่อยังมีลังที่สาขาไม่รับ** — prop `clearBlockers = { total, groups }` คำนวณที่ App.jsx จาก**ทุกลัง** (ไม่ผูกกับตัวกรองสาขา) ด้วย `summarizeClearBlockers`; แถบเตือนบอกจำนวนแยกชนิด (`describeClearBlockers`) + ทางออก (ลังที่ไม่ใช้แล้วลบด้วย 🗑)
+  - **ทำไม:** Clear ลบ `boxes/boxItems/progress/receive` ทิ้งจริง แต่ `history` เก็บแค่หัวลัง → ลังที่สาขายังไม่รับถูก Clear แล้วสาขาสแกนไม่เจอและกู้รายการสินค้าไม่ได้ (เหตุการณ์จริง ต.ค. 2026) · สอดคล้องกติกาใน `FIRESTORE_QUOTA_OPTIMIZATION.md` "ห้าม archive/delete ลังที่ยังเป็น open/packing/closed/exported หรือยังรอสาขายืนยัน"
+  - **ลังที่ไม่ล็อก:** `received` และ `open/packing` ที่ว่างจริง (ไม่มี `progress` got>0 / ไม่มี `boxItems`) — Desktop เปิดลังเปล่าใหม่ให้อัตโนมัติหลัง `doClose` ทุกครั้ง ถ้านับว่าค้างจะ Clear ไม่ได้ทุกวัน. **ลัง `open` ดู `skuCount/totalQty` ไม่ได้ (เป็น 0 เสมอจนกว่า doClose) ต้องดู `progress/{boxId}`**; progress ยังไม่โหลด → ล็อกไว้ก่อน (`checking`, fail-safe) ไม่เดาว่าว่าง
+  - **ห้ามเอา `disabled` ออกหรือผ่อนเงื่อนไขโดยไม่แจ้ง** — `clearFirestore` (🔥) ไม่ถูกล็อกโดยตั้งใจ (reset ทั้งระบบ มี confirm เตือนหนักอยู่แล้ว)
 - ปุ่ม Export: **"⇩ Export รายการลังทั้งหมด"** (เดิม: Export ทั้งวัน)
 - **CSV format (`generateCSV` ใน App.jsx, ใช้ร่วม export ทั้งวัน + ประวัติ):** header `box_id,pos_number,packer,sku_count,total_qty,status,updated` — คอลัมน์ `packer` = `b.packer?.name`
   - **`csvCell()` escape** ทุกเซลล์ (quote ค่าที่มี `,`/`"`/newline, double-quote ตัว `"` ภายใน) กัน CSV parse ผิดแถวถ้าชื่อพนักงาน/ค่ามี comma
@@ -635,6 +640,8 @@ factor + ที่มา · **ลังที่แต่ละคนแพ็�
 - **อย่าใช้ state ที่ sync ข้ามเครื่อง (Firestore) มา derive "สิ่งที่เครื่องนี้กำลังทำ"** — BranchReceive เดิม `foundBox = boxes.find(id === receiveBoxIds[last])` แต่ `receiveBoxIds` sync ผ่าน `config/receive` ทุกเครื่องเห็นก้อนเดียว → 2 พนักงาน 2 เครื่องสแกนคนละลัง จอเด้งเห็นลังเดียวกัน (ตัว sync ล่าสุดชนะ) **เสี่ยงกดยืนยันรับผิดลัง**. แก้ด้วย local state ต่อเครื่อง (`scannedBoxId`) ตั้งตอนเครื่องนี้สแกนเอง — "ลังที่เครื่องนี้กำลังตรวจ" ต้องเป็น local เสมอ ไม่ใช่ค่าที่ broadcast ให้ทุกเครื่อง
 - **`setBoxes` ห้ามเขียนลังทุกใบทั้งชุด — เขียนเฉพาะลังที่เปลี่ยน** (bug จริงที่เจอในโปรดักชัน: ลังปิดแล้วหายจาก Outbound เป็นบางใบ). เดิม `setBoxes` `batch.set` **ทุกลังในอาเรย์** จาก `boxesRef.current` (snapshot ของเครื่องนั้น) ทุกครั้งที่เรียก → พนักงานหลายคนแพ็คคนละเครื่องพร้อมกัน: เครื่อง A ปิดลัง X, อีกเสี้ยววิเครื่อง B ปิดลังตัวเอง **แต่ snapshot ของ B ยังไม่เห็นว่า X ปิดแล้ว** → batch ของ B เขียน X = `open` ทับกลับ → การปิดของ A หาย. **หลักฐานตอนเจอ:** ลังที่ `boxItems` มีของครบ + `progress` ถูกลบแล้ว (= `doClose` รันจริง) แต่ `status` ค้าง `open` (setBoxes write โดน clobber). แก้: เทียบ `prevById.get(id) !== box` เขียนเฉพาะลังที่ reference เปลี่ยน (เหมือน `setItemsByBox`) → เครื่อง B ไม่แตะลัง X ที่ไม่ได้แก้อีก. **การ debug ที่ชี้ขาด:** อย่าดูแค่ `box.totalQty` (เป็น 0 เสมอตอน open) — ดู **`progress/` collection** (สแกนค้างที่ box ยัง open) + **`boxItems/` ที่ box ยัง open** = ร่องรอย "ปิดไม่สำเร็จ"
 - **key remount ของ PackScanC ห้ามใช้ `.length` — ต้องเป็น `catalogSig` (เนื้อหา)** (bug จริง 18 ก.ค.: โซนเบิกด่วนอัปไฟล์ด่วนสาขาอื่นแล้ว**สแกนไม่ได้ เด้ง "ครบแล้ว"**). `items` state ใน PackScanC init ครั้งเดียวตอน mount ไม่ resync ตาม prop `catalog` → พึ่ง key remount อย่างเดียว; `.length` ชนกันเมื่อชุดใหม่จำนวนรายการเท่าเดิม (เบิกด่วนโหมด replace ทำให้เกิดง่าย) → ไม่ remount → `processBarcode` หาใน `items` เก่าไม่เจอ → เข้าเงื่อนไข `!match`. แก้: `catalogSig` (units.js — hash sku+unit+qty+branch) ทั้ง 2 จุด (App.jsx + AndroidApp.jsx) — รายละเอียด *Remount key ของ PackScanC*
+- **Clear · เริ่มวันถัดไป ลบ `boxItems` ทิ้งจริง — `history` เก็บแค่หัวลัง ดังนั้นลังที่สาขายังไม่รับห้ามถูก Clear** (เหตุการณ์จริง ต.ค. 2026: เผลอกด Clear ตอนสาขายังไม่รับ → สาขาสแกนได้ "ไม่พบลัง" และกู้รายการสินค้าจากประวัติไม่ได้). กู้หัวลังคืนอย่างเดียวไม่พอ เพราะหน้ารับสินค้าขึ้น "ลังนี้ยังไม่มีข้อมูลรายการสินค้า"; ผลข้างเคียงอีกอย่างคือเช็คลิสต์พนักงานแพ็ค/ติ๊กเขียว popup Picklist กลับมาเต็ม (`packedBaseOf` หักยอดจากลังที่ยังมีอยู่เท่านั้น) เสี่ยงแพ็คซ้ำ. ตอนนี้ปุ่ม + `clearBoxes` ล็อกด้วย `summarizeClearBlockers` แล้ว (ดู *BoxList — Logic สำคัญ*).
+  - **กู้ฉุกเฉินถ้ายังหลุดเกิดซ้ำ:** Firestore PITR (Google Cloud Console → Firestore → Disaster recovery) — เก็บเวอร์ชันเก่าไว้ 1 ชม. แม้ไม่ได้เปิด PITR และเปิด PITR ภายใน ~1 ชม. หลังลบก็ยังกู้ได้; `gcloud firestore export --snapshot-time=<UTC เต็มนาที ก่อนกด Clear> --collection-ids=boxes,boxItems,progress,receiveProblems` แล้ว `gcloud firestore import` (**ห้ามใส่ `config`** จะทับ Picklist/แผนที่บาร์โค้ดที่อัปใหม่) — ตรวจคำสั่งกับเอกสาร Google ก่อนรันจริง · กู้ไม่ทัน: ลัง `exported` ให้สาขารับนอกระบบตามเอกสาร POS, ลัง `closed` แพ็คใหม่
 
 ## Notes
 - **ไฟล์ตายถูกลบออกแล้ว** (15 ก.ค. 2026): `PackScanA.jsx`, `PackScanB.jsx`, `ExportPOS.jsx`, `FlowDiagram.jsx`, `TweaksPanel.jsx`, `Annotation.jsx` — ไม่มีใคร import, build ผ่านหลังลบ

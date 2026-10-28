@@ -271,7 +271,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       return;
     }
     if (activeBox.textExported) {
-      showToast('⚠ ลังนี้ส่งออกไฟล์ Text แล้ว · กด Clear เริ่มวันถัดไปเพื่อส่งใหม่', 'error');
+      showToast(`⚠ ลังนี้ส่งออกไฟล์ Text แล้ว · ใช้ไฟล์ ${activeBox.id}.txt ที่ดาวน์โหลดไว้เดิม`, 'error');
       return;
     }
     if (boxItems.length === 0) { showToast('⚠ ไม่มีรายการสินค้าในลังนี้'); return; }
@@ -287,7 +287,7 @@ export default function BoxClosedLabel({ boxes, setBoxes, activeBoxId, setActive
       })
     );
     triggerDownload(lines.join('\n'), `${activeBox.id}.txt`, 'text/plain');
-    // mark ว่าลังนี้ส่งออก Text แล้ว — disable ปุ่มจนกว่าจะกด Clear (clearBoxes ลบ box → flag หาย)
+    // mark ว่าลังนี้ส่งออก Text แล้ว — disable ปุ่มถาวร (flag หายพร้อมลังตอน Clear ซึ่งทำได้เฉพาะเมื่อสาขารับครบแล้ว — ดู classifyClearBlocker)
     setBoxes(prev => prev.map(b => b.id === activeBox.id ? { ...b, textExported: true } : b));
     showToast(`ส่งออก ${lines.length} รายการ ✓`);
   }

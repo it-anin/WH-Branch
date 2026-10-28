@@ -965,3 +965,70 @@ export function isHistoryExpired(clearedAt, now, retentionDays = HISTORY_RETENTI
   const timestamp = new Date(clearedAt).getTime();
   return Number.isFinite(timestamp) && timestamp < historyCutoff(now, retentionDays).getTime();
 }
+
+// ── Clear · เริ่มวันถัดไป: กันลบลังที่ยังไม่จบ flow ──────────────────────────
+// ทำไม: clearBoxes เก็บเข้า history แค่ "หัวลัง" ส่วน boxItems/progress/config/receive ถูกลบจริง
+//   → ลังที่สาขายังไม่รับ ถูก Clear แล้วสาขาสแกนไม่เจอ ("ไม่พบลัง") และกู้รายการสินค้าจาก history ไม่ได้
+// ลังที่ "จบแล้ว" มีอย่างเดียวคือ status 'received'
+// ยกเว้นลัง open/packing ที่ว่างจริง — Desktop เปิดลังเปล่าใหม่ให้อัตโนมัติหลังปิดลังทุกครั้ง (PackScanC.doClose)
+//   ถ้านับว่าค้างจะ Clear ไม่ได้ทุกวัน
+// ⚠ ลัง open ดู skuCount/totalQty ไม่ได้ (เป็น 0 เสมอจนกว่า doClose) ต้องดู progress/{boxId} แทน
+//   progress ยังไม่โหลด = ไม่รู้ว่าว่างไหม → ล็อกไว้ก่อน (fail-safe) ดีกว่าเสี่ยงลบงานแพ็คที่สแกนค้าง
+// ลำดับในอาร์เรย์ = ลำดับความสำคัญตอนแสดงผล (ลังหนึ่งใบนับกลุ่มเดียว)
+export const CLEAR_BLOCKER_KINDS = [
+  { kind: 'problem', label: 'สาขาแจ้งปัญหา รอคลังแก้ไข/รีเช็ค' },
+  { kind: 'pending', label: 'สาขาสแกนแล้ว รอหัวหน้าอนุมัติเอกสาร' },
+  { kind: 'exported', label: 'อนุมัติเอกสารแล้ว รอสาขารับ' },
+  { kind: 'closed', label: 'ปิดลังแล้ว รอคลังอนุมัติเอกสาร' },
+  { kind: 'packing', label: 'กำลังแพ็ค (มีของสแกนแล้ว)' },
+  { kind: 'checking', label: 'กำลังตรวจสถานะลังที่เปิดอยู่ (รอสักครู่)' },
+  { kind: 'unknown', label: 'สถานะลังไม่รู้จัก' },
+];
+
+// คืน kind ของสิ่งที่ค้างอยู่ หรือ null = ลบได้
+export function classifyClearBlocker(box, { itemsByBox = {}, scanProgress = {}, progressLoaded = false } = {}) {
+  if (!box || box.status === 'received') return null;
+  if (box.problemReported && !box.problemResolved) return 'problem';
+  if (box.receivePending) return 'pending';
+  if (box.status === 'exported') return 'exported';
+  if (box.status === 'closed') return 'closed';
+  if (box.status === 'open' || box.status === 'packing') {
+    if ((itemsByBox?.[box.id] || []).length > 0) return 'packing';
+    if (!progressLoaded) return 'checking';
+    return (scanProgress?.[box.id] || []).some(item => numberOrZero(item?.got ?? item?.gotBase) > 0)
+      ? 'packing'
+      : null;
+  }
+  return 'unknown';
+}
+
+// สรุปลังที่ค้างเป็นกลุ่ม { total, groups: [{ kind, label, count, ids }] } — ใช้ทั้งด่านใน clearBoxes และแถบเตือนใน BoxList
+export function summarizeClearBlockers(boxes, context = {}) {
+  const groups = new Map(CLEAR_BLOCKER_KINDS.map(({ kind, label }) => [kind, { kind, label, count: 0, ids: [] }]));
+  (boxes || []).forEach(box => {
+    const kind = classifyClearBlocker(box, context);
+    if (!kind) return;
+    const group = groups.get(kind);
+    group.count += 1;
+    group.ids.push(cleanText(box.id));
+  });
+  const filled = [...groups.values()].filter(group => group.count > 0);
+  return { total: filled.reduce((sum, group) => sum + group.count, 0), groups: filled };
+}
+
+// "สาขาแจ้งปัญหา… 1 · อนุมัติเอกสารแล้ว รอสาขารับ 2" — บรรทัดเดียวสำหรับแถบเตือน
+export const describeClearBlockers = (summary) =>
+  (summary?.groups || []).map(group => `${group.label} ${group.count}`).join(' · ');
+
+// ข้อความ toast ตอนกด Clear ไม่ได้ (toast อยู่แค่ ~2 วินาที → สั้น + ตัวอย่างเลขลังไม่กี่ใบ)
+// รายละเอียดเต็มอยู่ที่แถบเตือนถาวรใต้ปุ่ม Clear ใน BoxList
+export function buildClearBlockedMessage(summary, maxIds = 3) {
+  if (!summary?.total) return '';
+  if (summary.groups.every(group => group.kind === 'checking')) {
+    return '⚠ กำลังตรวจสถานะลังที่เปิดอยู่ รอสักครู่แล้วกด Clear ใหม่';
+  }
+  const ids = summary.groups.flatMap(group => group.ids);
+  const shown = ids.slice(0, maxIds).join(', ');
+  const more = ids.length > maxIds ? ` และอีก ${ids.length - maxIds} ลัง` : '';
+  return `⚠ ล้างไม่ได้ — ยังมี ${summary.total} ลังที่ยังไม่จบขั้นตอน (${shown}${more}) · ให้สาขารับให้ครบก่อน`;
+}

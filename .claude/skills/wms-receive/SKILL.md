@@ -95,7 +95,7 @@ description: Use when touching the branch receive screen src/screens/BranchRecei
     3. **`confirmTakeover` re-check สถานะล่าสุดจาก `boxes` ก่อนเข้า** — dialog เปิดค้างได้นาน snapshot `takeoverBox` อาจเก่า: ลัง `received`/`receivePending`/ปัญหาค้าง → toast "จัดการไปแล้ว" ไม่เข้า verify (เงื่อนไขชุดเดียวกับ guard ใน `handleScan`)
     - **`resetToScan(msg)`** = helper reset ชุดเดียวกับ `handleScanNext` **แต่ไม่แตะ `receivingBy`** (ล็อกไม่ใช่ของเราแล้ว) — ใช้ร่วม 3 จุดข้างบน ห้าม copy แยก
   - **ไม่มี timeout** — ปลดล็อกเฉพาะเมื่อ: ยืนยันรับ (`handleConfirm` ผล ok) / แจ้งปัญหา (`handleReportProblem`) / ไปลังถัดไป (`handleScanNext`)
-  - กรณีปิดแอปกลางคัน → ล็อกค้าง (เจ้าของสแกนใหม่ได้, clearBoxes ล้างได้)
+  - กรณีปิดแอปกลางคัน → ล็อกค้าง (เจ้าของสแกนใหม่ได้ · คนอื่นกด "ตรวจแทน" ได้ · **clearBoxes ไม่ใช่ทางปลดล็อกแล้ว** — ลังที่สาขายังไม่รับ Clear ไม่ได้ ดู CLAUDE.md *BoxList*)
 - **`handleScanNext`** (ปุ่ม "+ รับลังถัดไป" / Android "+ ลังถัดไป"): reset ทุก state รวมถึง `verifyResult`, `supervisorCode` → `phase = 'scan'` + ปลดล็อก `receivingBy`
   - **⚠ ทิ้ง `scanCounts` ทั้งหมด กู้ไม่ได้** (local state ต่อเครื่อง ไม่เขียน Firestore) → กดพลาดตอนนับ = ต้องรื้อลังนับใหม่
   - **ปุ่ม Android มี dialog ยืนยัน (`confirmNext`) เฉพาะ phase `verify`** — `onClick={() => (phase === 'verify' ? setConfirmNext(true) : handleScanNext())}`; phase `result` (ยืนยันรับส่งหัวหน้าไปแล้ว ไม่มีอะไรเสีย) กดแล้วไปเลย **ตั้งใจไม่ถาม** — ถ้าถามทุกครั้งพนักงานจะกดผ่านอัตโนมัติจนไม่อ่านตอนที่สำคัญจริง
