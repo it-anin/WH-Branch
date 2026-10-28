@@ -654,7 +654,7 @@ factor + ที่มา · **ลังที่แต่ละคนแพ็�
   - มันเป็น **dead branch** (render ไม่ถึง) ไม่ใช่ "ลบออกจาก routing แล้ว" อย่างที่เอกสารเดิมเขียนผิดไว้: `showAll = false` ตรึงตายตัว + `'lookup'` ไม่อยู่ใน `TABS` + useEffect เด้ง tab กลับถ้าไม่อยู่ใน `ROLE_TABS` → `tab === 'lookup'` เป็นจริงไม่ได้
   - ตัดสินใจ (ผู้ใช้): **เก็บไว้ก่อน** ไม่แตะ App.jsx
 - Accent color ตรึงเป็น orange (`#e8692b` / `#f5c9a8`) ใน App.jsx โดยตรง — ไม่มี TweaksPanel หรือ DEFAULT_TWEAKS แล้ว
-- `data.js` ยังมี mock data ที่ไม่ได้ใช้ — ควรลบออก
+- `data.js` ลบ mock data (`sampleLine`, `boxes`) แล้ว (28 ต.ค. 2026) — เหลือเฉพาะ `generatePOS` + `matchBarcode` ที่ใช้จริง
 - ไม่มี TypeScript, ไม่มี test suite
 - PDA support: **แนะนำ Broadcast Mode** (`com.kte.scan.result`) — ไม่มีปัญหา barcode ต่อกัน ไม่ต้องพึ่ง HID keyboard
 - Firestore Security Rules: `request.auth != null` — Firebase Anonymous Auth enabled (ไม่มีวันหมดอายุ)
