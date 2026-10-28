@@ -24,6 +24,7 @@ import {
   buildClearBlockedMessage,
   buildTopLevelFieldPatch,
   computeCatalogByPacker,
+  countReceiveExemptBoxes,
   historyCutoff,
   isHistoryExpired,
   isReceiveProblemExpired,
@@ -725,8 +726,14 @@ export default function App() {
     // อ่านจาก ref ที่สดที่สุด; ปุ่มใน BoxList ล็อกด้วยเงื่อนไขเดียวกันอยู่แล้ว ตรงนี้คือด่านสุดท้ายถ้าถูกเรียกทางอื่น
     const blockers = summarizeClearBlockers(boxesRef.current, { itemsByBox: itemsByBoxRef.current, scanProgress, progressLoaded });
     if (blockers.total > 0) { showToast(buildClearBlockedMessage(blockers), 'error'); return; }
+    // ลังเลขที่เอกสาร BKK… ผ่านด่านได้เพราะไม่มีสาขารับในระบบ — บอกในกล่องยืนยันว่าจะลบกี่ใบ
+    // (กันพิมพ์เลขที่เอกสารผิดเป็น BKK ทั้งที่ลังไปสาขาที่ใช้ระบบ แล้ว Clear ลบทิ้งโดยไม่รู้ตัว)
+    const exemptCount = countReceiveExemptBoxes(boxesRef.current);
+    const receivedNote = exemptCount
+      ? `สาขารับครบแล้ว · ลังเลขที่เอกสาร BKK… ${exemptCount} ลัง ไม่ผ่านการรับในระบบ`
+      : 'สาขารับครบแล้ว';
     if (!window.confirm(
-      `ล้างข้อมูลลังทั้งหมด ${boxes.length} ลัง? (สาขารับครบแล้ว)\n` +
+      `ล้างข้อมูลลังทั้งหมด ${boxes.length} ลัง? (${receivedNote})\n` +
       `ประวัติย้อนหลังเก็บเฉพาะรายการลัง (เลขลัง/สถานะ/เลขที่เอกสาร) ${HISTORY_RETENTION_DAYS} วัน\n` +
       '⚠ รายการสินค้าในลังจะไม่ถูกเก็บ',
     )) return;

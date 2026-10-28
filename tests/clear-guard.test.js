@@ -5,7 +5,9 @@ import {
   CLEAR_BLOCKER_KINDS,
   buildClearBlockedMessage,
   classifyClearBlocker,
+  countReceiveExemptBoxes,
   describeClearBlockers,
+  isReceiveExemptBox,
   summarizeClearBlockers,
 } from '../src/warehouseHelpers.js';
 
@@ -123,6 +125,67 @@ test('blocked toast shows the total and only a few box ids', () => {
 
   const fewBoxes = summarizeClearBlockers(boxes.slice(0, 2), loaded);
   assert.doesNotMatch(buildClearBlockedMessage(fewBoxes), /และอีก/);
+});
+
+test('document numbers starting with BKK are exempt from branch receipt, ignoring case and spaces', () => {
+  ['BKK261000064', 'bkk261000064', '  BKK 261000064 '].forEach(pos =>
+    assert.equal(isReceiveExemptBox({ pos }), true, pos));
+  // เลขที่เอกสารสาขาอื่น / BKK ไม่ได้อยู่หน้าสุด / ก่อนอนุมัติ ('—' หรือเลข 14 หลักจาก generatePOS) / ไม่มีค่า → ไม่ยกเว้น
+  ['SRC261000064', 'XBKK261000064', '02060001000000', '—', '', null, undefined].forEach(pos =>
+    assert.equal(isReceiveExemptBox({ pos }), false, String(pos)));
+  assert.equal(isReceiveExemptBox(null), false);
+  assert.equal(isReceiveExemptBox(undefined), false);
+});
+
+test('an approved BKK box no longer blocks Clear while other exported boxes still do', () => {
+  const bkk = { id: 'BX-2810-0001', status: 'exported', pos: 'BKK261000064' };
+  const other = { id: 'BX-2810-0002', status: 'exported', pos: 'SRC261000010' };
+  assert.equal(classifyClearBlocker(bkk, loaded), null);
+  assert.equal(classifyClearBlocker(other, loaded), 'exported');
+  // ตัดสินจาก status + เลขที่เอกสาร ไม่ต้องรอ progress โหลด
+  assert.equal(classifyClearBlocker(bkk, { itemsByBox: {}, scanProgress: {}, progressLoaded: false }), null);
+});
+
+test('Clear opens when the only leftovers are BKK boxes, the empty auto-opened box and received boxes', () => {
+  const boxes = [
+    { id: 'BX-2810-0001', status: 'received', pos: 'SRC261000010' },
+    { id: 'BX-2810-0002', status: 'exported', pos: 'BKK261000064' },
+    { id: 'BX-2810-0003', status: 'exported', pos: 'bkk261000065' },
+    { id: 'BX-2810-0004', status: 'open', pos: '—' },
+    { id: 'BX-2810-0005', status: 'received', pos: 'BKK261000066' },
+  ];
+  assert.deepEqual(summarizeClearBlockers(boxes, loaded), { total: 0, groups: [] });
+  // นับเฉพาะลังที่ Clear ปล่อยผ่านเพราะ BKK จริง (received ไม่นับ) — ไว้บอกในกล่องยืนยัน
+  assert.equal(countReceiveExemptBoxes(boxes), 2);
+  assert.equal(countReceiveExemptBoxes(undefined), 0);
+});
+
+test('a leftover non-BKK box still blocks Clear and BKK boxes are not named in the warning', () => {
+  const boxes = [
+    { id: 'BX-2810-0001', status: 'exported', pos: 'BKK261000064' },
+    { id: 'BX-2810-0002', status: 'exported', pos: 'SRC261000010' },
+  ];
+  const summary = summarizeClearBlockers(boxes, loaded);
+  assert.equal(summary.total, 1);
+  assert.deepEqual(summary.groups.map(group => [group.kind, group.ids]), [['exported', ['BX-2810-0002']]]);
+  assert.doesNotMatch(buildClearBlockedMessage(summary), /BX-2810-0001/);
+});
+
+test('BKK exemption only covers approved boxes that nobody is working on in the system', () => {
+  const pos = 'BKK261000064';
+  // ยังไม่อนุมัติเอกสาร = ยังเป็นงานของคลัง
+  assert.equal(classifyClearBlocker({ id: 'A', status: 'closed', pos }, loaded), 'closed');
+  // มีคนสแกนรับ/แจ้งปัญหาในระบบจริงแล้ว = ยังล็อก (Clear จะลบงานที่กำลังทำอยู่ทิ้ง)
+  assert.equal(classifyClearBlocker({ id: 'B', status: 'exported', pos, receivePending: true }, loaded), 'pending');
+  assert.equal(
+    classifyClearBlocker({ id: 'C', status: 'exported', pos, problemReported: true, problemResolved: false }, loaded),
+    'problem',
+  );
+  // เลขที่เอกสารไม่ใช่ใบผ่านให้ลังที่ยังแพ็คค้างอยู่
+  assert.equal(
+    classifyClearBlocker({ id: 'D', status: 'open', pos }, { ...loaded, scanProgress: { D: [{ sku: '1', got: 2 }] } }),
+    'packing',
+  );
 });
 
 test('blocked toast stays empty when nothing blocks and explains the progress wait', () => {
