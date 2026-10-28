@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { branchLabel } from '../branches.js';
 import {
+  describeClearBlockers,
   filterTodayBoxes,
   problemTypeLabels,
   boxProblemTypeLabel,
@@ -354,7 +355,7 @@ function ProblemHistoryIndexDialog({ boxes, loading, error, onClose, onRetry, on
   );
 }
 
-export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, deleteHistoryEntry, historyRetentionDays, clearBoxes, clearFirestore, deleteBox, loadReceiveProblems = async () => [] }) {
+export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setActiveBoxId, showToast, createNewBox, generateCSV, triggerDownload, history, deleteHistoryEntry, historyRetentionDays, clearBoxes, clearBlockers = { total: 0, groups: [] }, clearFirestore, deleteBox, loadReceiveProblems = async () => [] }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [search, setSearch] = useState('');
   const [historyBox, setHistoryBox] = useState(null);
@@ -380,6 +381,11 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
   // Search มีผลเฉพาะตารางวันนี้หลังกรองสาขา; summary/export/history ยังใช้ branchBoxes ชุดเต็ม
   const todayBoxes = filterTodayBoxes(branchBoxes, itemsByBox, search);
   const problemHistoryBoxes = selectProblemHistoryBoxes(boxes, history, problemIndexProblems);
+
+  // Clear ล็อกเมื่อยังมีลังที่สาขาไม่รับ — clearBlockers คำนวณที่ App.jsx จาก "ทุกลัง" (ไม่ผูกกับตัวกรองสาขา)
+  // "checking" = ยังโหลด progress ไม่เสร็จ (ชั่วคราว) แยกข้อความให้ไม่ดูเหมือนมีลังค้างจริง
+  const clearLocked = clearBlockers.total > 0;
+  const clearChecking = clearLocked && clearBlockers.groups.every(group => group.kind === 'checking');
 
   // suffix ชื่อไฟล์ Export ตามสาขาที่กรอง: 'all' → ไม่เติม, สาขา → -SRC, ไม่ระบุ → -nobranch
   const exportSuffix = branchFilter === 'all' ? '' : branchFilter === NO_BRANCH ? '-nobranch' : `-${branchFilter}`;
@@ -535,8 +541,10 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
             className="btn sm"
             style={{ borderColor: 'var(--red)', color: 'var(--red)' }}
             onClick={clearBoxes}
+            disabled={clearLocked}
+            title={clearLocked ? 'ล็อกอยู่ — ยังมีลังที่ยังไม่จบขั้นตอน (ดูแถบเตือนด้านล่าง)' : undefined}
           >
-            ⊘ Clear · เริ่มวันถัดไป
+            {clearLocked ? '🔒' : '⊘'} Clear · เริ่มวันถัดไป
           </button>
           <button
             className="btn sm ghost"
@@ -547,6 +555,27 @@ export default function BoxList({ boxes, itemsByBox, activeBoxId, setTab, setAct
             🔥 ล้าง Firestore ทั้งหมด
           </button>
         </div>
+
+        {/* แถบเตือน Clear ล็อก — บอกว่าทำไมกดไม่ได้ + ทางออก (Clear ลบรายการสินค้าในลังทิ้ง กู้จากประวัติไม่ได้ จึงห้ามเมื่อสาขายังไม่รับ) */}
+        {clearLocked && (
+          <div style={{
+            marginBottom: 12, padding: '8px 12px', borderRadius: 8,
+            background: '#fde8e8', border: '1.5px solid var(--red)',
+            fontFamily: 'system-ui', fontSize: 13, color: '#c0392b',
+          }}>
+            {clearChecking ? (
+              <>
+                <b>🔒 Clear ล็อกชั่วคราว</b> — กำลังตรวจสถานะลังที่เปิดอยู่ รอสักครู่
+                <div style={{ marginTop: 2, color: 'var(--mute)' }}>ถ้าค้างนาน: ลบลังเปล่าที่เปิดค้างอยู่ด้วยปุ่ม 🗑 ในตาราง แล้วลองใหม่</div>
+              </>
+            ) : (
+              <>
+                <b>🔒 Clear ล็อกอยู่ — ยังมี {clearBlockers.total} ลังที่ยังไม่จบขั้นตอน:</b> {describeClearBlockers(clearBlockers)}
+                <div style={{ marginTop: 2, color: 'var(--mute)' }}>ให้สาขารับให้ครบก่อน · ลังที่ไม่ใช้แล้ว (เช่น ลังทดสอบ) ลบทีละใบด้วยปุ่ม 🗑 ในตารางได้</div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* today's box table — onDelete เฉพาะตารางนี้ (ลังจริง); ประวัติเป็น snapshot ลบไม่ได้ */}
         <BoxTable
