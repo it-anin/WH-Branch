@@ -172,7 +172,7 @@ src/
 ├── firebase.js                  # Firebase config + db export
 ├── branches.js                  # BRANCHES + WAREHOUSE + PROFILES + resolveProfile/getBranch (shared: AndroidApp, BranchReceive, Login)
 ├── units.js                     # lookupFactor, buildBarcodeIndex (ตัวคูณหน่วยฐาน/บาร์โค้ด — ใช้ฝั่งรับสินค้า)
-├── data.js                      # generatePOS, matchBarcode (+ legacy mock data ยังไม่ได้ลบ)
+├── data.js                      # generatePOS, matchBarcode
 ├── sound.js                     # playScanSuccess() — เสียง "Success Chime" สังเคราะห์สดด้วย Web Audio API (ไม่ใช้ไฟล์เสียง)
 ├── main.jsx                     # React entry
 ├── styles.css                   # Global styles, CSS variables + media query mobile ≤640px
