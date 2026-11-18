@@ -103,8 +103,14 @@ const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, cat
   { code: 'EMP-02', name: 'แล็ค' },
   { code: 'EMP-03', name: 'พี' },     // เปิดสล็อตเดิม (เต้ ออกแล้ว) ให้พนักงานใหม่ — ใช้ procedural avatar (ยังไม่มี sprite)
   { code: 'EMP-04', name: 'ตั๋ง' },
+  { code: 'EMP-05', name: 'กิฟ' },     // ยังไม่มี sprite — ใช้ procedural avatar
+  { code: 'EMP-06', name: 'อาย' },     // ยังไม่มี sprite — ใช้ procedural avatar
 ]
 ```
+**เพิ่มพนักงานคลังคนใหม่ = ต่อท้ายอาเรย์นี้ 1 บรรทัด (code ถัดไป) — ไม่ต้อง migrate Firestore** ทุกหน้า (แพ็คกิ้ง/Android/กำหนดโซน/Dashboard) อ่านรายชื่อจากอาเรย์นี้ผ่าน `.map()`
+- ต่อ "ท้ายสุด" เสมอ: ลำดับมีผล — `computeCatalogByPacker` ให้คนก่อนหน้าเป็นเจ้าของโซนที่ซ้ำ และลำดับการ์ด/ปุ่มบนจอก็ตามอาเรย์
+- คนใหม่ยังไม่มีโซน → ได้รายการว่าง (หน้าแพ็คกิ้งขึ้น "เช็ค 0/0") จนกว่าจะติ๊กใน **📍 กำหนดโซน** — เครื่องที่เปิดค้างต้องรีโหลดถึงจะเห็นชื่อใหม่
+- `PACKER_COLORS` (PackerDashboard.jsx) มี 4 สี วนซ้ำด้วย `i % 4` → คนที่ 5 เป็นต้นไปสีการ์ดซ้ำกับคนก่อนหน้า (แค่สวยงาม); sprite การ์ตูน → skill `packer-avatar-pixellab`
 
 ### BRANCHES + พนักงานต่อสาขา (`src/branches.js` — single source of truth)
 แต่ละสาขามีพนักงานของตัวเอง; **login เลือกที่ทำงานก่อน** (ทั้ง Android + Desktop, ดู *Login โปรไฟล์รายที่ทำงาน*) → เลือกพนักงานของสาขานั้น (Android เท่านั้น — Desktop ไม่มีขั้นเลือกพนักงานแยก)
@@ -350,7 +356,7 @@ return newId;
 - `setZoneAssignments(assignments)` → local state
 - กรอง catalog ตาม zone ที่กำหนด → สร้าง `catalogByPacker` ใหม่:
   - พนักงานที่มี zone assigned → items ที่ location prefix ตรงกับ zone นั้น
-  - พนักงานที่ไม่มี zone → ได้รับ catalog ทั้งหมด (fallback)
+  - พนักงานที่ไม่มี zone → ได้รายการว่าง `[]` (**ไม่ fallback เป็น catalog ทั้งหมดแล้ว** — `computeCatalogByPacker` ใน `warehouseHelpers.js`; แต่ละแถวเป็นของพนักงานคนเดียว ถ้าโซนซ้ำคนที่อยู่ก่อนใน `PACKERS` ชนะ)
 - sync `config/zoneAssignments` + `config/catalogByPacker` ไปยัง Firestore
 - PackScanC re-mount ทันทีด้วย `key={packer.code}-${catalogSig(catalogByPacker[packer.code] || catalog)}` (ดู *Remount key ของ PackScanC* ด้านล่าง)
 
