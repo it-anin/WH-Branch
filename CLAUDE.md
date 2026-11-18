@@ -112,6 +112,18 @@ const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, cat
 - คนใหม่ยังไม่มีโซน → ได้รายการว่าง (หน้าแพ็คกิ้งขึ้น "เช็ค 0/0") จนกว่าจะติ๊กใน **📍 กำหนดโซน** — เครื่องที่เปิดค้างต้องรีโหลดถึงจะเห็นชื่อใหม่
 - `PACKER_COLORS` (PackerDashboard.jsx) มี 4 สี วนซ้ำด้วย `i % 4` → คนที่ 5 เป็นต้นไปสีการ์ดซ้ำกับคนก่อนหน้า (แค่สวยงาม); sprite การ์ตูน → skill `packer-avatar-pixellab`
 
+**พนักงานคลังลาออก / เปลี่ยนคน** — ทุกอย่างผูกกับ **`code` ไม่ใช่ชื่อ** (ชื่อบนลัง/สติกเกอร์/CSV เป็น snapshot `box.packer` ที่บันทึกในลังตอนสร้าง/ปิดลัง ไม่ได้อ้าง `PACKERS` ย้อนหลัง → ลังเก่ายังโชว์ชื่อเดิมถูก)
+
+| วิธี | ทำอย่างไร | ผลที่ตามมา |
+|---|---|---|
+| **A. ใช้ code เดิมให้คนใหม่** (ที่เคยทำ: EMP-03 เต้ → พี) | แก้ `name` ในบรรทัดเดิม | ง่ายสุด อาเรย์ไม่โต สีการ์ดไม่เลื่อน — แต่ **คนใหม่สืบทอดทุกอย่างที่ผูกกับ code** (ด้านล่าง) |
+| **B. ลบบรรทัดคนเก่า** (+ ต่อท้าย `EMP-NN` ถัดไปให้คนใหม่) | ลบบรรทัด / เพิ่มบรรทัดใหม่ | ไม่สืบทอดอะไร แต่ **SKU ในโซนของคนเก่าหายจาก checklist ของทุกคน** จนกว่าจะกำหนดโซนใหม่ (`computeCatalogByPacker` แจกเฉพาะคนที่อยู่ใน `PACKERS`; มีแค่ warning "⚠ N SKU ไม่ได้อยู่ในโซนที่กำหนด" ตอนเปิด 📍กำหนดโซน) · ลังวันนี้ของคนเก่าหายจากตัวเลข Dashboard (ยังเห็นใน BoxList/Outbound) · สีการ์ด/ตำแหน่งตัวการ์ตูนของคนที่อยู่ถัดไปเลื่อน (ผูกกับลำดับในอาเรย์) |
+
+- **วิธี A คนใหม่สืบทอด:** (1) โซนใน `config/zoneAssignments[code]` · (2) หน้าตาการ์ตูน — `PACKER_SPRITE_DIRS`/`PACKER_STYLES`/`PACKER_SPRITE_SIZES`/`PACKER_FOOT_PADS`/`PACKER_TOP_PADS` ใน `PackerDashboard.jsx` (คนเก่ามี sprite → คนใหม่หน้าเหมือนคนเก่าจนกว่าจะแก้/ถอด entry — ดู skill `packer-avatar-pixellab`) · (3) **ลังวันนี้ที่คนเก่าแพ็คไว้และยังไม่ Clear** — ถูกหักยอด `need` (`buildPackItems` เทียบ `b.packer.code`), นับในการ์ด Dashboard, โผล่ในปุ่ม "ลังที่ปิดแล้ว" ของ PackScanC, รวมในชิปตัวกรองพนักงานของ Outbound
+- **ลำดับที่ปลอดภัยที่สุด:** เปลี่ยนตอนข้ามวันหลัง **Clear · เริ่มวันถัดไป** (ลังทั้งหมดถูกลบ ข้อ (3) หายไป) → push → รีโหลดทุกเครื่อง → เปิด 📍กำหนดโซน ตรวจแถวของคนนั้น (A: โซนยังเป็นของคนเก่า / B: โซนว่าง)
+- **เปลี่ยนกลางรอบ Picklist:** A = ยอดที่คนเก่าแพ็คไปแล้วถูกหักให้คนใหม่ (ไม่แพ็คซ้ำ) · B ที่ให้ code ใหม่ถือโซนเดิม = คนใหม่เห็นโซนเต็มอีกรอบ → **เสี่ยงแพ็คซ้ำ**
+- ไม่มีตัวตนพนักงานค้างในเครื่อง (`packer` ไม่ persist ใน localStorage) · บันทึกโซน = `setDoc` ทับทั้งก้อน + `normalizeExclusiveZoneAssignments` สร้างเฉพาะคนที่ยังอยู่ใน `PACKERS` → key ของ code ที่ลบไปแล้วหายเองตอนบันทึกโซนครั้งถัดไป
+
 ### BRANCHES + พนักงานต่อสาขา (`src/branches.js` — single source of truth)
 แต่ละสาขามีพนักงานของตัวเอง; **login เลือกที่ทำงานก่อน** (ทั้ง Android + Desktop, ดู *Login โปรไฟล์รายที่ทำงาน*) → เลือกพนักงานของสาขานั้น (Android เท่านั้น — Desktop ไม่มีขั้นเลือกพนักงานแยก)
 ```js
@@ -128,7 +140,7 @@ export const PROFILES = [WAREHOUSE, ...BRANCHES];       // โปรไฟล์
 export const resolveProfile = (code) => ...             // code → profile object (ใช้ resolve wh_profile ตอน init)
 ```
 - **code สาขา = suffix ของ Picklist** (`Picklist_SRC` → `SRC`) → ตรงกับ `catalogMeta.branch` และ `box.branch`
-- **`staff[].role: 'pharmacist'`** = สิทธิ์เดียวที่มีตอนนี้ในระดับพนักงาน — ตรวจใน `handleScan` (BranchReceive) ว่าให้เข้า recheck mode หรือบล็อก. แต่ละสาขามีเภสัช 1 คน (ต่างจาก `role` ระดับโปรไฟล์ `warehouse`/`branch` ที่ใช้กรอง tab/scope)
+- **`staff[].role: 'pharmacist'`** = สิทธิ์เดียวที่มีตอนนี้ในระดับพนักงาน (ต่างจาก `role` ระดับโปรไฟล์ `warehouse`/`branch` ที่ใช้กรอง tab/scope) — ใช้แค่ 2 ที่: tag 💊 บนปุ่มเลือกพนักงาน (`AndroidApp.jsx`) กับตอน recheck ที่ผลยังไม่ครบ/เกิน → **เฉพาะเภสัชที่ยืนยันแล้วส่งคลังได้** (`isPharmacist` ใน `BranchReceive.jsx` → `receiveProblemRoute` ใน `warehouseHelpers.js`; คนอื่นได้แค่ `pending_recheck` รอเภสัช). **การเปิด recheck ของลัง `incomplete` ไม่เช็ค role ใครสแกนซ้ำก็ได้** (`handleScan` ไม่ล็อกด้วย role — รายละเอียดใน skill `wms-receive`) · "สาขาละเภสัช 1 คน" เป็นนโยบาย ไม่มีโค้ดบังคับ
 - **Login (A1) แทน "เลือกที่ทำงาน"** — ตั้งแต่เพิ่ม login รายที่ทำงาน location มาจาก**โปรไฟล์ที่ login** (prop `profile` จาก App.jsx) ไม่ใช่ picker/`wh_branch` เดิม (ดู *Login โปรไฟล์รายที่ทำงาน* ด้านล่าง)
 - **AndroidApp — flow 2 ขั้น** (เดิม 3, ตัด "เลือกที่ทำงาน" ออกเพราะ login แทน): (1) **เลือกพนักงาน** → (2) **หน้าสแกน** — gate ด้วย `if (!currentStaff)`
   - `const branch = profile` (location จาก login): **WAREHOUSE** (`warehouse:true`) → โหมดแพ็คกิ้ง · **สาขา (SRC/KKL/SSS)** → โหมดรับสินค้า
@@ -136,6 +148,15 @@ export const resolveProfile = (code) => ...             // code → profile obje
     - **staff ไม่ persist** — logout ล้าง packer + AndroidApp unmount → branchStaff (local) หายเอง
   - **ขั้นหน้าสแกน:** PackScanC (warehouse) / BranchReceive (`branch={branch.code}`); header โชว์ ที่ทำงาน + 👤 พนักงาน + ปุ่ม "เปลี่ยน" (`setStaff(null)` → กลับขั้นเลือกพนักงาน)
 - **เดิม** เคย hardcode `BRANCH_STAFF` (BR-01..BR-05) ซ้ำใน BranchReceive.jsx + AndroidApp.jsx — ย้ายมา `branches.js` แล้ว (BranchReceive import `ALL_BRANCH_STAFF`)
+
+**เพิ่มพนักงานสาขาคนใหม่ = เพิ่ม 1 บรรทัดใน `staff` ของสาขานั้นที่ `src/branches.js`** — ไม่ต้องแก้ไฟล์อื่น ไม่ต้อง migrate Firestore ไม่ต้องตั้งรหัสผ่านใหม่ (`config/auth.passwords` ผูกกับที่ทำงาน ไม่ใช่รายคน)
+```js
+{ code: 'SRC-05', name: 'ชื่อ' },                      // พนักงานทั่วไป
+{ code: 'SRC-10', name: 'ชื่อ', role: 'pharmacist' },    // เภสัช (ถ้ามี)
+```
+- **`code` ต้องไม่ซ้ำกันทั้งระบบ** (รูปแบบ `{สาขา}-{NN}`; ที่มีอยู่ `-01..` ทั่วไป, `-09` เภสัช — เป็นแค่ธรรมเนียม ไม่ได้บังคับ) เพราะล็อกลัง (`receivingBy`), ตัวกรอง Desktop (`receivedBy`/`problemBy`) และ transaction `commitReceiveOutcome` (`receive-lock-lost`) เทียบด้วย **code ไม่ใช่ชื่อ** → code ซ้ำ = ระบบมองเป็นคนเดียวกัน
+- โผล่เองใน 2 ที่: ปุ่มเลือกพนักงาน Android ของสาขานั้น (`branch.staff`, ลิสต์แนวตั้งมี scroll สำรอง) + ตัวกรอง "กรองลังตามผู้ตรวจรับ" บน Desktop (`ALL_BRANCH_STAFF` **รวมทุกสาขา** ไม่กรองตามโปรไฟล์) — hardcode ใน bundle → เครื่องที่เปิดค้างต้องรีโหลด
+- **คนลาออก/เปลี่ยนคน:** ไม่มีโซนหรือสิทธิ์ที่ผูกต่อคน ลบบรรทัดได้เลย — ลังเก่าเก็บ snapshot `{code, name, role}` ไว้ใน `receivedBy`/`problemBy`/`receivingBy` ชื่อเดิมยังโชว์ถูก · ลังที่ยังล็อกค้างโดยคนที่ลบแล้ว ให้คนอื่นกด "ตรวจแทน" (skill `wms-receive`) · **จะใช้ code เดิมให้คนใหม่ ให้รอลังเก่าถูก Clear ก่อน** (ตัวกรอง/ล็อกเทียบด้วย code → คนใหม่จะถูกมองเป็นเจ้าของล็อก/ผู้ตรวจเดิม) — ปลอดภัยสุดคือใช้ code ใหม่
 
 ### Login โปรไฟล์รายที่ทำงาน (A1 เบา) — `src/screens/Login.jsx`
 - **เป้าหมาย:** แยกมุมมองต่อที่ทำงาน (โดยเฉพาะ Desktop รับสินค้าที่เดิมเห็นทุกสาขาปนกัน) — **A1 = แยกมุมมองเท่านั้น ไม่แตะ Firestore rules/data model** (ข้อมูลยัง global โหลดหมด กรองที่ UI)

@@ -21,12 +21,7 @@ description: Use when touching the branch receive screen src/screens/BranchRecei
 - **Controlled mode (Android):** รับ `branchStaff` / `setBranchStaff` เป็น optional props จาก AndroidApp
   - ถ้ามี props → ใช้ external state, ซ่อน staff dropdown ใน header (`!isControlled`)
   - ถ้าไม่มี props (Desktop) → ใช้ internal state + ปุ่ม dropdown ใน header
-- **`BRANCH_STAFF`** (hardcoded ใน BranchReceive.jsx และ AndroidApp.jsx — ต้อง sync 2 ไฟล์) — label selector: `"พนักงาน:"`:
-  ```js
-  [{ code: 'BR-01', name: 'ก้า' }, { code: 'BR-02', name: 'กิ๊ฟ' },
-   { code: 'BR-03', name: 'นิคกี้' }, { code: 'BR-04', name: 'สุ่ย' },
-   { code: 'BR-05', name: 'อ๊อฟ', role: 'pharmacist' }]
-  ```
+- **รายชื่อพนักงานสาขา (`staff`) อยู่ที่ `src/branches.js` ที่เดียว** — `AndroidApp.jsx` ใช้ `branch.staff` (ปุ่มเลือกพนักงาน), `BranchReceive.jsx` ใช้ `ALL_BRANCH_STAFF` (dropdown "กรองลังตามผู้ตรวจรับ" บน Desktop) · **ไม่ได้ hardcode ซ้ำ 2 ไฟล์แล้ว** และ code เป็นรูปแบบ `{สาขา}-{NN}` (เช่น `SRC-01`, เภสัช `SRC-09`) ไม่ใช่ `BR-0x` เดิม — วิธีเพิ่ม/ลบคน → CLAUDE.md หัวข้อ *BRANCHES + พนักงานต่อสาขา*
   - **`role: 'pharmacist'`** = สิทธิ์พิเศษตอน recheck: **พนักงานคนไหนก็สแกนซ้ำลัง `problemType='incomplete'` ได้** (แก้ scan พลาด) แต่ถ้ารีเช็คแล้ว**ยังขาด/เกินจริง** เฉพาะ pharmacist ที่ยืนยัน→แจ้งคลังได้ (พนักงานทั่วไปส่งต่อเภสัช) — ดู section *Pharmacist Recheck Flow*
 - Phase: `scan` → `verify` → `result` (3 phases) — **ใช้บน Android เท่านั้น** (Desktop เป็น approval-only ไม่เข้า phase verify/result)
 - **`scanCounts`** = `{[sku]: number}` — **หน่วยฐาน** ต่อ SKU (local state ต่อเครื่อง **ไม่เขียน Firestore**; จะ persist ก็ต่อเมื่อ snapshot ลง `problemScanCounts` ตอนแจ้งปัญหา)
