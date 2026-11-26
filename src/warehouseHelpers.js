@@ -736,11 +736,27 @@ export function finalizePackedItemEdits(items = [], factorMap = {}) {
   });
 }
 
+// ลังที่ "ส่งเข้า POS แล้ว" ณ ตอนอัปโหลดไฟล์ LOT = กดส่งออกไฟล์ Text แล้ว / อนุมัติเอกสารแล้ว / สาขารับแล้ว
+// ERP หักสต็อก LOT ตอนนำไฟล์ Text เข้า POS → ไฟล์ LOT ที่ดึงจาก ERP หลังจากนั้น "หักลังพวกนี้ไปแล้ว"
+// ถ้า calculateLotUsage หักซ้ำอีกรอบ LOT ที่ยังมีของจะกลายเป็น "หมด" (เคสจริง พ.ย. 2026: SKU 500504 LOT G1323
+// ไฟล์เหลือ 24 = ยอดที่ Picklist ขอพอดี แต่ลังเก่าที่ส่ง POS ไปแล้ว 24 ยังค้างในระบบ → แอปคิดเหลือ 0)
+// App.jsx จดผลลัพธ์นี้ไว้ที่ config/lotMap._meta.settledBoxIds ตอน import แล้วส่งกลับมาเป็น excludeBoxIds
+export function collectLotSettledBoxIds(boxes = []) {
+  return (boxes || [])
+    .filter(box => box?.id && (
+      box.textExported === true || box.status === 'exported' || box.status === 'received'
+    ))
+    .map(box => box.id);
+}
+
 // Used by packing to reserve LOT stock from every closed box plus the current
 // open box. Multi-LOT items must be counted entry-by-entry; using item.lot with
 // the parent total assigns the whole quantity to only the latest LOT.
-export function calculateLotUsage({ boxes = [], itemsByBox = {}, currentItems = [], factorMap = {} } = {}) {
+// excludeBoxIds = ลังที่ไฟล์ LOT หักไปแล้ว (collectLotSettledBoxIds ตอน import) → ข้าม ไม่หักซ้ำ
+// ไม่ส่งมา (ไฟล์ LOT ที่ import ก่อนมี field นี้) = หักทุกลังที่ปิดแล้วเหมือนเดิมเป๊ะ
+export function calculateLotUsage({ boxes = [], itemsByBox = {}, currentItems = [], factorMap = {}, excludeBoxIds = [] } = {}) {
   const usage = {};
+  const excluded = new Set(excludeBoxIds || []);
   const addItem = item => {
     const qty = Math.max(0, numberOrZero(item?.qty ?? item?.got));
     const entries = Array.isArray(item?.scannedLots) && item.scannedLots.length > 0
@@ -758,6 +774,7 @@ export function calculateLotUsage({ boxes = [], itemsByBox = {}, currentItems = 
 
   (boxes || []).forEach(box => {
     if (!['closed', 'exported', 'received'].includes(box?.status)) return;
+    if (excluded.has(box.id)) return;
     (itemsByBox?.[box.id] || []).forEach(addItem);
   });
   (currentItems || []).forEach(addItem);

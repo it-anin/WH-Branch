@@ -82,7 +82,7 @@ State ทั้งหมด lifted ขึ้นไปที่ `App.jsx` ไม�
 | `catalogMeta` | `{branch, fileDate}\|null` | ✅ `config/catalog._meta` | metadata ของ Picklist ที่ import ล่าสุด |
 | `barcodeMapMeta` | `{fileName, fileDate}\|null` | ✅ `config/barcodeMap._meta` | metadata ของ barcode map ที่ import ล่าสุด |
 | `costMapMeta` | `{fileDate}\|null` | ✅ `config/costMap._meta` | metadata ของ cost map ที่ import ล่าสุด |
-| `lotMapMeta` | `{fileDate}\|null` | ✅ `config/lotMap._meta` | metadata ของ LOT map ที่ import ล่าสุด |
+| `lotMapMeta` | `{fileDate, importedAt, sourceReport, settledBoxIds, ...}\|null` | ✅ `config/lotMap._meta` | metadata ของ LOT map ที่ import ล่าสุด — `settledBoxIds` = ลังที่ส่ง POS แล้วตอนอัปไฟล์ (หน้าแพ็คไม่หัก LOT ซ้ำ → App.jsx derive เป็น `lotSettledBoxIds` ส่งผ่าน `screenProps`) |
 
 **สำคัญ:** `boxes`, `itemsByBox`, `receiveBoxIds` ใช้ wrapper function (`setBoxes`, `setItemsByBox`, `setReceiveBoxIds`) ที่ sync ทั้ง local state และ Firestore พร้อมกัน — ห้ามเรียก `_setBoxes` / `_setItemsByBox` / `_setReceiveBoxIds` ตรงๆ ยกเว้นใน clearBoxes และ Firestore listener
 
@@ -91,7 +91,7 @@ Props ส่งผ่านทุก screen ด้วย `screenProps` spread pa
 const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, catalogLoaded,
   itemsByBox, setItemsByBox, history, setHistory, clearBoxes, clearFirestore, deleteBox,
   packer, setTab, showToast, createNewBox, generateCSV, triggerDownload, receiveBoxIds,
-  setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, pendingApprovalBoxId,
+  setReceiveBoxIds, costMap, lotMap, lotSettledBoxIds, barcodeMap, factorMap, nameMap, pendingApprovalBoxId,
   setPendingApprovalBoxId };
 ```
 (`profile`/`logout` ส่งแยกเป็น prop ของตัวเอง — ไม่ได้อยู่ใน `screenProps`, ดู *Login โปรไฟล์รายที่ทำงาน*)
@@ -271,7 +271,7 @@ export const onAuthReady = (cb) => onAuthStateChanged(auth, (user) => { if (user
 | `config/costMap` | ราคาทุน | `{ entries: [{key, cost}] }` ← array format (key = `sku__unit`) |
 | `config/factorMap` | ตัวคูณหน่วยฐาน | `{ entries: [{key, factor}] }` ← array format (key = `sku__unit`, จาก ColH R05.106) |
 | `config/nameMap` + `config/nameMap_1..N` | ชื่อสินค้าต่อ SKU (**sharded**) | `{ entries: [{key, name}] }` ← key = SKU only, จาก ColF R05.106 (`CF_ITEMNAME`); วัดไฟล์จริง 7,868 SKU = ~555KB (ลง doc เดียวได้ แต่ shard ตั้งแต่แรกเพราะ `config/lotMap` เคยชน 1MB มาแล้ว 2 รอบ) — `NAMEMAP_CHUNK_BUDGET` ~700KB, เพดาน `NAMEMAP_MAX_CHUNKS=5`; **listener gate ด้วย `isAndroidMode` → Android ไม่ subscribe** (ต่างจาก lotMap ที่ทุกเครื่องโหลด) |
-| `config/lotMap` + `config/lotMap_1..N` | LOT + qty + exp (**sharded**) | `{ entries: [{key, lots: [{lot, qty, exp?}]}] }` ← key = SKU only; ทั้งก้อน (มี exp) ~1.3MB เกิน 1MB/doc → แบ่ง chunk ละ ~700KB (`LOTMAP_CHUNK_BUDGET`), `_meta` อยู่ chunk 0 (`lotMap`), เพดาน `LOTMAP_MAX_CHUNKS=10`; listener ใช้ query ช่วง `documentId()` ครอบทุก doc ที่ id ขึ้นต้นด้วย `lotMap` แล้วรวม entries ทุก chunk (doc เดี่ยวเดิม = chunk 0 → backward-compat อัตโนมัติ) |
+| `config/lotMap` + `config/lotMap_1..N` | LOT + qty + exp (**sharded**) | `{ entries: [{key, lots: [{lot, qty, exp?}]}] }` ← key = SKU only; ทั้งก้อน (มี exp) ~1.3MB เกิน 1MB/doc → แบ่ง chunk ละ ~700KB (`LOTMAP_CHUNK_BUDGET`), `_meta` อยู่ chunk 0 (`lotMap`) รวม `settledBoxIds` (ลังที่ ERP หักแล้วตอนอัปไฟล์ — กันหักซ้ำ ดู Known Pitfalls), เพดาน `LOTMAP_MAX_CHUNKS=10`; listener ใช้ query ช่วง `documentId()` ครอบทุก doc ที่ id ขึ้นต้นด้วย `lotMap` แล้วรวม entries ทุก chunk (doc เดี่ยวเดิม = chunk 0 → backward-compat อัตโนมัติ) |
 | `history/{docId}` | ประวัติลังที่ clear (7 วัน) | `{ dateKey, label, clearedAt, boxes: [...] }` ← docId = `String(Date.now())` ตอน clear |
 | `config/catalogByPacker` | การแบ่งรายการ | `{ assignments: {[code]: Item[]} }` |
 | `config/receive` | ลังที่รับแล้ว | `{ ids: string[] }` |
@@ -365,7 +365,8 @@ return newId;
 - `setLotMap(map)` → local state
 - แปลงเป็น `entries = [{key, lots}]` → **แบ่ง chunk ตาม JSON size** (`LOTMAP_CHUNK_BUDGET` ~700KB/doc, ทั้ง SKU อยู่ chunk เดียวกันเสมอ) → `writeBatch`: chunk 0 → `config/lotMap` (+`_meta`), chunk ถัดไป → `config/lotMap_1..N`, แล้ว `batch.delete` chunk ที่เกินจำนวนรอบนี้ถึง `LOTMAP_MAX_CHUNKS` (กัน chunk เก่าค้าง — delete doc ที่ไม่มี = no-op)
 - **เหตุผล:** lotMap พร้อม exp ทั้งก้อน ~1.3MB เกินลิมิต Firestore 1MB/doc (วัดจากไฟล์จริง 31.8k lots)
-- แสดง toast `LOT map: N SKU · M LOT ✓ (K doc)`
+- **จด `_meta.settledBoxIds` = `collectLotSettledBoxIds(boxesRef.current)`** (ลัง `textExported`/`exported`/`received` ณ ตอนอัป) — PackScanC ไม่หัก LOT ของลังพวกนี้ซ้ำ; ข้อมูลลังยังโหลดไม่ครบ (`!boxesLoaded`) → toast warn + throw ไม่อัป (รายละเอียด skill `wms-import`)
+- แสดง toast `LOT map: N SKU · M LOT ✓ (K doc) · ไม่หักซ้ำ X ลังที่ส่ง POS แล้ว`
 
 ### `clearFirestore()`
 - confirm dialog ก่อนลบ
@@ -646,6 +647,10 @@ factor + ที่มา · **ลังที่แต่ละคนแพ็�
   เคยทะลุมาบล็อกการปัดจริง (เทสต์จับได้ก่อน deploy) พนักงานต้องทำงานต่อได้เสมอแม้ log เขียนไม่ผ่าน
 
 ## Known Pitfalls
+- **ยอด LOT คงเหลือบนหน้าแพ็คห้ามหักลังที่ ERP หักไปแล้ว** (บั๊กจริง พ.ย. 2026: พนักงานแพ็คเจอ `⚠ LOT นี้สินค้าหมด` ทั้งที่ของอยู่ในมือ แล้วแพ็คต่อไม่ได้เลย). ไฟล์ LOT = ภาพสต็อกจาก ERP ที่**หักลังที่นำไฟล์ Text เข้า POS แล้ว** แต่ `calculateLotUsage` เดิมหักทุกลัง `closed/exported/received` ที่ยังไม่ Clear → หลังล็อกปุ่ม Clear (28 ต.ค.) ลังเก่าค้างข้ามวัน = ถูกหักซ้ำทุกครั้งที่อัปไฟล์ LOT ใหม่ (เคส SKU 500504 LOT G1323: ไฟล์ +48 −24 = 24 = Picklist ขอพอดี แต่ลังเก่า 24 ถูกหักซ้ำ → 0). **การดึงไฟล์ LOT ย้อนถึงปี 2023 ถูกต้องแล้ว ไม่ใช่สาเหตุ** (ต้องมียอดรับเข้าของ LOT เก่าครบ ยอดสุทธิถึงถูก)
+  - แก้: ตอนอัปไฟล์ LOT จด `config/lotMap._meta.settledBoxIds` (`collectLotSettledBoxIds`) → PackScanC ส่งเป็น `excludeBoxIds` · ไฟล์ LOT ที่อัปก่อนแก้ = หักแบบเดิม → **ต้องอัปไฟล์ LOT ใหม่ 1 ครั้ง**
+  - ระบบคำนวณว่า LOT ไม่พอ (ทาง LOT หมด + ทาง QR `INSUFFICIENT_STOCK`) → **popup แดงให้เลือก/กรอก LOT ไม่บล็อกแล้ว** (ผู้ใช้ตัดสินใจ: คุมสต็อก LOT แบบ "เตือน") — ห้ามกลับไปบล็อกแข็งโดยไม่แจ้ง (skill `wms-packscan`)
+  - **ตรวจบนข้อมูลจริง:** Desktop console `__wh.lot('SKU')` → ยอดในไฟล์ / ลังที่ใช้ LOT (หัก หรือ "ไม่หัก · ERP หักแล้ว") / คงเหลือ — ใช้ `calculateLotUsage` ตัวเดียวกับหน้าแพ็ค ห้ามเขียนสูตรแยก
 - **Blind receiving รั่วได้หลายทางมาก ไม่ใช่แค่ "ไม่โชว์เลข `needed`"** — เจอและอุดไป 3 รอบใน session เดียว (`BranchReceive`) สิ่งต่อไปนี้**นับเป็น oracle ทั้งหมด**: **สี**แดง/เขียว/เหลืองตอนนับ · **แถวหาย / รายการหดเมื่อนับตรง** · **แบนเนอร์ "ตรวจครบแล้ว"** · **ตัวเลข `needed` บนหน้า result ของแถวที่นับผิด** · **delta `+N` ของที่เกิน** (ถอดสมการหา `needed` ได้) · **ช่องกรอกที่โผล่เฉพาะบางเงื่อนไข** (ใบ้ว่าจำนวน > N) · **dialog ยืนยันที่บอกว่าเหลือกี่รายการ**
   - **เกณฑ์ตัดสิน:** *ถ้าพนักงานเปลี่ยนพฤติกรรมได้จากสิ่งที่เห็น (หยุดยิงพอดี / กรอกเลขให้ตรง) โดยไม่ต้องนับของจริง = รั่ว* — บอก "ผ่าน/ไม่ผ่าน" ได้ แต่ห้ามบอก "เท่าไร"
   - **โหมด pharmacist recheck ต้อง blind เท่ารอบแรกเสมอ** — เคยตั้งใจโชว์สีให้เภสัช (คอมเมนต์เดิม: "เภสัชรู้อยู่แล้วว่าตัวไหนขาด/เกิน") กลายเป็นเภสัชหยุดยิงตอนไฟเปลี่ยน = **ด่านตรวจรอบสองไร้ความหมาย** → ดู skill `wms-receive`

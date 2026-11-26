@@ -23,6 +23,8 @@ import {
   HISTORY_RETENTION_DAYS,
   buildClearBlockedMessage,
   buildTopLevelFieldPatch,
+  calculateLotUsage,
+  collectLotSettledBoxIds,
   computeCatalogByPacker,
   countReceiveExemptBoxes,
   historyCutoff,
@@ -947,6 +949,13 @@ export default function App() {
   const [barcodeMapMeta, setBarcodeMapMeta] = useState(null);
   const [costMapMeta, setCostMapMeta] = useState(null);
   const [lotMapMeta, setLotMapMeta] = useState(null);
+  // ลังที่ไฟล์ LOT ล่าสุดหักไปแล้ว (จดตอน import ดู handleLotMapImport) — หน้าแพ็คไม่หักซ้ำ
+  // ไฟล์ LOT ที่อัปก่อนมี field นี้ = [] = หักทุกลังที่ปิดแล้วเหมือนเดิม
+  // ประกาศไว้ตรงนี้ (ก่อน useEffect ของ __wh) เพราะ dependency array ถูกอ่านตอน render — ประกาศทีหลังจะติด TDZ
+  const lotSettledBoxIds = useMemo(
+    () => (Array.isArray(lotMapMeta?.settledBoxIds) ? lotMapMeta.settledBoxIds : []),
+    [lotMapMeta],
+  );
   const [qrProductsMeta, setQrProductsMeta] = useState(null);
   const [zoneAssignments, setZoneAssignments] = useState({});
   // ใช้ Catalog + Zone Assignments สดเป็น source of truth; config/catalogByPacker
@@ -1048,15 +1057,46 @@ export default function App() {
         const combined = [...r, ...allPacker];
         console.table(combined.length ? combined : [{ note: `ไม่พบ SKU ที่มี "${s}" ในทั้ง catalog และ catalogByPacker` }]);
       },
+      // ตรวจ "⚠ LOT นี้สินค้าหมด" — ไล่จากยอดในไฟล์ LOT → ลังที่ใช้ LOT นั้น → คงเหลือที่หน้าแพ็คเห็น
+      // ใช้ calculateLotUsage ตัวเดียวกับ PackScanC (ทีละลัง) ไม่เขียนสูตรใหม่ — เรียก: __wh.lot('500504')
       lot: (s) => {
-        const entry = lotMap[s];
-        console.log('lotMap[' + s + ']:', entry);
-        console.log('lotMap total SKUs:', Object.keys(lotMap).length);
-        if (entry) console.table(entry);
-        else {
-          const found = Object.keys(lotMap).filter(k => k.includes(s));
-          console.log('SKU ที่ใกล้เคียง:', found.length ? found : '(ไม่มี)');
+        const sku = String(s ?? '').trim();
+        const fileLots = lotMap[sku] || [];
+        const settled = new Set(lotSettledBoxIds);
+        console.log(`%c===== LOT ของ SKU ${sku} =====`, 'font-weight:bold');
+        console.log(
+          `1) ไฟล์ LOT: อัปโหลด ${lotMapMeta?.fileDate || '?'} · ${lotMapMeta?.sourceReport || '?'} · ไม่หักซ้ำ ${settled.size} ลังที่ส่ง POS แล้ว`
+          + (Array.isArray(lotMapMeta?.settledBoxIds) ? '' : ' ⚠ ไฟล์ LOT อัปก่อนมีระบบกันหักซ้ำ — อัปโหลดไฟล์ LOT ใหม่'),
+        );
+        if (fileLots.length === 0) {
+          const found = Object.keys(lotMap).filter(k => k.includes(sku));
+          console.log('ไม่พบ SKU นี้ในไฟล์ LOT (ไม่มี LOT ที่ยอดคงเหลือ > 0) · SKU ที่ใกล้เคียง:', found.length ? found : '(ไม่มี)');
+          return;
         }
+        console.table(fileLots.map(l => ({ lot: l.lot, ในไฟล์: l.qty, exp: l.exp || '' })));
+        console.log('2) ลังที่ใช้ LOT ของ SKU นี้ (ลังปิด/อนุมัติ/รับแล้ว ที่ยังไม่ Clear):');
+        const prefix = `${sku}__`;
+        const deducted = {};
+        const rows = [];
+        boxes.forEach(b => {
+          const perBox = calculateLotUsage({ boxes: [b], itemsByBox, factorMap });
+          Object.entries(perBox).forEach(([key, used]) => {
+            if (!key.startsWith(prefix)) return;
+            const lot = key.slice(prefix.length);
+            const isSettled = settled.has(b.id);
+            if (!isSettled) deducted[lot] = (deducted[lot] || 0) + used;
+            rows.push({
+              ลัง: b.id, สถานะ: b.status, พนักงาน: b.packer?.name || '—', สาขา: b.branch || '—',
+              ส่งTextแล้ว: b.textExported ? '✓' : '', lot, ใช้ไป: used,
+              หักไหม: isSettled ? 'ไม่หัก · ERP หักแล้ว' : 'หัก',
+            });
+          });
+        });
+        console.table(rows.length ? rows : [{ note: 'ไม่มีลังที่ใช้ LOT ของ SKU นี้' }]);
+        console.log('3) คงเหลือที่หน้าแพ็คเห็น (ยังไม่รวมของที่กำลังสแกนค้างในเครื่องพนักงาน):');
+        console.table(fileLots.map(l => ({
+          lot: l.lot, ในไฟล์: l.qty, หักจากลัง: deducted[l.lot] || 0, คงเหลือ: l.qty - (deducted[l.lot] || 0),
+        })));
       },
       // ตรวจข้อพิพาท "จำนวนบนจอ Android ไม่ตรง Picklist" — ไล่ทั้งเส้นทางจนถึงเลขที่พนักงานเห็นจริง
       // ใช้ buildPackItems ตัวเดียวกับที่ PackScanC ใช้ → ยืนยันเลขบนจอได้ ไม่ใช่คำนวณเลียนแบบ
@@ -1129,7 +1169,7 @@ export default function App() {
         }
       },
     };
-  }, [catalog, barcodeMap, catalogByPacker, lotMap, boxes, itemsByBox, factorMap, scanProgress]);
+  }, [catalog, barcodeMap, catalogByPacker, lotMap, lotMapMeta, lotSettledBoxIds, boxes, itemsByBox, factorMap, scanProgress]);
 
   function applyBarcodeMap(items, map) {
     const skuBarcodes = {};
@@ -1250,6 +1290,18 @@ export default function App() {
       throw error;
     }
 
+    // จด "ลังที่ส่งเข้า POS แล้ว" ณ ตอนอัปไฟล์ — ไฟล์ LOT จาก ERP หักลังพวกนี้ไปแล้ว หน้าแพ็คจะได้ไม่หักซ้ำ
+    // (ดู collectLotSettledBoxIds) ข้อมูลลังต้องโหลดครบก่อน ไม่งั้นลิสต์ว่าง = กลับไปหักซ้ำแบบเงียบ ๆ
+    if (!boxesLoaded) {
+      showToast('⚠ ข้อมูลลังยังโหลดไม่ครบ รอสักครู่แล้วอัปโหลดไฟล์ LOT ใหม่', 'warn');
+      const error = new Error('boxes-not-loaded');
+      error.code = 'boxes-not-loaded';
+      throw error;
+    }
+    const settledBoxIds = collectLotSettledBoxIds(boxesRef.current);
+    // ใส่เฉพาะ _meta ของ config/lotMap (chunk 0) — qrMeta ยังสร้างจาก meta เดิม ไม่ต้องลากลิสต์ลังไปด้วย
+    const lotMeta = { ...(meta || {}), settledBoxIds, settledBoxCount: settledBoxIds.length };
+
     let lotChunks;
     let qrEntries = [];
     let qrChunks = [];
@@ -1282,7 +1334,7 @@ export default function App() {
     lotChunks.forEach((chunkEntries, i) => {
       batch.set(
         doc(db, 'config', i === 0 ? 'lotMap' : `lotMap_${i}`),
-        { entries: chunkEntries, ...(i === 0 && meta ? { _meta: meta } : {}) },
+        { entries: chunkEntries, ...(i === 0 ? { _meta: lotMeta } : {}) },
       );
     });
     for (let i = Math.max(lotChunks.length, 1); i < LOTMAP_MAX_CHUNKS; i++) {
@@ -1326,7 +1378,7 @@ export default function App() {
       const qrText = isR14102
         ? ` · QR ${qrEntries.length} SKU (${qrChunks.length} doc)`
         : ' · ล้างดัชนี QR เดิมแล้ว';
-      showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓ (${lotChunks.length} doc)${qrText}`, 'success');
+      showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓ (${lotChunks.length} doc)${qrText} · ไม่หักซ้ำ ${settledBoxIds.length} ลังที่ส่ง POS แล้ว`, 'success');
     } catch (err) {
       reportFirestoreError(err, { source: 'r14102-write', critical: true });
       showToast('⚠ Firestore error: ' + (err.code || err.message), 'error');
@@ -1397,7 +1449,7 @@ export default function App() {
   const receiveDataLoadError = receiveDataLoadErrors.boxes || receiveDataLoadErrors.boxItems;
   // ลังที่ยังไม่จบ flow = ห้าม Clear — BoxList ล็อกปุ่ม + โชว์แถบเตือน (clearBoxes กันซ้ำอีกชั้น) คำนวณทุก render ให้ตามสถานะสด
   const clearBlockers = summarizeClearBlockers(boxes, { itemsByBox, scanProgress, progressLoaded });
-  const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, saveWarehouseBoxItems, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearBlockers, clearFirestore, deleteBox, loadReceiveProblems, upsertReceiveProblem, deleteReceiveProblem, commitReceiveOutcome, packer, setTab, showToast, createNewBox, lockBoxBranch, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
+  const screenProps = { boxes, setBoxes, boxesLoaded, boxItemsLoaded, receiveDataReady: boxesLoaded && boxItemsLoaded, receiveDataLoadError, activeBoxId, setActiveBoxId, catalog, catalogLoaded, itemsByBox, setItemsByBox, saveWarehouseBoxItems, history, deleteHistoryEntry, historyRetentionDays: HISTORY_RETENTION_DAYS, clearBoxes, clearBlockers, clearFirestore, deleteBox, loadReceiveProblems, upsertReceiveProblem, deleteReceiveProblem, commitReceiveOutcome, packer, setTab, showToast, createNewBox, lockBoxBranch, generateCSV, triggerDownload, receiveBoxIds, setReceiveBoxIds, costMap, lotMap, lotSettledBoxIds, barcodeMap, factorMap, nameMap, onDismiss: handleDismiss, pendingApprovalBoxId, setPendingApprovalBoxId };
 
   // Gate: ยังไม่ login → แสดงหน้า Login (ทั้ง Android + Desktop)
   if (!profile) {

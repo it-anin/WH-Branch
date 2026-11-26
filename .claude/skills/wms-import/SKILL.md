@@ -105,7 +105,14 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 
 **⚠ ทำไมไม่เก็บ `unit` ต่อ lot + ทำไมต้อง shard:** เก็บ unit (ชื่อหน่วยไทย) ต่อแถวเคยทำให้ doc โต 1.39MB เกินลิมิต Firestore 1 doc = 1MB → `invalid-argument` จึงแปลงเป็น base ตั้งแต่ import; ต่อมาเพิ่ม exp ทำให้ทั้งก้อนโต ~1.3MB อีกครั้ง → **แก้ถาวรด้วย sharded write** (ดู `handleLotMapImport`) ไฟล์จริง 78k rows → 31.8k lots → 3 docs (~680KB, ~680KB, ~170KB). (`factorMap` ต้องโหลดก่อน คือ import R05.106 ก่อน LOT — ตาม import order อยู่แล้ว; ถ้ายังไม่มี factor → factor=1 ใช้ qty ตามเดิม)
 
-**LOT usage หน่วยฐาน (PackScanC):** `getAvailableLots` ใช้ `lotMap[sku].qty` (หน่วยฐานแล้ว) ตรงๆ, `calcLotUsage` หักด้วย `จำนวนสแกน × factor(sku, scannedUnit)` → `remaining` เป็นหน่วยฐาน (สแกนบาร์โค้ดโหล 1 ครั้งหักสต็อกเท่า factor) — ลังเก่าไม่มี `scannedUnit` → factor=1 (= พฤติกรรมเดิม)
+**LOT usage หน่วยฐาน (PackScanC):** `getLotsWithRemaining` ใช้ `lotMap[sku].qty` (หน่วยฐานแล้ว) ตรงๆ, `calcLotUsage` หักด้วย `จำนวนสแกน × factor(sku, scannedUnit)` → `remaining` เป็นหน่วยฐาน (สแกนบาร์โค้ดโหล 1 ครั้งหักสต็อกเท่า factor) — ลังเก่าไม่มี `scannedUnit` → factor=1 (= พฤติกรรมเดิม)
+
+**`_meta.settledBoxIds` — กันหักยอด LOT ซ้ำ (บั๊กจริง พ.ย. 2026):** ไฟล์ LOT เป็นภาพสต็อกจาก ERP ณ ตอนดึง ซึ่ง**หักลังที่นำไฟล์ Text เข้า POS ไปแล้ว** แต่ลังพวกนั้นยังค้างใน `boxes` (Clear ถูกล็อกจนกว่าสาขารับครบ) → หน้าแพ็คเคยหักซ้ำอีกรอบจน LOT ที่มีของขึ้น "⚠ LOT นี้สินค้าหมด" (SKU 500504 LOT G1323: ไฟล์ +48 −24 = 24 แต่ลังเก่า 24 ถูกหักซ้ำ → 0)
+- `handleLotMapImport` (App.jsx) จด `settledBoxIds = collectLotSettledBoxIds(boxesRef.current)` (ลัง `textExported` / `exported` / `received` ณ ตอนอัป = ERP หักแล้ว — ผู้ใช้ยืนยันว่า ERP หักสต็อกตอนนำไฟล์ Text เข้า POS) + `settledBoxCount` ลง `_meta` ของ `config/lotMap` (chunk 0) **เท่านั้น** — `qrMeta` ไม่ลากลิสต์ไปด้วย
+- **ด่าน `boxesLoaded`:** ข้อมูลลังยังโหลดไม่ครบ → toast `warn` + throw (ImportLotMap `.catch` รีเซ็ต progress เอง) — ไม่งั้นลิสต์ว่าง = กลับไปหักซ้ำแบบเงียบ ๆ
+- toast สำเร็จต่อท้าย `· ไม่หักซ้ำ N ลังที่ส่ง POS แล้ว` · App.jsx ส่ง `lotSettledBoxIds` (derive จาก `lotMapMeta`) ผ่าน `screenProps` → PackScanC `calculateLotUsage({ excludeBoxIds })`
+- **ลิสต์ถูกแช่ไว้ ณ ตอนอัป:** ลังที่ส่ง POS หลังอัปไฟล์ยังถูกหัก (ไฟล์ยังไม่รู้จัก) · **ไฟล์ LOT ที่อัปก่อนมี field นี้ = หักทุกลังเหมือนเดิม → ต้องอัปไฟล์ LOT ใหม่ 1 ครั้งหลัง deploy**
+- ข้อสมมติ: อัปไฟล์ทันทีหลังดึงจาก ERP — ลังที่กดส่ง Text ระหว่างดึงไฟล์กับอัปโหลดจะถูกนับว่าหักแล้วทั้งที่ไฟล์ยังไม่หัก (ยอดเหลือสูงไปนิด — เสี่ยงน้อยกว่าบล็อกงาน)
 
 ตัวอย่าง: `F0224` มี 2 rows คือ `-36` และ `+36` → sum = 0 → **ไม่ขึ้น popup** (สต็อกหมดเพราะรับคืน/โอนออกหมด)
 

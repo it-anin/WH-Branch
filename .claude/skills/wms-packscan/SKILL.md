@@ -82,22 +82,26 @@ description: Use when touching the packing screen src/screens/PackScanC.jsx — 
 
 ### LOT Selection (PackScanC Android)
 - รับ prop `lotMap` ผ่าน `screenProps` — มี structure `{[sku]: [{lot, qty, exp?}]}` (qty = สต็อกเริ่มต้น, exp = วันหมดอายุ ค.ศ. DD/MM/YYYY จากไฟล์ LOT+EXP — ไฟล์ R01.119 เดิมไม่มี)
-- **`calcLotUsage()`**: รวมการใช้ LOT ทั้งหมด (key = `sku__lot`) จาก closed boxes (`itemsByBox` ของลัง `closed/exported/received`) + ลังปัจจุบัน (`items.got > 0`)
-- **`getAvailableLots(sku)`**: filter LOT ที่ `qty − usage > 0` พร้อมคำนวณ `remaining`
-- **`processBarcode` flow:**
+- **`calcLotUsage()`** → `calculateLotUsage` (warehouseHelpers): รวมการใช้ LOT (key = `sku__lot`, หน่วยฐาน) จากลัง `closed/exported/received` (`itemsByBox`) + ลังปัจจุบัน (`items`) — **ยกเว้นลังใน prop `lotSettledBoxIds`** (`excludeBoxIds`)
+  - **⚠ ทำไมต้องยกเว้น (บั๊กจริง พ.ย. 2026 — "⚠ LOT นี้สินค้าหมด" ทั้งที่ของมี):** ไฟล์ LOT = ภาพสต็อกจาก ERP ซึ่ง**หักลังที่นำไฟล์ Text เข้า POS ไปแล้ว** แต่ลังพวกนั้นยังค้างใน `boxes` (Clear ถูกล็อกจนกว่าสาขารับครบ) → เดิมหักซ้ำอีกรอบ. เคส SKU 500504 LOT G1323: ไฟล์ +48 −24 = 24 = Picklist ขอพอดี แต่ลังเก่า 24 ซองถูกหักซ้ำ → เหลือ 0
+  - `lotSettledBoxIds` = `config/lotMap._meta.settledBoxIds` — **จดตอนอัปไฟล์ LOT** (`collectLotSettledBoxIds`: ลังที่ `textExported` / `exported` / `received` ณ ตอนนั้น = ERP หักแล้ว) ลังที่ยังไม่ส่ง POS หรือแพ็คหลังอัปไฟล์ ยังหักตามปกติ · ไฟล์ LOT ที่อัปก่อนมี field นี้ = `[]` = หักทุกลังเหมือนเดิม (ต้องอัปไฟล์ใหม่ 1 ครั้ง)
+  - **ตรวจบนข้อมูลจริง:** Desktop console `__wh.lot('500504')` → ยอดในไฟล์ / ลังที่ใช้ LOT (หักหรือ "ไม่หัก · ERP หักแล้ว") / คงเหลือ — ใช้ `calculateLotUsage` ตัวเดียวกัน **ห้ามเขียนสูตรแยก**
+- **`getLotsWithRemaining(sku)`**: ทุก LOT ใน `lotMap[sku]` พร้อม `remaining = qty − usage` (อาจ ≤ 0) + `exp` · LOT ที่ใช้ได้ = กรอง `remaining > 0`
+- **`processBarcode` → `proceedScan` flow:**
   1. validate SKU/barcode → match item
   2. resolve `scannedBarcode` (ดู *`scannedBarcode` field* ด้านบน) — ทำก่อนเข้า LOT logic เสมอ ไม่ว่า SKU จะมี LOT หรือไม่
   3. ถ้า `allLots.length === 0` (SKU ไม่มีใน lotMap) → สแกนปกติไม่มี LOT
-  4. ถ้า `availableLots.length === 0` (LOT หมดทั้งหมด) → **block scan** + toast `⚠ LOT หมดทั้งหมด สต็อกไม่พอ`
-  5. ถ้า `match.lot` ยังอยู่ใน availableLots → ใช้ต่อไม่ popup
-  6. Android + `>1 available` → **`playScanSuccess()` ก่อน** (เสียงยืนยันสแกนติดทันที — popup เงียบ ไม่งั้นไม่รู้ว่าสแกนสำเร็จ) → `setPendingLot({match, lots: availableLots, scannedBarcode})` → popup เด้ง → เลือก LOT แล้ว `applyScan` เล่นเสียงอีกครั้ง (สแกน+ยืนยัน = 2 ครั้ง โดยตั้งใจ)
-  7. ไม่งั้น auto-pick `availableLots[0]` (ทั้ง `lot` และ `exp`)
-- **`getAvailableLots(sku)` คืน `exp` ติดมาด้วย** — ทุกเส้นทางที่เลือก LOT จาก lotMap (popup / auto-pick / LOT เดิมยังใช้ได้) ส่ง exp เข้า `applyScan` → ติดไปกับ `item.exp` + `scannedLots[].exp` → Outbound/ไฟล์ Text ได้ EXP อัตโนมัติโดยพนักงานไม่ต้องกรอก
+  4. ถ้า LOT ที่ใช้ได้ = 0 (ระบบคำนวณว่าหมด) → **ไม่บล็อกแล้ว** (เดิม toast `⚠ LOT นี้สินค้าหมด` แล้วแพ็คต่อไม่ได้เลย แม้ของอยู่ในมือ) → `playScanFail()` + popup แดง `stockExhausted` (ดู *Popup UI*) เลือก LOT ในไฟล์หรือกรอกเอง — ตัดสินใจโดยผู้ใช้: การคุมสต็อก LOT = "เตือน" ไม่ใช่ "บล็อก"
+  5. **Android: ไม่ได้สแกน QR LOT มาก่อน → popup ทุกครั้ง** (`qrRequired: true`, ไม่ว่า LOT ที่ใช้ได้กี่ตัว) — `playScanSuccess()` ก่อน (popup เงียบ ไม่งั้นไม่รู้ว่าสแกนติด) → เลือก LOT แล้ว `applyScan` เล่นเสียงอีกครั้ง (2 ครั้ง โดยตั้งใจ)
+  6. Desktop: ถ้า `match.lot` ยังใช้ได้ → ใช้ต่อ ไม่งั้น auto-pick LOT แรกที่ใช้ได้ (ทั้ง `lot` และ `exp`)
+- **QR LOT (Android) ที่ยอดไม่พอ (`INSUFFICIENT_STOCK`)** — QR ผ่านการตรวจ SKU/LOT/EXP แล้ว → **ไม่บล็อก**: `lotSelection = {lot, exp, stockShort: true, remaining}` → ผ่านด่านสแกนเกิน (`confirmOver`) ตามปกติ → `proceedScan` เปิด popup แดงที่มีเฉพาะ LOT จาก QR ให้กดยืนยัน · reason อื่น (LOT ไม่ตรง SKU / EXP ไม่ตรง / ไม่มีข้อมูล LOT) **ยังบล็อก + toast เหมือนเดิม**
+- **ทุกเส้นทางที่เลือก LOT จาก lotMap ได้ `exp` ติดมาด้วย** (popup / auto-pick / QR) → `applyScan` → `item.exp` + `scannedLots[].exp` → Outbound/ไฟล์ Text ได้ EXP อัตโนมัติโดยพนักงานไม่ต้องกรอก
 - **`applyScan(match, lot, resetLot=false, exp='', scannedBarcode='', scannedUnit='', factor=1)`**: เพิ่ม `got+1`, `gotBase+factor`, set `item.lot` (ถ้า resetLot=true จะ overwrite LOT เดิม กรณีสลับเพราะ LOT หมด), set `item.exp` เฉพาะเมื่อมี `exp` ส่งมา (จากไฟล์ LOT+EXP ผ่าน lotMap หรือกรอกเองผ่าน manual entry), set `item.scannedBarcode` เฉพาะเมื่อมีค่าส่งมา, **ถ้ามี `lot`** → เรียก `addLotEntry(it.scannedLots, lot, exp, scannedBarcode)` เพิ่ม/รวม qty ใน `item.scannedLots` ด้วย (ดู *`scannedLots` field* ด้านบน) — ทำงานทุกครั้งไม่ว่า resetLot จะเป็นค่าอะไร (ต่าง LOT ไม่ overwrite กัน ไม่เหมือน `item.lot`)
 - **Popup UI** (`pendingLot` state, render ผ่าน `createPortal` → `document.body`) — 2 โหมดสลับด้วย `manualLotMode`:
   - **โหมดเลือกจาก list (default):** แสดง SKU + ชื่อสินค้า + ปุ่ม LOT แต่ละตัว (`lot` + บรรทัด `EXP {exp}` เล็กถ้ามี + `เหลือ N`) → คลิก → `handleLotSelect(lot)` → อ่าน `scannedBarcode` + หา `exp` ของ lot นั้นจาก `pendingLot.lots` → `applyScan(match, lot, true, exp, scannedBarcode, ...)` → ปิด popup, scan complete
     - ปุ่ม **"✎ ใส่ LOT เอง"** → `setManualLotMode(true)` สลับไปฟอร์มกรอกเอง
     - ปุ่ม "ยกเลิก" (ไม่นับ scan) → `closeLotPopup()`
+  - **popup แดง `pendingLot.stockExhausted`** (ระบบคำนวณว่า LOT ไม่พอ — ทาง LOT หมด และทาง QR `stockShort`): หัวข้อ `⚠ ระบบคำนวณว่า LOT หมด` + แถบแดงอธิบาย (อาจหักซ้ำ/ไฟล์ไม่อัปเดต · เลือก LOT ตรงฉลากหรือกรอกเอง · แจ้งหัวหน้าตรวจไฟล์ LOT) แทนแถบเหลือง QR · ปุ่ม LOT เป็น `btn danger` label `ระบบเหลือ {max(0, remaining)}` · ที่เหลือ (`handleLotSelect` / ใส่ LOT เอง / ยกเลิก) ใช้ของเดิม · popup เปิดอยู่ = `processBarcode` บล็อกสแกนซ้อน → ไม่เกิด toast ซ้อนกันหลายอันแบบเดิม
   - **โหมดใส่ LOT เอง (`manualLotMode=true`):** ฟอร์ม LOT (text input) + **Exp ค.ศ.** 3 ช่อง DD/MM/YYYY (ทุกช่องเป็น numeric input, digit-only filter + length cap ผ่าน `.replace(/[^0-9]/g,'').slice(n)`) — **ไม่ใช้ dropdown เดือนแบบเดิม (เคยเป็น `<select>` ชื่อเดือนไทย ลบ `THAI_MONTHS` ออกไปแล้ว)**
     - **กรอกเป็น ค.ศ. ตรงกับที่พิมพ์บนสินค้าจริง** (เดิมให้กรอก พ.ศ. — เปลี่ยนเพราะพนักงานต้องแปลงเลขในหัวจากสิ่งที่เห็นบนสินค้า เสี่ยงกรอกผิด) — `item.exp`/`scannedLots[].exp` เก็บค่า ค.ศ. ดิบตามที่กรอกไว้ (ไม่แปลงตรงนี้) → แปลงเป็น พ.ศ. ตอน export แทน (ดู `toBuddhistExp()` ใน *Outbound — ⇩ ส่งออกไฟล์ Text*)
     - `handleManualLotConfirm()`: validate LOT ต้องไม่ว่าง; Exp ต้องกรอกครบทั้ง 3 ช่องหรือไม่กรอกเลย (กรอกบางช่อง → toast error) → ประกอบเป็น `DD/MM/YYYY` (zero-pad D/M ด้วย `.padStart(2,'0')`) → อ่าน `scannedBarcode` จาก `pendingLot` → `applyScan(match, lot, true, exp, scannedBarcode)`

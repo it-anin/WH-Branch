@@ -364,7 +364,7 @@ function ItemCard({ c, done, partial, exiting, settled, onMarkOutOfStock }) {
   );
 }
 
-export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, lockBoxBranch = null, setItemsByBox, itemsByBox, catalog, catalogLoaded = true, packer, onScanProgress, onDismiss, catalogMeta, lotMap = {}, barcodeMap = {}, factorMap = {} }) {
+export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId, setTab, showToast, createNewBox, lockBoxBranch = null, setItemsByBox, itemsByBox, catalog, catalogLoaded = true, packer, onScanProgress, onDismiss, catalogMeta, lotMap = {}, lotSettledBoxIds = [], barcodeMap = {}, factorMap = {} }) {
   // โมเดลหน่วยฐาน: need/gotBase คิดเป็น "หน่วยฐาน" (factor=1) ส่วน got = จำนวนครั้งที่สแกน (ไว้ export ตามหน่วยที่สแกนจริง)
   // factorOf(sku, unit) = จำนวนหน่วยฐานต่อ 1 หน่วยนั้น เช่น โหล=12 → สแกนบาร์โค้ดโหล 1 ครั้ง = +12 หน่วยฐาน
   const factorOf = (sku, unit) => lookupFactor(factorMap, sku, unit);
@@ -468,25 +468,34 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
 
   // คำนวณยอด LOT ที่ถูกใช้ไปแล้ว (key = sku__lot, หน่วยฐาน) จากทุกลังที่ปิด + ลังปัจจุบัน
   // คูณ factor ของหน่วยที่สแกนจริง — สแกนบาร์โค้ดโหล 1 ครั้งหักสต็อก LOT เท่า factor (เช่น 12) ไม่ใช่ 1
+  // ยกเว้นลังที่ส่งเข้า POS แล้วตอนอัปไฟล์ LOT (lotSettledBoxIds) — ไฟล์ LOT จาก ERP หักลังพวกนั้นไปแล้ว ห้ามหักซ้ำ
   const calcLotUsage = () => calculateLotUsage({
     boxes,
     itemsByBox,
     currentItems: items,
     factorMap,
+    excludeBoxIds: lotSettledBoxIds,
   });
 
-  // คืน LOT ที่ยังเหลือสต็อก > 0 — qty ใน lotMap เป็นหน่วยฐานแล้ว (แปลงตั้งแต่ import ดู ImportLotMap), usage ก็หน่วยฐาน
-  // exp ติดมาจากไฟล์ LOT+EXP (ลอตเก่า/ไฟล์ R01.119 เดิมไม่มี → '')
-  function getAvailableLots(sku) {
+  // คืนทุก LOT ของ SKU ในไฟล์ พร้อมยอดคงเหลือ (remaining อาจ ≤ 0) — qty ใน lotMap เป็นหน่วยฐานแล้ว
+  // (แปลงตั้งแต่ import ดู ImportLotMap), usage ก็หน่วยฐาน · exp ติดมาจากไฟล์ LOT+EXP (ไฟล์ R01.119 เดิมไม่มี → '')
+  function getLotsWithRemaining(sku) {
     const lots = lotMap[sku] || [];
     const usage = calcLotUsage();
-    return lots
-      .map(({ lot, qty, exp }) => ({ lot, qty, exp: exp || '', remaining: qty - (usage[`${sku}__${lot}`] || 0) }))
-      .filter(l => l.remaining > 0);
+    return lots.map(({ lot, qty, exp }) => ({ lot, qty, exp: exp || '', remaining: qty - (usage[`${sku}__${lot}`] || 0) }));
   }
 
   // ส่วน LOT + applyScan หลังจากผ่านการตรวจสอบ over แล้ว — ใช้ร่วมกันทั้ง processBarcode ปกติ และ handleConfirmOver
   async function proceedScan(match, factor, scannedBarcode, scannedUnit, lotSelection = null) {
+    // QR บนสินค้าตรง SKU/LOT/EXP แล้ว แต่ยอดคงเหลือในระบบไม่พอ → ไม่บล็อก ให้ยืนยัน LOT นั้นในหน้าต่างเตือนแดงก่อน
+    if (lotSelection?.stockShort) {
+      playScanFail();
+      setPendingLot({
+        match, scannedBarcode, scannedUnit, factor, stockExhausted: true,
+        lots: [{ lot: lotSelection.lot, exp: lotSelection.exp || '', remaining: lotSelection.remaining ?? 0 }],
+      });
+      return;
+    }
     if (lotSelection) {
       await applyScan(match, lotSelection.lot, true, lotSelection.exp, scannedBarcode, scannedUnit, factor);
       return;
@@ -496,10 +505,13 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
       await applyScan(match, null, false, '', scannedBarcode, scannedUnit, factor);
       return;
     }
-    const availableLots = getAvailableLots(match.sku);
+    const lotsWithRemaining = getLotsWithRemaining(match.sku);
+    const availableLots = lotsWithRemaining.filter(l => l.remaining > 0);
     if (availableLots.length === 0) {
+      // ระบบคำนวณว่า LOT หมด แต่ของอยู่ในมือพนักงาน — เดิม toast "⚠ LOT นี้สินค้าหมด" แล้วแพ็คต่อไม่ได้เลย
+      // (ยอดในระบบอาจผิด เช่น หักซ้ำ/ไฟล์ LOT ไม่อัปเดต) → เปิดหน้าต่างเตือนแดง ให้เลือก LOT ในไฟล์หรือกรอก LOT เอง
       playScanFail();
-      showToast('⚠ LOT นี้สินค้าหมด', 'error');
+      setPendingLot({ match, lots: lotsWithRemaining, scannedBarcode, scannedUnit, factor, stockExhausted: true });
       return;
     }
     if (isAndroid) {
@@ -523,9 +535,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
     if (result.reason === PACKING_LOT_QR_REASONS.NO_LOT_DATA) return '⚠ SKU นี้ไม่มีข้อมูล LOT สำหรับจับคู่ QR';
     if (result.reason === PACKING_LOT_QR_REASONS.LOT_NOT_FOUND) return '⚠ LOT ใน QR ไม่ตรงกับ SKU นี้';
     if (result.reason === PACKING_LOT_QR_REASONS.EXP_MISMATCH) return '⚠ EXP ใน QR ไม่ตรงกับข้อมูล LOT ของ SKU นี้';
-    if (result.reason === PACKING_LOT_QR_REASONS.INSUFFICIENT_STOCK) {
-      return `⚠ LOT เหลือ ${result.remaining || 0} หน่วย · ต้องใช้ ${result.required || 0} หน่วย`;
-    }
+    // INSUFFICIENT_STOCK ไม่มาถึงตรงนี้แล้ว — processBarcode ส่งไปหน้าต่างเตือนแดงแทนการบล็อก
     return '⚠ QR LOT ไม่ถูกต้อง';
   }
 
@@ -604,12 +614,17 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
         factor,
       });
       setPendingLotQr(null); // QR หนึ่งครั้งถูกใช้แล้ว ไม่ว่าคู่จะถูกหรือผิด
-      if (!result.ok) {
+      if (result.reason === PACKING_LOT_QR_REASONS.INSUFFICIENT_STOCK) {
+        // QR ผ่านการตรวจ SKU/LOT/EXP แล้ว แค่ยอดคงเหลือในระบบไม่พอ → ไม่บล็อก ไปยืนยันในหน้าต่างเตือนแดง (proceedScan)
+        // ยังผ่านด่านสแกนเกินจำนวนตามปกติก่อน — confirmOver พา lotSelection ไปด้วย
+        lotSelection = { lot: queuedLotQr.lot, exp: queuedLotQr.exp, stockShort: true, remaining: result.remaining };
+      } else if (!result.ok) {
         playScanFail();
         showToast(lotQrErrorMessage(result), 'error');
         return;
+      } else {
+        lotSelection = { lot: result.lot, exp: result.exp };
       }
-      lotSelection = { lot: result.lot, exp: result.exp };
     }
 
     // สแกนแล้วจะเกินจำนวนที่เบิก → หยุดรอยืนยันก่อน
@@ -899,7 +914,11 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
             display: 'flex', flexDirection: 'column',
           }}>
             <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
-              {manualLotMode ? 'ใส่ LOT เอง' : pendingLot.qrRequired ? 'ยังไม่ได้สแกน QR LOT' : 'เลือก LOT'}
+              {manualLotMode
+                ? 'ใส่ LOT เอง'
+                : pendingLot.stockExhausted
+                  ? '⚠ ระบบคำนวณว่า LOT หมด'
+                  : pendingLot.qrRequired ? 'ยังไม่ได้สแกน QR LOT' : 'เลือก LOT'}
             </div>
             <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
               SKU: <span className="mono">{pendingLot.match.sku}</span>
@@ -909,6 +928,18 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
             </div>
             {!manualLotMode ? (
               <>
+                {/* ระบบคำนวณว่า LOT ไม่พอ แต่ของอยู่ในมือพนักงาน — เตือนแดงแทนการบล็อก (ดู proceedScan) */}
+                {pendingLot.stockExhausted && (
+                  <div style={{
+                    background: '#fbe1dc', border: '1.5px solid var(--red)', borderRadius: 9,
+                    padding: '10px 12px', marginBottom: 12, color: '#8a2a1e',
+                    fontFamily: 'system-ui', fontSize: 13, lineHeight: 1.45,
+                  }}>
+                    ยอด LOT ในระบบเหลือไม่พอ (อาจหักซ้ำ หรือไฟล์ LOT ยังไม่อัปเดต)<br />
+                    ถ้ามีสินค้าอยู่ในมือ ให้เลือก LOT ที่ตรงกับฉลาก หรือกด ✎ ใส่ LOT เอง<br />
+                    แล้วแจ้งหัวหน้าตรวจไฟล์ LOT
+                  </div>
+                )}
                 {pendingLot.qrRequired && (
                   <div style={{
                     background: '#fff4d6', border: '1.5px solid #d59b16', borderRadius: 9,
@@ -928,7 +959,7 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
                   {pendingLot.lots.map(({ lot, remaining, exp }) => (
                     <button
                       key={lot}
-                      className="btn primary"
+                      className={pendingLot.stockExhausted ? 'btn danger' : 'btn primary'}
                       style={{
                         fontSize: 18, padding: '14px 18px', fontFamily: 'JetBrains Mono',
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -939,7 +970,9 @@ export default function PackScanC({ boxes, setBoxes, activeBoxId, setActiveBoxId
                         <span>{lot}</span>
                         {exp && <span style={{ fontSize: 12, opacity: 0.85, fontFamily: 'system-ui' }}>EXP {exp}</span>}
                       </span>
-                      <span style={{ fontSize: 13, opacity: 0.85, fontFamily: 'system-ui' }}>เหลือ {remaining}</span>
+                      <span style={{ fontSize: 13, opacity: 0.85, fontFamily: 'system-ui' }}>
+                        {pendingLot.stockExhausted ? `ระบบเหลือ ${Math.max(0, remaining)}` : `เหลือ ${remaining}`}
+                      </span>
                     </button>
                   ))}
                 </div>
