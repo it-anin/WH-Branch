@@ -129,9 +129,9 @@ const screenProps = { boxes, setBoxes, activeBoxId, setActiveBoxId, catalog, cat
 ```js
 // src/branches.js
 export const BRANCHES = [
-  { code: 'SRC', name: 'SRC', role: 'branch', staff: [ก้า, กิ๊ฟ, สุ่ย, นิคกี้, อ๊อฟ(pharmacist)] },
-  { code: 'KKL', name: 'KKL', role: 'branch', staff: [แตงโม, ทราย, ออด(pharmacist)] },
-  { code: 'SSS', name: 'SSS', role: 'branch', staff: [ออย, ฟ้าใส, เบส(pharmacist)] },
+  { code: 'SRC', name: 'SRC', role: 'branch', staff: [ก้า, กิ๊ฟ, สุ่ย, นิคกี้, มะปราง, อ๊อฟ(pharmacist)] },
+  { code: 'KKL', name: 'KKL', role: 'branch', staff: [รอผู้ช่วย, ทราย, แพรว(pharmacist)] },
+  { code: 'SSS', name: 'SSS', role: 'branch', staff: [กุ๊กกิ๊ก, ฟ้าใส, เบส(pharmacist)] },
 ];
 // WAREHOUSE = คลัง (ไม่อยู่ใน BRANCHES เพราะไม่มี staff รับสินค้า) — warehouse:true + role:'warehouse'
 export const WAREHOUSE = { code: 'WAREHOUSE', name: 'WAREHOUSE', warehouse: true, role: 'warehouse' };
