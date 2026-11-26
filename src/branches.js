@@ -11,6 +11,7 @@ export const BRANCHES = [
       { code: 'SRC-02', name: 'กิ๊ฟ' },
       { code: 'SRC-03', name: 'สุ่ย' },
       { code: 'SRC-04', name: 'นิคกี้' },
+      { code: 'SRC-05', name: 'มะปราง' },
       { code: 'SRC-09', name: 'อ๊อฟ', role: 'pharmacist' },  // เภสัช
     ],
   },
@@ -19,9 +20,9 @@ export const BRANCHES = [
     name: 'KKL',
     role: 'branch',
     staff: [
-      { code: 'KKL-01', name: 'แตงโม' },
+      { code: 'KKL-01', name: 'รอผู้ช่วย' },
       { code: 'KKL-02', name: 'ทราย' },
-      { code: 'KKL-09', name: 'ออด', role: 'pharmacist' },  // เภสัช
+      { code: 'KKL-09', name: 'แพรว', role: 'pharmacist' },  // เภสัช
     ],
   },
   {
@@ -29,7 +30,7 @@ export const BRANCHES = [
     name: 'SSS',
     role: 'branch',
     staff: [
-      { code: 'SSS-01', name: 'ออย' },
+      { code: 'SSS-01', name: 'กุ๊กกิ๊ก' },
       { code: 'SSS-02', name: 'ฟ้าใส' },
       { code: 'SSS-09', name: 'เบส', role: 'pharmacist' },  // เภสัช
     ],
