@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   buildLotRows,
   calculateLotUsage,
+  collectLotSettledBoxIds,
   finalizePackedItemEdits,
   preparePackedItemsForEdit,
   resolveWarehouseScanParent,
@@ -249,6 +250,49 @@ test('LOT usage counts every LOT/unit entry instead of assigning the parent tota
     'SKU-A__LOT-B': 1,
     'OLD__OLD-LOT': 2,
   });
+});
+
+test('LOT settled boxes are the boxes already sent to POS: text exported, approved or received', () => {
+  const boxes = [
+    { id: 'OPEN', status: 'open' },
+    { id: 'PACKING', status: 'packing' },
+    { id: 'CLOSED', status: 'closed' },
+    { id: 'TEXT-ONLY', status: 'closed', textExported: true },
+    { id: 'APPROVED', status: 'exported', textExported: true },
+    { id: 'LEGACY-APPROVED', status: 'exported' },
+    { id: 'RECEIVED', status: 'received' },
+    { status: 'exported' },
+  ];
+
+  assert.deepEqual(
+    collectLotSettledBoxIds(boxes),
+    ['TEXT-ONLY', 'APPROVED', 'LEGACY-APPROVED', 'RECEIVED'],
+  );
+  assert.deepEqual(collectLotSettledBoxIds(undefined), []);
+});
+
+test('LOT usage skips boxes the LOT file already deducted but still counts unsent boxes and the open box', () => {
+  const boxes = [
+    { id: 'SENT', status: 'exported', textExported: true },
+    { id: 'UNSENT', status: 'closed' },
+  ];
+  const itemsByBox = {
+    SENT: [{ sku: 'SKU-A', qty: 24, scannedLots: [{ lot: 'LOT-A', qty: 24, unit: 'ซอง' }] }],
+    UNSENT: [{ sku: 'SKU-A', qty: 5, scannedLots: [{ lot: 'LOT-A', qty: 5, unit: 'ซอง' }] }],
+  };
+  const currentItems = [{ sku: 'SKU-A', got: 2, scannedLots: [{ lot: 'LOT-A', qty: 2, unit: 'ซอง' }] }];
+  const factorMap = { 'SKU-A__ซอง': 1 };
+
+  // ไม่ส่ง excludeBoxIds (ไฟล์ LOT ที่อัปก่อนมี settledBoxIds) = พฤติกรรมเดิม หักทุกลังที่ปิดแล้ว
+  assert.deepEqual(calculateLotUsage({ boxes, itemsByBox, currentItems, factorMap }), { 'SKU-A__LOT-A': 31 });
+  // ข้ามเฉพาะลังที่ไฟล์ LOT หักไปแล้ว — ลังที่ยังไม่ส่ง POS และลังที่กำลังแพ็คยังถูกหัก
+  assert.deepEqual(calculateLotUsage({
+    boxes, itemsByBox, currentItems, factorMap, excludeBoxIds: collectLotSettledBoxIds(boxes),
+  }), { 'SKU-A__LOT-A': 7 });
+  // รับ Set ได้เหมือน array
+  assert.deepEqual(calculateLotUsage({
+    boxes, itemsByBox, currentItems, factorMap, excludeBoxIds: new Set(['SENT', 'UNSENT']),
+  }), { 'SKU-A__LOT-A': 2 });
 });
 
 test('warehouse add-scan keeps a unique SKU parent and blocks ambiguous duplicate Picklist rows', () => {
