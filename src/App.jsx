@@ -1378,7 +1378,7 @@ export default function App() {
       const qrText = isR14102
         ? ` · QR ${qrEntries.length} SKU (${qrChunks.length} doc)`
         : ' · ล้างดัชนี QR เดิมแล้ว';
-      showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓ (${lotChunks.length} doc)${qrText} · ไม่หักซ้ำ ${settledBoxIds.length} ลังที่ส่ง POS แล้ว`, 'success');
+      showToast(`LOT map: ${entries.length} SKU · ${total} LOT ✓ (${lotChunks.length} doc)${qrText}`, 'success');
     } catch (err) {
       reportFirestoreError(err, { source: 'r14102-write', critical: true });
       showToast('⚠ Firestore error: ' + (err.code || err.message), 'error');

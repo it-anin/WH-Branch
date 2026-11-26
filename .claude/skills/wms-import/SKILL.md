@@ -110,7 +110,8 @@ description: Use when touching import components src/components/Import*.jsx (Imp
 **`_meta.settledBoxIds` — กันหักยอด LOT ซ้ำ (บั๊กจริง พ.ย. 2026):** ไฟล์ LOT เป็นภาพสต็อกจาก ERP ณ ตอนดึง ซึ่ง**หักลังที่นำไฟล์ Text เข้า POS ไปแล้ว** แต่ลังพวกนั้นยังค้างใน `boxes` (Clear ถูกล็อกจนกว่าสาขารับครบ) → หน้าแพ็คเคยหักซ้ำอีกรอบจน LOT ที่มีของขึ้น "⚠ LOT นี้สินค้าหมด" (SKU 500504 LOT G1323: ไฟล์ +48 −24 = 24 แต่ลังเก่า 24 ถูกหักซ้ำ → 0)
 - `handleLotMapImport` (App.jsx) จด `settledBoxIds = collectLotSettledBoxIds(boxesRef.current)` (ลัง `textExported` / `exported` / `received` ณ ตอนอัป = ERP หักแล้ว — ผู้ใช้ยืนยันว่า ERP หักสต็อกตอนนำไฟล์ Text เข้า POS) + `settledBoxCount` ลง `_meta` ของ `config/lotMap` (chunk 0) **เท่านั้น** — `qrMeta` ไม่ลากลิสต์ไปด้วย
 - **ด่าน `boxesLoaded`:** ข้อมูลลังยังโหลดไม่ครบ → toast `warn` + throw (ImportLotMap `.catch` รีเซ็ต progress เอง) — ไม่งั้นลิสต์ว่าง = กลับไปหักซ้ำแบบเงียบ ๆ
-- toast สำเร็จต่อท้าย `· ไม่หักซ้ำ N ลังที่ส่ง POS แล้ว` · App.jsx ส่ง `lotSettledBoxIds` (derive จาก `lotMapMeta`) ผ่าน `screenProps` → PackScanC `calculateLotUsage({ excludeBoxIds })`
+- App.jsx ส่ง `lotSettledBoxIds` (derive จาก `lotMapMeta`) ผ่าน `screenProps` → PackScanC `calculateLotUsage({ excludeBoxIds })`
+- **toast สำเร็จไม่บอกจำนวนลังที่ไม่หักซ้ำ** (ผู้ใช้ไม่ต้องการ — เคยมี `· ไม่หักซ้ำ N ลังที่ส่ง POS แล้ว` แล้วเอาออก) ตรวจว่าจดแล้วหรือยังด้วย `__wh.lot('SKU')` บรรทัดแรก (`ไม่หักซ้ำ N ลัง` / เตือนถ้าไฟล์อัปก่อนมี field นี้)
 - **ลิสต์ถูกแช่ไว้ ณ ตอนอัป:** ลังที่ส่ง POS หลังอัปไฟล์ยังถูกหัก (ไฟล์ยังไม่รู้จัก) · **ไฟล์ LOT ที่อัปก่อนมี field นี้ = หักทุกลังเหมือนเดิม → ต้องอัปไฟล์ LOT ใหม่ 1 ครั้งหลัง deploy**
 - ข้อสมมติ: อัปไฟล์ทันทีหลังดึงจาก ERP — ลังที่กดส่ง Text ระหว่างดึงไฟล์กับอัปโหลดจะถูกนับว่าหักแล้วทั้งที่ไฟล์ยังไม่หัก (ยอดเหลือสูงไปนิด — เสี่ยงน้อยกว่าบล็อกงาน)
 

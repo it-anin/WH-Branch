@@ -366,7 +366,7 @@ return newId;
 - แปลงเป็น `entries = [{key, lots}]` → **แบ่ง chunk ตาม JSON size** (`LOTMAP_CHUNK_BUDGET` ~700KB/doc, ทั้ง SKU อยู่ chunk เดียวกันเสมอ) → `writeBatch`: chunk 0 → `config/lotMap` (+`_meta`), chunk ถัดไป → `config/lotMap_1..N`, แล้ว `batch.delete` chunk ที่เกินจำนวนรอบนี้ถึง `LOTMAP_MAX_CHUNKS` (กัน chunk เก่าค้าง — delete doc ที่ไม่มี = no-op)
 - **เหตุผล:** lotMap พร้อม exp ทั้งก้อน ~1.3MB เกินลิมิต Firestore 1MB/doc (วัดจากไฟล์จริง 31.8k lots)
 - **จด `_meta.settledBoxIds` = `collectLotSettledBoxIds(boxesRef.current)`** (ลัง `textExported`/`exported`/`received` ณ ตอนอัป) — PackScanC ไม่หัก LOT ของลังพวกนี้ซ้ำ; ข้อมูลลังยังโหลดไม่ครบ (`!boxesLoaded`) → toast warn + throw ไม่อัป (รายละเอียด skill `wms-import`)
-- แสดง toast `LOT map: N SKU · M LOT ✓ (K doc) · ไม่หักซ้ำ X ลังที่ส่ง POS แล้ว`
+- แสดง toast `LOT map: N SKU · M LOT ✓ (K doc)` (ผู้ใช้ไม่ต้องการให้ toast บอกจำนวนลังที่ไม่หักซ้ำ — ดูได้จาก `__wh.lot('SKU')` บรรทัดแรกแทน)
 
 ### `clearFirestore()`
 - confirm dialog ก่อนลบ
